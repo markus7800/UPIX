@@ -17,15 +17,18 @@ class BranchingTracer(jax_core.Tracer):
     def aval(self):
         return jax_core.get_aval(self.val)
     
-    def to_concrete_value(self):
-        return self.val # jax_core.to_concrete_value(self.val)
+    # def to_concrete_value(self):
+    #     return jax_core.to_concrete_value(self.val)
 
-    def __bool__(self):
-        return True
+    # def __bool__(self):
+    #     return True
 
-    def __index__(self):
-        assert False
+    # def __index__(self):
+    #     assert False
 
+    def full_lower(self):
+        return jax_core.full_lower(self.val)
+    
 # op(tracer) -> op(tracer.aval)
 # __getattr__(tracer, name)
 #  = getattr(tracer.aval: ShapedArray, name)
@@ -39,23 +42,14 @@ class BranchingTrace(jax_core.Trace):
     def __init__(self, parent_trace) -> None:
         self.parent_trace = parent_trace
 
-    def process_primitive(self, primitive, tracers, params):
+    def process_primitive(self, primitive: jax_core.Primitive, tracers, params):
         print("process_primitive", primitive, tracers)#, params)
-        # assert all(isinstance(tracer, BranchingTracer) for tracer in tracers)
-        args = [tracer.val if isinstance(tracer, BranchingTracer) else tracer for tracer in tracers]
-        print("args =", args)
-        # out = primitive.impl(*args, **params)
-        # print("jvp =", jax_ad.primitive_jvps[primitive], hash(primitive))
+        args = [tracer.val if isinstance(tracer, BranchingTracer) else tracer for tracer in tracers] # TODO: proper lowering
         out = primitive.bind_with_trace(self.parent_trace, args, params)
-        print("out =", out, type(out))
         if primitive.multiple_results:
             out = [BranchingTracer(self, o) for o in out]
-            print("out =", out)
-            print("out concrete =", [o.to_concrete_value() for o in out])
         else:
             out = BranchingTracer(self, out)
-            print("out =", out)
-            print("out concrete =", out.to_concrete_value())
         return out
 
 
@@ -67,5 +61,10 @@ def detect_branching(f):
             with jax_core.set_current_trace(trace):
                 in_tracers: List[BranchingTracer] = [BranchingTracer(trace, arg) for arg in args]
                 out = f(*in_tracers)
-                return out
+                if isinstance(out, BranchingTracer):
+                    return out.val
+                else:
+                    assert isinstance(out, list)
+                    assert (all(map(lambda o: isinstance(o, BranchingTracer), out)))
+                    return [o.val for o in out]
     return _f
