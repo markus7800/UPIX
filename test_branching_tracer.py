@@ -16,13 +16,77 @@ def test_1(x: jax.Array):
 
 # numpy methods are partially jitted, see jax/_src/numpy/ufuncs.py
 def test_2(x: jax.Array):
-    print("test_2", x)
-    return jnp.sin(4*x)
+    print("test_2 x =", x)
+    y = 4*x
+    # y = jax.lax.sin(x)
+    print("test_2 y =", type(y), y)
+    return jnp.sin(y)
+    # return jax.lax.cos(y)
 
 # jax.jvp(test_2, (2.,), (1.,))
 
-# a = detect_branching(test_2)(1)
+
+# a = detect_branching(test_2)(2.)
 # print("returns", a)
+
+@jax.jit
+def scale_dict(x: jax.Array):
+    return {"x": x * 2}
+
+@jax.jit
+def scale_within_dict(d: dict):
+    x = d["x"]
+    return {"x": x * 3}
+
+def test_2_1(x: jax.Array):
+    print("test_2 x =", x)
+    y = scale_dict(x)
+    print("test_2 y =", type(y), y)
+    z = scale_within_dict(y)
+    print("test_2 z =", type(z), z)
+    return jnp.sin(z["x"])
+    # return jax.lax.cos(y)
+
+# a = detect_branching(test_2_1)(2.)
+# print("returns", a)
+# exit()
+
+# @jax.jit
+def scale_within_dict(d: dict):
+    x = d["x"]
+    return {"x": x * 3}
+
+def test_2_2(d: dict):
+    print("test_2 d =", type(d), d)
+    z = scale_within_dict(d)
+    print("test_2 z =", type(z), z)
+    return jnp.sin(z["x"])
+    # return jax.lax.cos(y)
+
+# a = detect_branching(test_2_2)({"x": 2}) # dict is not a valid JAX type
+# print("returns", a)
+# exit()
+
+@jax.jit
+def scale_within_dict(d: dict):
+    x = d["x"]
+    return {"x": x * 3}
+
+def test_2_3(x: jax.Array):
+    d = {"x": x}
+    print("test_2 d =", type(d), d)
+    z = scale_within_dict(d)
+    print("test_2 z =", type(z), z)
+    return {"o": jnp.sin(z["x"])}
+    # return jax.lax.cos(y)
+
+a = detect_branching(test_2_3)(2)
+print("returns", a)
+exit()
+
+# a = grad(test_2_2)({"x": 2})
+# print("returns", a)
+# exit()
 
 # test_2(1)
 
