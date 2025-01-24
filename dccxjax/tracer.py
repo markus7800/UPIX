@@ -71,10 +71,10 @@ class SOp(SExpr):
 
 class SConstant(SExpr):
     def __init__(self, constant) -> None:
-        print("Constant", constant, type(constant), id(constant))
+        # print("Constant", constant, type(constant), id(constant))
         self.constant = constant
     def __repr__(self) -> str:
-        return f"Constant({self.constant})"
+        return f"Constant({self.constant} @{id(self.constant)})"
     def eval(self, X: dict[str, jax.Array]):
         return self.constant
     def __eq__(self, value: object) -> bool:
@@ -120,10 +120,9 @@ def replace_constant_with_svars(input_object_ids_to_name: Dict[int, str], sexpr:
             
 
 class BranchingDecisions:
-    def __init__(self, object_id_to_sym_name: Dict[int, str] = {}) -> None:
+    def __init__(self) -> None:
         self.boolean_decisions: Dict[SExpr, bool] = {}
         self.index_decisions: Dict[SExpr, int] = {}
-        self.object_id_to_sym_name = object_id_to_sym_name
 
 
 # based on JVPTrace / JVPTracer
@@ -132,22 +131,11 @@ class BranchingTracer(jax_core.Tracer):
     
     def __init__(self, trace: jax_core.Trace, val, sexpr: Optional[SExpr] = None):
         assert isinstance(trace, BranchingTrace)
+        print("BranchingTracer", id(self), type(val), id(val))
+        print(trace.object_id_to_name)
         self._trace = trace
         self.val = val
-
-        _sexpr: Optional[SExpr] = None
-        if trace.retrace:
-            object_id_to_sym_name = trace.branching_decisions.object_id_to_sym_name
-            lowered_val = jax_core.full_lower(val)
-            print("retrace vals", id(lowered_val), id(self.aval))
-            if isinstance(lowered_val, jax.Array) and id(lowered_val) in object_id_to_sym_name:
-                _sexpr = SVar(object_id_to_sym_name[id(lowered_val)])
-
-        if _sexpr is None:
-            _sexpr = sexpr if sexpr is not None else SConstant(val)
-        
-        self.sexpr = _sexpr
-        # print("Init BranchingTracer with", val, type(val), id(val), sexpr, self.sexpr)
+        self.sexpr = sexpr if sexpr is not None else SConstant(val)
 
     @property
     def aval(self):
@@ -159,22 +147,27 @@ class BranchingTracer(jax_core.Tracer):
     def __bool__(self):
         assert isinstance(self._trace, BranchingTrace)
         boolean_decisions = self._trace.branching_decisions.boolean_decisions
+        b = bool(jax_core.to_concrete_value(self.val))
         if self._trace.retrace:
-            # has to have bool for decisions
-            return boolean_decisions[self.sexpr]
+            print("decision", self.sexpr)
+            lowered_self = jax_core.full_lower(self)
+            print("val =", b, jax_core.to_concrete_value(self.val), f"{lowered_self=} {id(lowered_self)}", f"{self=}, {id(self)=}")
+            # TODO: use existing decision
+            # return boolean_decisions[self.sexpr]
+            return b
         else:
-            b = bool(jax_core.to_concrete_value(self.val))
             boolean_decisions[self.sexpr] = b
             return b
         
     def __index__(self):
         assert isinstance(self._trace, BranchingTrace)
         index_decisions = self._trace.branching_decisions.index_decisions
+        b = int(jax_core.to_concrete_value(self.val)) # type: ignore
         if self._trace.retrace:
-            # has to have index for decisions
-            return index_decisions[self.sexpr]
+            # TODO: use existing decision
+            # return index_decisions[self.sexpr]
+            return b
         else:
-            b = int(jax_core.to_concrete_value(self.val)) # type: ignore
             index_decisions[self.sexpr] = b
             return b
 
@@ -203,34 +196,51 @@ def maybe_branching_tracer(trace: "BranchingTrace", val, sexpr: Optional[SExpr] 
     # else:
     #     return val
 
+# jit(branch(f))
+# jit is lower than branch, jit is parent of branch
+# t1 = jit
+# t2 = branch
+
+# eval(t1(t2(f)))
+# 2 t2_trace    
+# 1 t1_trace    (parent is lower)
+# 0 EvalTrace       
+# -> t1 is parent of t2
+# -> lower(t2_tracer) ~> t1_tracer
+# t2_tracer(t1_tracer(val))
+# -> process_primitive may call parent_trace.process_primitive
+# -> t2_trace.process_primitive may call t1_trace.process_primitive
+
 class BranchingTrace(jax_core.Trace):
-    def __init__(self, parent_trace, branching_decisions: BranchingDecisions, retrace: bool = False) -> None:
+    def __init__(self, parent_trace, branching_decisions: BranchingDecisions, retrace: bool, object_id_to_name: Dict[int, str]) -> None:
+        print("parent_trace of", self, "is", parent_trace)
         self.parent_trace = parent_trace
         self.branching_decisions = branching_decisions
         self.retrace = retrace
+        self.object_id_to_name = object_id_to_name
 
     def process_primitive(self, primitive: jax_core.Primitive, tracers, params):
         print("process_primitive", primitive_name(primitive, params), tracers)
         # print(params)
         args = [tracer.val if isinstance(tracer, BranchingTracer) else tracer for tracer in tracers]
-        # print("args =", args)
+        print("args =", args)
         sargs = [tracer.sexpr if isinstance(tracer, BranchingTracer) else SConstant(tracer) for tracer in tracers]
+        print("sargs =", sargs)
         out = primitive.bind_with_trace(self.parent_trace, args, params)
         sop = SOp(primitive, sargs, params)
         if primitive.multiple_results:
             out_tracer = [maybe_branching_tracer(self, o, sexpr=sop) for o in out]
-            # print("outm =", out, out_tracer)
+            print("outm =", out, out_tracer)
         else:
             out_tracer = maybe_branching_tracer(self, out, sexpr=sop)
-            # print("out1 =", out, out_tracer)
+            print("out1 =", out, out_tracer)
         return out_tracer
 
 
-def trace_branching(f: Callable, branching_decisions: BranchingDecisions, retrace: bool = False):
+def trace_branching(f: Callable, branching_decisions: BranchingDecisions, retrace: bool = False, object_id_to_name: Dict[int, str] = {}):
     def _f(*args):
         with jax_core.take_current_trace() as parent_trace:
-            # print("parent_trace:", parent_trace)
-            trace = BranchingTrace(parent_trace, branching_decisions, retrace)
+            trace = BranchingTrace(parent_trace, branching_decisions, retrace, object_id_to_name)
             with jax_core.set_current_trace(trace):
                 in_flat, in_tree = tree_flatten(args)
                 in_flat = map(lambda x: maybe_branching_tracer(trace, x), in_flat)
@@ -239,6 +249,7 @@ def trace_branching(f: Callable, branching_decisions: BranchingDecisions, retrac
                 in_tracers = tree_unflatten(in_tree, in_flat)
                 out = f(*in_tracers)
                 out_flat, out_tree = tree_flatten(out)
-                out_flat = map(lambda x: x.val if isinstance(x, BranchingTracer) else x, out_flat)
+                out_flat = list(map(lambda x: x.val if isinstance(x, BranchingTracer) else x, out_flat))
+                # print("out_flat =", out_flat)
                 return tree_unflatten(out_tree, out_flat)
     return _f
