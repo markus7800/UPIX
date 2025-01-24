@@ -17,11 +17,46 @@ def replace_sexpr_with_svars(sexpr_object_ids_to_name: Dict[int, str], sexpr: SE
         assert isinstance(sexpr, SVar)
         return sexpr
 
+def make_slp_logprob(model: Model, branching_decisions: BranchingDecisions) -> Callable:
+    @jax.jit
+    def _log_prob(X: Dict[str,jax.Array]):
+        print("compile _log_prob for", X)
+        
+        def path_indicator(X: Dict[str, jax.Array]):
+            # print("compile path_indicator for", X)
+            b = jnp.array(True)
+            for sexpr, val in branching_decisions.boolean_decisions:
+                b = b & (sexpr.eval(X) == val)
+            for sexpr, val in  branching_decisions.index_decisions:
+                b = b & (sexpr.eval(X) == val)
+            return b
+    
 
-class SLP(NamedTuple):
+        def _model_logprob(X: Dict[str,jax.Array]):
+            # print("compile model_logprob for", X)
+            with LogprobCtx(X) as ctx:
+                model.f(*model.args, **model.kwargs)
+                return ctx.log_prob
+            
+        model_logprob = trace_branching(_model_logprob, branching_decisions, retrace=True)
+        # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
+        # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
+        
+        return jax.lax.select(path_indicator(X), model_logprob(X), -jnp.inf)
+
+        
+    return _log_prob
+
+class SLP:
     model: Model
     decision_representative: Dict[str,jax.Array]
     branching_decisions: BranchingDecisions
+
+    def __init__(self, model: Model, decision_representative: Dict[str,jax.Array], branching_decisions: BranchingDecisions) -> None:
+        self.model = model
+        self.decision_representative = decision_representative
+        self.branching_decisions = branching_decisions
+        self._log_prob = make_slp_logprob(model, branching_decisions)
 
     def __repr__(self) -> str:
         s = "SLP {"
@@ -33,30 +68,11 @@ class SLP(NamedTuple):
         return s
     
     def log_prob(self, X: Dict[str,jax.Array]):
-        print("slp log_prob", X, self.decision_representative)
         if self.decision_representative.keys() != X.keys():
             return -jnp.inf
-        
-        @jax.jit
-        def path_indicator(X: Dict[str, jax.Array]):
-            print("compile path_indicator for", X)
-            b = jnp.array(True)
-            for sexpr, val in self.branching_decisions.boolean_decisions:
-                b = b & (sexpr.eval(X) == val)
-            for sexpr, val in self.branching_decisions.index_decisions:
-                b = b & (sexpr.eval(X) == val)
-            return b
+        return self._log_prob(X)
     
-        if path_indicator(X) == 0.:
-            return -jnp.inf
-        
-        def model_logprob(X: Dict[str,jax.Array]):
-            print("compile model_logprob for", X)
-            with LogprobCtx(X) as ctx:
-                self.model.f(*self.model.args, **self.model.kwargs)
-                return ctx.log_prob
-            
-        return jax.jit(trace_branching(model_logprob, self.branching_decisions, retrace=True))(X)
+
     
 
 def slp_from_prior(model: Model, rng_key: jax.Array):
