@@ -19,14 +19,14 @@ def replace_sexpr_with_svars(sexpr_object_ids_to_name: Dict[int, str], sexpr: SE
 
 
 class SLP(NamedTuple):
-    addresses: Set[str]
+    decision_representative: Dict[str,jax.Array]
     branching_decisions: BranchingDecisions
     path_indicator: Callable
     log_prob: Callable
 
     def __repr__(self) -> str:
         s = "SLP {"
-        s += "\n  " + repr(self.addresses)
+        s += "\n  " + repr(self.decision_representative)
         s += "\n  " + repr(self.branching_decisions.boolean_decisions)
         s += "\n  " + repr(self.branching_decisions.index_decisions)
         s += "\n}"
@@ -42,7 +42,8 @@ def slp_from_prior(model: Model, rng_key: jax.Array):
     ctx_X: Dict[str, BranchingTracer] = ctx.X # type: ignore
     addresses = set(ctx_X.keys())
 
-    X = {addr: full_lower(val) for addr, val in ctx_X.items()}
+    decision_representative = {addr: full_lower(val) for addr, val in ctx_X.items()}
+
     sexpr_object_ids_to_name = {id(tracer.sexpr): addr for addr, tracer in ctx_X.items()}
     decisions.boolean_decisions = {replace_sexpr_with_svars(sexpr_object_ids_to_name, sexpr): val for sexpr, val in decisions.boolean_decisions.items()}
     decisions.index_decisions = {replace_sexpr_with_svars(sexpr_object_ids_to_name, sexpr): val for sexpr, val in decisions.index_decisions.items()}
@@ -50,25 +51,39 @@ def slp_from_prior(model: Model, rng_key: jax.Array):
     # print(decisions.boolean_decisions)
     # print(decisions.index_decisions)
 
+       
+
+
     @jax.jit
-    def _path_indicator(X: Dict[str, jax.Array]):
+    def path_indicator(X: Dict[str, jax.Array]):
+        print("compile path_indicator for", X)
         b = jnp.array(False)
         for sexpr, val in decisions.boolean_decisions.items():
             b = b & (sexpr.eval(X) == val)
         for sexpr, val in decisions.index_decisions.items():
             b = b & (sexpr.eval(X) == val)
         return b
-    def path_indicator(X: Dict[str, jax.Array]):
-        if X.keys() != addresses:
-            return jnp.array(False)
-        else:
-            return _path_indicator(X)
+    
+    print(f"{decision_representative=}")
+    path_indicator(decision_representative)
+
+    print()
+    print()
+    
+
     
     @jax.jit
     def log_prob(X: Dict[str, jax.Array]):
+        print("compile log_prob for", X)
+        decisions.object_id_to_sym_name = {id(val): addr for addr, val in X.items()}
+        print("object_id_to_sym_name", decisions.object_id_to_sym_name)
+        retraced_f = trace_branching(model.f, decisions, retrace=True)
         ctx = LogprobCtx(X)
         with ctx:
-            traced_f(*model.args, **model.kwargs)
+            retraced_f(*model.args, **model.kwargs)
+            # model()
         return ctx.log_prob
+    
+    log_prob(decision_representative)
 
-    return SLP(addresses, decisions, path_indicator, log_prob)
+    return SLP(decision_representative, decisions, path_indicator, log_prob)

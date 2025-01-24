@@ -55,7 +55,7 @@ for (sexpr, val) in decisions.boolean_decisions.items():
 
 input_object_ids_to_name = {id(A): "A"}
 decisions = BranchingDecisions(input_object_ids_to_name)
-out = trace_branching(f, decisions)(*args)
+out = trace_branching(f, decisions, retrace=True)(*args)
 print("returns", out)
 for (sexpr, val) in decisions.boolean_decisions.items():
     print("sexpr =", sexpr)

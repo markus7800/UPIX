@@ -11,7 +11,7 @@ def simple():
         C = sample("C", dist.Normal(0.,1.))
 
 
-m = simple()
+m: Model = simple()
 print(m)
 
 for key in range(10):

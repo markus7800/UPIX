@@ -2,6 +2,7 @@ import jax
 import numpyro.distributions as dist
 from typing import Any, Optional, Dict, Callable
 from abc import ABC, abstractmethod
+import jax._src.core as jax_core
 
 class Model:
     def __init__(self, f: Callable, args, kwargs) -> None:
@@ -68,6 +69,8 @@ class LogprobCtx(SampleContext):
             self.log_prob += distribution.log_prob(observed).sum()
             return observed
         value = self.X[address]
+        lowered_val = jax_core.full_lower(value.aval)
+        print("value", value, id(value), lowered_val, id(lowered_val))
         self.log_prob += distribution.log_prob(value)
         return value
     
