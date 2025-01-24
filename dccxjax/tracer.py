@@ -45,23 +45,23 @@ class SOp(SExpr):
         else:
             # print("out1 =", out)
             return out
-    def __eq__(self, value: object) -> bool:
-        if isinstance(value, SOp):
-            if self.primitive != value.primitive:
-                return False
-            if self.primitive is jax_pjit.pjit_p:
-                if self.params["jaxpr"] != value.params["jaxpr"]:
-                    return False
-            if len(self.args) != len(value.args):
-                return False
-            for (a1, a2) in zip(self.args, value.args):
-                if a1 != a2:
-                    return False
-            return True
-        return False
+    # def __eq__(self, value: object) -> bool:
+    #     if isinstance(value, SOp):
+    #         if self.primitive != value.primitive:
+    #             return False
+    #         if self.primitive is jax_pjit.pjit_p:
+    #             if self.params["jaxpr"] != value.params["jaxpr"]:
+    #                 return False
+    #         if len(self.args) != len(value.args):
+    #             return False
+    #         for (a1, a2) in zip(self.args, value.args):
+    #             if a1 != a2:
+    #                 return False
+    #         return True
+    #     return False
     
-    def __hash__(self) -> int:
-        return hash((primitive_name(self.primitive, self.params), tuple(self.args)))
+    # def __hash__(self) -> int:
+    #     return hash((primitive_name(self.primitive, self.params), tuple(self.args)))
         
     
 # if a functions is jitted then the call to pjit_p.bind is in _python_pjit_helper
@@ -74,20 +74,20 @@ class SConstant(SExpr):
         # print("Constant", constant, type(constant), id(constant))
         self.constant = constant
     def __repr__(self) -> str:
-        return f"Constant({self.constant} @{id(self.constant)})"
+        return f"Constant({self.constant})"
     def eval(self, X: dict[str, jax.Array]):
         return self.constant
-    def __eq__(self, value: object) -> bool:
-        if isinstance(value, SConstant):
-            if isinstance(self.constant, jax.Array) and isinstance(value.constant, jax.Array):
-                return bool(jnp.all(self.constant == value.constant))
-            return self.constant == value.constant
-        return False
-    def __hash__(self) -> int:
-        try:
-            return hash(self.constant)
-        except TypeError:
-            return 0
+    # def __eq__(self, value: object) -> bool:
+    #     if isinstance(value, SConstant):
+    #         if isinstance(self.constant, jax.Array) and isinstance(value.constant, jax.Array):
+    #             return bool(jnp.all(self.constant == value.constant))
+    #         return self.constant == value.constant
+    #     return False
+    # def __hash__(self) -> int:
+    #     try:
+    #         return hash(self.constant)
+    #     except TypeError:
+    #         return 0
     
 
 class SVar(SExpr):
@@ -97,12 +97,12 @@ class SVar(SExpr):
         return self.name
     def eval(self, X: dict[str, jax.Array]) -> jax.Array:
         return X[self.name]
-    def __eq__(self, value: object) -> bool:
-        if isinstance(value, SVar):
-            return self.name == value.name
-        return False
-    def __hash__(self) -> int:
-        return hash(self.name)
+    # def __eq__(self, value: object) -> bool:
+    #     if isinstance(value, SVar):
+    #         return self.name == value.name
+    #     return False
+    # def __hash__(self) -> int:
+    #     return hash(self.name)
 
 def replace_constant_with_svars(input_object_ids_to_name: Dict[int, str], sexpr: SExpr) -> SExpr:
     if isinstance(sexpr, SConstant):
@@ -121,8 +121,8 @@ def replace_constant_with_svars(input_object_ids_to_name: Dict[int, str], sexpr:
 
 class BranchingDecisions:
     def __init__(self) -> None:
-        self.boolean_decisions: Dict[SExpr, bool] = {}
-        self.index_decisions: Dict[SExpr, int] = {}
+        self.boolean_decisions: List[Tuple[SExpr, bool]] = []
+        self.index_decisions: List[Tuple[SExpr, int]] = []
 
 
 # based on JVPTrace / JVPTracer
@@ -131,8 +131,8 @@ class BranchingTracer(jax_core.Tracer):
     
     def __init__(self, trace: jax_core.Trace, val, sexpr: Optional[SExpr] = None):
         assert isinstance(trace, BranchingTrace)
-        print("BranchingTracer", id(self), type(val), id(val))
-        print(trace.object_id_to_name)
+        # print("BranchingTracer", id(self), type(val), id(val))
+        # print(trace.object_id_to_name)
         self._trace = trace
         self.val = val
         self.sexpr = sexpr if sexpr is not None else SConstant(val)
@@ -147,28 +147,29 @@ class BranchingTracer(jax_core.Tracer):
     def __bool__(self):
         assert isinstance(self._trace, BranchingTrace)
         boolean_decisions = self._trace.branching_decisions.boolean_decisions
-        b = bool(jax_core.to_concrete_value(self.val))
         if self._trace.retrace:
-            print("decision", self.sexpr)
-            lowered_self = jax_core.full_lower(self)
-            print("val =", b, jax_core.to_concrete_value(self.val), f"{lowered_self=} {id(lowered_self)}", f"{self=}, {id(self)=}")
-            # TODO: use existing decision
-            # return boolean_decisions[self.sexpr]
+            _, b = boolean_decisions[self._trace.boolean_decision_cnt]
+            self._trace.boolean_decision_cnt += 1
             return b
         else:
-            boolean_decisions[self.sexpr] = b
+            concrete_val = jax_core.to_concrete_value(self.val)
+            assert concrete_val is not None
+            b = bool(concrete_val)
+            boolean_decisions.append((self.sexpr, b))
             return b
         
     def __index__(self):
         assert isinstance(self._trace, BranchingTrace)
         index_decisions = self._trace.branching_decisions.index_decisions
-        b = int(jax_core.to_concrete_value(self.val)) # type: ignore
         if self._trace.retrace:
-            # TODO: use existing decision
-            # return index_decisions[self.sexpr]
+            _, b = index_decisions[self._trace.index_decision_cnt]
+            self._trace.index_decision_cnt += 1
             return b
         else:
-            index_decisions[self.sexpr] = b
+            concrete_val = jax_core.to_concrete_value(self.val)
+            assert concrete_val is not None
+            b = int(concrete_val)
+            index_decisions.append((self.sexpr, b))
             return b
 
     def full_lower(self):
@@ -212,35 +213,36 @@ def maybe_branching_tracer(trace: "BranchingTrace", val, sexpr: Optional[SExpr] 
 # -> t2_trace.process_primitive may call t1_trace.process_primitive
 
 class BranchingTrace(jax_core.Trace):
-    def __init__(self, parent_trace, branching_decisions: BranchingDecisions, retrace: bool, object_id_to_name: Dict[int, str]) -> None:
-        print("parent_trace of", self, "is", parent_trace)
+    def __init__(self, parent_trace, branching_decisions: BranchingDecisions, retrace: bool) -> None:
+        # print("parent_trace of", self, "is", parent_trace)
         self.parent_trace = parent_trace
         self.branching_decisions = branching_decisions
         self.retrace = retrace
-        self.object_id_to_name = object_id_to_name
+        self.boolean_decision_cnt = 0
+        self.index_decision_cnt = 0
 
     def process_primitive(self, primitive: jax_core.Primitive, tracers, params):
-        print("process_primitive", primitive_name(primitive, params), tracers)
+        # print("process_primitive", primitive_name(primitive, params), tracers)
         # print(params)
         args = [tracer.val if isinstance(tracer, BranchingTracer) else tracer for tracer in tracers]
-        print("args =", args)
+        # print("args =", args)
         sargs = [tracer.sexpr if isinstance(tracer, BranchingTracer) else SConstant(tracer) for tracer in tracers]
-        print("sargs =", sargs)
+        # print("sargs =", sargs)
         out = primitive.bind_with_trace(self.parent_trace, args, params)
         sop = SOp(primitive, sargs, params)
         if primitive.multiple_results:
             out_tracer = [maybe_branching_tracer(self, o, sexpr=sop) for o in out]
-            print("outm =", out, out_tracer)
+            # print("outm =", out, out_tracer)
         else:
             out_tracer = maybe_branching_tracer(self, out, sexpr=sop)
-            print("out1 =", out, out_tracer)
+            # print("out1 =", out, out_tracer)
         return out_tracer
 
 
-def trace_branching(f: Callable, branching_decisions: BranchingDecisions, retrace: bool = False, object_id_to_name: Dict[int, str] = {}):
+def trace_branching(f: Callable, branching_decisions: BranchingDecisions, retrace: bool = False):
     def _f(*args):
         with jax_core.take_current_trace() as parent_trace:
-            trace = BranchingTrace(parent_trace, branching_decisions, retrace, object_id_to_name)
+            trace = BranchingTrace(parent_trace, branching_decisions, retrace)
             with jax_core.set_current_trace(trace):
                 in_flat, in_tree = tree_flatten(args)
                 in_flat = map(lambda x: maybe_branching_tracer(trace, x), in_flat)

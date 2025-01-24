@@ -20,3 +20,4 @@ for key in range(10):
     slp = slp_from_prior(m, rng_key)
     print(slp)
     print("lp =", slp.log_prob(slp.decision_representative))
+    print("lp =", slp.log_prob(slp.decision_representative))

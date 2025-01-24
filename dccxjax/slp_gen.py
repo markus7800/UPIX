@@ -41,9 +41,9 @@ class SLP(NamedTuple):
         def path_indicator(X: Dict[str, jax.Array]):
             print("compile path_indicator for", X)
             b = jnp.array(True)
-            for sexpr, val in self.branching_decisions.boolean_decisions.items():
+            for sexpr, val in self.branching_decisions.boolean_decisions:
                 b = b & (sexpr.eval(X) == val)
-            for sexpr, val in self.branching_decisions.index_decisions.items():
+            for sexpr, val in self.branching_decisions.index_decisions:
                 b = b & (sexpr.eval(X) == val)
             return b
     
@@ -52,8 +52,6 @@ class SLP(NamedTuple):
         
         def model_logprob(X: Dict[str,jax.Array]):
             print("compile model_logprob for", X)
-            d = {id(val): addr for addr, val in X.items()}
-            print("object_id_to_name", d)
             with LogprobCtx(X) as ctx:
                 self.model.f(*self.model.args, **self.model.kwargs)
                 return ctx.log_prob
@@ -73,8 +71,8 @@ def slp_from_prior(model: Model, rng_key: jax.Array):
     decision_representative = {addr: full_lower(val) for addr, val in ctx_X.items()}
 
     sexpr_object_ids_to_name = {id(tracer.sexpr): addr for addr, tracer in ctx_X.items()}
-    decisions.boolean_decisions = {replace_sexpr_with_svars(sexpr_object_ids_to_name, sexpr): val for sexpr, val in decisions.boolean_decisions.items()}
-    decisions.index_decisions = {replace_sexpr_with_svars(sexpr_object_ids_to_name, sexpr): val for sexpr, val in decisions.index_decisions.items()}
+    decisions.boolean_decisions = [(replace_sexpr_with_svars(sexpr_object_ids_to_name, sexpr), val) for sexpr, val in decisions.boolean_decisions]
+    decisions.index_decisions = [(replace_sexpr_with_svars(sexpr_object_ids_to_name, sexpr), val) for sexpr, val in decisions.index_decisions]
     # print(X)
     # print(decisions.boolean_decisions)
     # print(decisions.index_decisions)

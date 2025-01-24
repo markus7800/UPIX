@@ -69,8 +69,6 @@ class LogprobCtx(SampleContext):
             self.log_prob += distribution.log_prob(observed).sum()
             return observed
         value = self.X[address]
-        lowered_value = jax_core.full_lower(value)
-        print("value", value, id(value), f"{lowered_value=} {id(lowered_value)=}")
         self.log_prob += distribution.log_prob(value)
         return value
     
