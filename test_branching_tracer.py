@@ -10,7 +10,7 @@ def test_1(x: jax.Array):
         return x
     
 # jax.make_jaxpr(test_1)(1) # errors
-# a = detect_branching(test_1)(1)
+# a = trace_branching(test_1)(1)
 # print("returns", a)
 # exit()
 
@@ -26,7 +26,7 @@ def test_2(x: jax.Array):
 # jax.jvp(test_2, (2.,), (1.,))
 
 
-# a = detect_branching(test_2)(2.)
+# a = trace_branching(test_2)(2.)
 # print("returns", a)
 
 @jax.jit
@@ -47,7 +47,7 @@ def test_2_1(x: jax.Array):
     return jnp.sin(z["x"])
     # return jax.lax.cos(y)
 
-# a = detect_branching(test_2_1)(2.)
+# a = trace_branching(test_2_1)(2.)
 # print("returns", a)
 # exit()
 
@@ -63,7 +63,7 @@ def test_2_2(d: dict):
     return jnp.sin(z["x"])
     # return jax.lax.cos(y)
 
-# a = detect_branching(test_2_2)({"x": 2}) # dict is not a valid JAX type
+# a = trace_branching(test_2_2)({"x": 2}) # dict is not a valid JAX type
 # print("returns", a)
 # exit()
 
@@ -80,7 +80,7 @@ def test_2_3(x: jax.Array):
     return {"o": jnp.sin(z["x"])}
     # return jax.lax.cos(y)
 
-a = detect_branching(test_2_3)(2)
+a = trace_branching(test_2_3)(2)
 print("returns", a)
 exit()
 
@@ -92,22 +92,22 @@ exit()
 
 
 
-# detect_branching(test_1)(1)
+# trace_branching(test_1)(1)
 
 def test_3(x: jax.Array):
     return jax.lax.sin(x)
 
 # print(jax.jvp(test_2, (2.,), (1.,)))
 
-# a = detect_branching(test_3)(jnp.array([1.]))
+# a = trace_branching(test_3)(jnp.array([1.]))
 # print("returns", a)
-# a = detect_branching(test_3)(jnp.array(1.))
+# a = trace_branching(test_3)(jnp.array(1.))
 # print("returns", a)
-# a = detect_branching(test_3)(1.)
+# a = trace_branching(test_3)(1.)
 # print("returns", a)
-# a = detect_branching(jax.jit(test_3))(1.)
+# a = trace_branching(jax.jit(test_3))(1.)
 # print("returns", a)
-# a = jax.jit(detect_branching(test_3))(1.)
+# a = jax.jit(trace_branching(test_3))(1.)
 # print("returns", a)
 
 
@@ -122,11 +122,11 @@ def test_3(x: jax.Array):
 
 
 
-a = detect_branching(test_3)(1.)
+a = trace_branching(test_3)(1.)
 print("returns", a)
 print("\n\n")
-a = detect_branching(jax.grad(test_3))(1.)
+a = trace_branching(jax.grad(test_3))(1.)
 print("returns", a)
 print("\n\n")
-a = jax.grad(detect_branching(test_3))(1.)
+a = jax.grad(trace_branching(test_3))(1.)
 print("returns", a)

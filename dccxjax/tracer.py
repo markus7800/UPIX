@@ -71,7 +71,7 @@ class SOp(SExpr):
 
 class SConstant(SExpr):
     def __init__(self, constant) -> None:
-        print("Constant", constant, type(constant))
+        # print("Constant", constant, type(constant))
         self.constant = constant
     def __repr__(self) -> str:
         return f"Constant({self.constant})"
@@ -132,7 +132,7 @@ class BranchingTracer(jax_core.Tracer):
     
     def __init__(self, trace: jax_core.Trace, val, sexpr: Optional[SExpr] = None):
         assert isinstance(trace, BranchingTrace)
-        print("Init BranchingTracer with", val, type(val), sexpr)
+        # print("Init BranchingTracer with", val, type(val), sexpr)
         self._trace = trace
         self.val = val
         if sexpr is not None:
@@ -198,32 +198,32 @@ class BranchingTrace(jax_core.Trace):
         self.branching_decisions = branching_decisions
 
     def process_primitive(self, primitive: jax_core.Primitive, tracers, params):
-        print("process_primitive", primitive_name(primitive, params), tracers)
-        print(params)
+        # print("process_primitive", primitive_name(primitive, params), tracers)
+        # print(params)
         args = [tracer.val if isinstance(tracer, BranchingTracer) else tracer for tracer in tracers]
-        print("args =", args)
+        # print("args =", args)
         sargs = [tracer.sexpr if isinstance(tracer, BranchingTracer) else SConstant(tracer) for tracer in tracers]
         out = primitive.bind_with_trace(self.parent_trace, args, params)
         sop = SOp(primitive, sargs, params)
         if primitive.multiple_results:
             out_tracer = [maybe_branching_tracer(self, o, sexpr=sop) for o in out]
-            print("outm =", out, out_tracer)
+            # print("outm =", out, out_tracer)
         else:
             out_tracer = maybe_branching_tracer(self, out, sexpr=sop)
-            print("out1 =", out, out_tracer)
+            # print("out1 =", out, out_tracer)
         return out_tracer
 
 
-def detect_branching(f: Callable, branching_decisions: BranchingDecisions):
+def trace_branching(f: Callable, branching_decisions: BranchingDecisions):
     def _f(*args):
         with jax_core.take_current_trace() as parent_trace:
-            print("parent_trace:", parent_trace)
+            # print("parent_trace:", parent_trace)
             trace = BranchingTrace(parent_trace, branching_decisions)
             with jax_core.set_current_trace(trace):
                 in_flat, in_tree = tree_flatten(args)
                 in_flat = map(lambda x: maybe_branching_tracer(trace, x), in_flat)
-                print("in_tree =", in_tree)
-                print("in_flat =", in_flat)
+                # print("in_tree =", in_tree)
+                # print("in_flat =", in_flat)
                 in_tracers = tree_unflatten(in_tree, in_flat)
                 out = f(*in_tracers)
                 out_flat, out_tree = tree_flatten(out)
