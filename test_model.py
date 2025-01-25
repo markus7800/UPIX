@@ -10,15 +10,44 @@ def simple():
     else:
         C = sample("C", dist.Normal(0.7,2.7))
 
+@model
+def geometric(p):
+    b = True
+    i = 0
+    while b:
+        u = sample(f"u_{i}", dist.Uniform())
+        b = u < p
+        i += 1
 
-m: Model = simple() # type: ignore
+
+# m: Model = simple() # type: ignore
+
+m: Model = geometric(0.5) # type: ignore
+
 print(m)
 
+logprob = make_model_logprob(m) # cannot jit this
+
+active_slps: List[SLP] = []
 for key in range(10):
     print(f"{key=}")
     rng_key = jax.random.PRNGKey(key)
-    slp = slp_from_prior(m, rng_key)
+    X = sample_from_prior(m, rng_key)
+    print(X.keys())
+    slp = slp_from_X(m, X)
     print(slp)
     print("lp =", slp.log_prob(slp.decision_representative))
     print("lp =", slp.log_prob(slp.decision_representative))
-    print(jax.make_jaxpr(slp._log_prob)(slp.decision_representative))
+
+    # print(jax.make_jaxpr(slp._log_prob)(slp.decision_representative))
+
+    if all(slp.path_indicator(X) == 0 for slp in active_slps):
+        print("new path!")
+        active_slps.append(slp)
+
+print()
+print()
+print("active_slps: ")
+for slp in active_slps:
+    print(slp)
+    print(jax.make_jaxpr(slp.log_prob)(slp.decision_representative))
