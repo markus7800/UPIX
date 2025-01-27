@@ -41,9 +41,7 @@ def make_slp_path_indicator(branching_decisions: BranchingDecisions) -> Callable
     def _path_indicator(X: Dict[str, jax.Array]):
         print("compile _path_indicator for", X)
         b = jnp.array(True)
-        for sexpr, val in branching_decisions.boolean_decisions:
-            b = b & (sexpr.eval(X) == val)
-        for sexpr, val in  branching_decisions.index_decisions:
+        for sexpr, val in branching_decisions.decisions:
             b = b & (sexpr.eval(X) == val)
         return b
     return _path_indicator
@@ -80,8 +78,7 @@ class SLP:
         s = "SLP {"
         s += "\n  " + repr(self.model)
         s += "\n  " + repr(self.decision_representative)
-        s += "\n  " + repr(self.branching_decisions.boolean_decisions)
-        s += "\n  " + repr(self.branching_decisions.index_decisions)
+        s += "\n  " + repr(self.branching_decisions.decisions)
         s += "\n}"
         return s
     
@@ -111,16 +108,12 @@ def slp_from_X(model: Model, decision_representative: Dict[str, jax.Array]):
         with ctx:
             model()
 
-    decisions = BranchingDecisions()
-    traced_f = trace_branching(f, decisions)
+    branching_decisions = BranchingDecisions()
+    traced_f = trace_branching(f, branching_decisions)
     traced_f(decision_representative)
 
     sexpr_object_ids_to_name = {id(array): addr for addr, array in decision_representative.items()}
-    decisions.boolean_decisions = [(replace_constants_with_svars(sexpr_object_ids_to_name, sexpr), val) for sexpr, val in decisions.boolean_decisions]
-    decisions.index_decisions = [(replace_constants_with_svars(sexpr_object_ids_to_name, sexpr), val) for sexpr, val in decisions.index_decisions]
-    # print(X)
-    # print(decisions.boolean_decisions)
-    # print(decisions.index_decisions)
+    branching_decisions.decisions = [(replace_constants_with_svars(sexpr_object_ids_to_name, sexpr), val) for sexpr, val in branching_decisions.decisions]
 
 
-    return SLP(model, decision_representative, decisions)
+    return SLP(model, decision_representative, branching_decisions)

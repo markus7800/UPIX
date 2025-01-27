@@ -39,11 +39,11 @@ def poisson():
 
 # m: Model = simple() # type: ignore
 
-# m: Model = geometric(0.5) # type: ignore
+m: Model = geometric(0.5) # type: ignore
 
 # m: Model = selection() # type: ignore
 
-m: Model = poisson() # type: ignore
+# m: Model = poisson() # type: ignore
 
 print(m)
 

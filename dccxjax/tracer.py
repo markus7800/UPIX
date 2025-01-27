@@ -121,8 +121,7 @@ def replace_constant_with_svars(input_object_ids_to_name: Dict[int, str], sexpr:
 
 class BranchingDecisions:
     def __init__(self) -> None:
-        self.boolean_decisions: List[Tuple[SExpr, bool]] = []
-        self.index_decisions: List[Tuple[SExpr, int]] = []
+        self.decisions: List[Tuple[SExpr, Any]] = []
 
 
 # based on JVPTrace / JVPTracer
@@ -144,36 +143,32 @@ class BranchingTracer(jax_core.Tracer):
     # def to_concrete_value(self):
     #     return jax_core.to_concrete_value(self.val)
 
-    def __bool__(self):
+    def _branching(self):
         assert isinstance(self._trace, BranchingTrace)
-        boolean_decisions = self._trace.branching_decisions.boolean_decisions
+        decisions = self._trace.branching_decisions.decisions
         if self._trace.retrace:
-            _, b = boolean_decisions[self._trace.boolean_decision_cnt]
-            self._trace.boolean_decision_cnt += 1
+            _, b = decisions[self._trace.decision_cnt]
+            self._trace.decision_cnt += 1
             return b
         else:
             concrete_val = jax_core.to_concrete_value(self.val)
             assert concrete_val is not None
-            b = bool(concrete_val)
-            boolean_decisions.append((self.sexpr, b))
+            b = concrete_val
+            decisions.append((self.sexpr, b))
             return b
+
+    def __bool__(self):
+        return bool(self._branching())
         
     def __index__(self):
-        assert isinstance(self._trace, BranchingTrace)
-        index_decisions = self._trace.branching_decisions.index_decisions
-        if self._trace.retrace:
-            _, b = index_decisions[self._trace.index_decision_cnt]
-            self._trace.index_decision_cnt += 1
-            return b
-        else:
-            concrete_val = jax_core.to_concrete_value(self.val)
-            assert concrete_val is not None
-            b = int(concrete_val)
-            index_decisions.append((self.sexpr, b))
-            return b
+        return int(self._branching())
 
     def full_lower(self):
         return jax_core.full_lower(self.val)
+    
+
+def branching(tracer: BranchingTracer):
+    return tracer._branching()
     
 # op(tracer) -> op(tracer.aval)
 # setattr(tracer, f"__{operator_name}__", _forward_operator_to_aval(operator_name)) for operator_name in _array_operators in _set_tracer_aval_forwarding(tracer)
@@ -218,8 +213,7 @@ class BranchingTrace(jax_core.Trace):
         self.parent_trace = parent_trace
         self.branching_decisions = branching_decisions
         self.retrace = retrace
-        self.boolean_decision_cnt = 0
-        self.index_decision_cnt = 0
+        self.decision_cnt = 0
 
     def process_primitive(self, primitive: jax_core.Primitive, tracers, params):
         # print("process_primitive", primitive_name(primitive, params), tracers)
