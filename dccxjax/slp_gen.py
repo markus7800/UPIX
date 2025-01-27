@@ -105,18 +105,17 @@ def sample_from_prior(model: Model, rng_key: jax.Array) -> Dict[str, jax.Array]:
     return ctx.X
 
 
-def slp_from_X(model: Model, X: Dict[str, jax.Array]):
-    ctx = LogprobCtx(X)
+def slp_from_X(model: Model, decision_representative: Dict[str, jax.Array]):
+    def f(X: Dict[str, jax.Array]):
+        ctx = LogprobCtx(X)
+        with ctx:
+            model()
+
     decisions = BranchingDecisions()
-    traced_f = trace_branching(model.f, decisions)
-    with ctx:
-        traced_f(*model.args, **model.kwargs)
+    traced_f = trace_branching(f, decisions)
+    traced_f(decision_representative)
 
-    ctx_X: Dict[str, jax.Array] = ctx.X
-
-    decision_representative = {addr: full_lower(val) for addr, val in ctx_X.items()}
-
-    sexpr_object_ids_to_name = {id(tracer): addr for addr, tracer in ctx_X.items()}
+    sexpr_object_ids_to_name = {id(array): addr for addr, array in decision_representative.items()}
     decisions.boolean_decisions = [(replace_constants_with_svars(sexpr_object_ids_to_name, sexpr), val) for sexpr, val in decisions.boolean_decisions]
     decisions.index_decisions = [(replace_constants_with_svars(sexpr_object_ids_to_name, sexpr), val) for sexpr, val in decisions.index_decisions]
     # print(X)

@@ -19,10 +19,31 @@ def geometric(p):
         b = u < p
         i += 1
 
+@model
+def selection():
+    X = sample("X", dist.Normal(0.,1.0))
+    Y = sample("Y", dist.Normal(0.,1.0))
+    XY = [X,Y]
+    A = sample("A", dist.Normal(0.,1.0))
+    # i = jnp.astype(A > 0, int)
+    i = (A > 0).astype(int)
+    b = XY[i]
+    # b = jax.lax.select(A > 0, X, Y)
+    B = sample("B", dist.Normal(b,1.0))
+
+
+@model
+def poisson():
+    p = sample("p", dist.Poisson(4))
+    c = sample("c", dist.CategoricalProbs(jnp.full((p,), 1/p)))
 
 # m: Model = simple() # type: ignore
 
-m: Model = geometric(0.5) # type: ignore
+# m: Model = geometric(0.5) # type: ignore
+
+# m: Model = selection() # type: ignore
+
+m: Model = poisson() # type: ignore
 
 print(m)
 
@@ -50,4 +71,4 @@ print()
 print("active_slps: ")
 for slp in active_slps:
     print(slp)
-    print(jax.make_jaxpr(slp.log_prob)(slp.decision_representative))
+    # print(jax.make_jaxpr(slp.log_prob)(slp.decision_representative))
