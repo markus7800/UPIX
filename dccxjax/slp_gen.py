@@ -102,7 +102,7 @@ def sample_from_prior(model: Model, rng_key: jax.Array) -> Dict[str, jax.Array]:
     return ctx.X
 
 
-def slp_from_X(model: Model, decision_representative: Dict[str, jax.Array]):
+def slp_from_X(model: Model, decision_representative: Dict[str, jax.Array]) -> SLP:
     def f(X: Dict[str, jax.Array]):
         ctx = LogprobCtx(X)
         with ctx:
@@ -117,3 +117,11 @@ def slp_from_X(model: Model, decision_representative: Dict[str, jax.Array]):
 
 
     return SLP(model, decision_representative, branching_decisions)
+
+
+# assumes model has no branching
+def convert_model_to_SLP(model: Model) -> SLP:
+    X = sample_from_prior(model, jax.random.PRNGKey(0))
+    slp = slp_from_X(model, X)
+    assert len(slp.branching_decisions.decisions) == 0
+    return slp
