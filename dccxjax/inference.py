@@ -7,16 +7,20 @@ from .samplecontext import Model
 from abc import ABC, abstractmethod
 from .types import PRNGKey, Trace
 import numpyro.distributions as dist
+from .utils import maybe_jit_warning, to_shaped_arrays
 
 AbstractInferenceState = NamedTuple # ("AbstractInferenceState", [("position", Trace)])
 class InferenceState(AbstractInferenceState):
     position: Trace
     
+def InferenceStateFromSubclass(state: AbstractInferenceState):
+    return InferenceState(position=state.position)
+    
 Kernel = Callable[[AbstractInferenceState,PRNGKey],AbstractInferenceState]
 
 class InferenceAlgorithm(ABC):
     @abstractmethod
-    def make_kernel(self, gibbs_model: GibbsModel) -> Kernel:
+    def make_kernel(self, gibbs_model: GibbsModel, step_number: int) -> Kernel:
         raise NotImplementedError
 
 
@@ -105,10 +109,12 @@ def rw_kernel(
 class RandomWalk(InferenceAlgorithm):
     def __init__(self, proposer: Callable[[jax.Array],dist.Distribution]) -> None:
         self.proposer = proposer
+        self.jitted_kernel = False
 
-    def make_kernel(self, gibbs_model: GibbsModel) -> Kernel:
-        
+    def make_kernel(self, gibbs_model: GibbsModel, step_number: int) -> Kernel:
+        @jax.jit
         def _kernel(state: AbstractInferenceState, rng_key: PRNGKey) -> MHState:
+            maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays(state))
             X, Y = gibbs_model.split_trace(state.position)
             gibbs_model.set_Y(Y)
             log_prob = state.log_prob if hasattr(state, "log_prob") else gibbs_model.log_prob(X)
@@ -145,26 +151,23 @@ class Gibbs(InferenceRegime):
 
 
 def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey):
-    parsed_regime: List[Tuple[GibbsModel, InferenceAlgorithm]] = []
-    for r in regime:
-        gibbs_model = GibbsModel(slp, r.variable_selector)
-        parsed_regime.append((gibbs_model, r.algo))
-
     kernels: List[Kernel] = []
-    for gibbs_model, algo in parsed_regime:
-        kernels.append(jax.jit(algo.make_kernel(gibbs_model)))
+    for step_number, inference_step in enumerate(regime):
+        gibbs_model = GibbsModel(slp, inference_step.variable_selector)
+        kernels.append(inference_step.algo.make_kernel(gibbs_model, step_number))
 
     @jax.jit
-    def one_step(trace: Trace, rng_key: PRNGKey) -> Trace:
-        state = InferenceState(trace)
+    def one_step(state: AbstractInferenceState, rng_key: PRNGKey) -> Tuple[AbstractInferenceState,Trace]:
+        maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(state))
         for kernel in kernels:
             rng_key, kernel_key = jax.random.split(rng_key)
             state = kernel(state, kernel_key)
-        return state.position, state.position
+        state = InferenceStateFromSubclass(state)
+        return state, state.position
     
     keys = jax.random.split(rng_key, n_samples)
 
-    _, result = jax.lax.scan(one_step, slp.decision_representative, keys)
+    _, result = jax.lax.scan(one_step, InferenceState(slp.decision_representative), keys)
     return result
 
 

@@ -3,6 +3,8 @@ import numpyro.distributions as dist
 from typing import Any, Optional, Dict, Callable
 from abc import ABC, abstractmethod
 import jax._src.core as jax_core
+from .types import Trace
+from .utils import maybe_jit_warning
 
 class Model:
     def __init__(self, f: Callable, args, kwargs) -> None:
@@ -10,11 +12,33 @@ class Model:
         self.args = args
         self.kwargs = kwargs
 
+        self._jitted_log_prob = False
+        # self._log_prob = self.make_model_logprob()
+
     def __call__(self) -> Any:
         return self.f(*self.args, **self.kwargs)
     
+    # def make_model_logprob(self) ->  Callable[[Trace], float]:
+    #     @jax.jit
+    #     def _model_logprob(X: Trace):
+    #         maybe_jit_warning(self, "_jitted_log_prob", "_model_logprob", self.short_repr(), X)
+    #         with LogprobCtx(X) as ctx:
+    #             self.f(*self.args, **self.kwargs)
+    #             return ctx.log_prob
+    #     return _model_logprob
+    
+    # not jitted
+    def log_prob(self, X: Trace) -> float:
+        with LogprobCtx(X) as ctx:
+            self.f(*self.args, **self.kwargs)
+            return ctx.log_prob
+
+
     def __repr__(self) -> str:
         return f"Model({self.f}, {self.args}, {self.kwargs})"
+    
+    def short_repr(self) -> str:
+        return f"Model({self.f} at {hex(id(self))})"
 
 def model(f):
     def _f(*args, **kwargs):

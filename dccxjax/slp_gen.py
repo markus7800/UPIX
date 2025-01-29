@@ -4,6 +4,8 @@ import jax
 import jax.numpy as jnp
 from jax.core import full_lower
 from typing import Dict, Callable, Set, NamedTuple
+from .types import Trace
+from .utils import maybe_jit_warning, to_shaped_array_trace
 
 def replace_constants_with_svars(constant_object_ids_to_name: Dict[int, str], sexpr: SExpr) -> SExpr:
     if isinstance(sexpr, SConstant):
@@ -28,51 +30,48 @@ def replace_sexpr_with_svars(sexpr_object_ids_to_name: Dict[int, str], sexpr: SE
     else:
         assert isinstance(sexpr, SVar)
         return sexpr
-    
 
-def make_model_logprob(model: Model) -> Callable:
-    def _model_logprob(X: Dict[str,jax.Array]):
-        with LogprobCtx(X) as ctx:
-            model.f(*model.args, **model.kwargs)
-            return ctx.log_prob
-    return _model_logprob
-    
-def make_slp_path_indicator(branching_decisions: BranchingDecisions) -> Callable:
-    def _path_indicator(X: Dict[str, jax.Array]):
-        print("compile _path_indicator for", X)
-        b = jnp.array(True)
-        for sexpr, val in branching_decisions.decisions:
-            b = b & (sexpr.eval(X) == val)
-        return b
-    return _path_indicator
 
-def make_slp_logprob(model: Model, branching_decisions: BranchingDecisions) -> Callable:
-    def _log_prob(X: Dict[str,jax.Array]):
-        print("compile _log_prob for", X)
-        
-        path_indicator = make_slp_path_indicator(branching_decisions)
-        model_logprob = make_model_logprob(model)
-            
-        slp_model_logprob = trace_branching(model_logprob, branching_decisions, retrace=True)
-        # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
-        # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
-        
-        return jax.lax.select(path_indicator(X), slp_model_logprob(X), -jnp.inf)
-
-        
-    return _log_prob
 
 class SLP:
     model: Model
-    decision_representative: Dict[str,jax.Array]
+    decision_representative: Trace
     branching_decisions: BranchingDecisions
 
-    def __init__(self, model: Model, decision_representative: Dict[str,jax.Array], branching_decisions: BranchingDecisions) -> None:
+    def __init__(self, model: Model, decision_representative: Trace, branching_decisions: BranchingDecisions) -> None:
         self.model = model
         self.decision_representative = decision_representative
         self.branching_decisions = branching_decisions
-        self._path_indicator = jax.jit(make_slp_path_indicator(branching_decisions))
-        self._log_prob = jax.jit(make_slp_logprob(model, branching_decisions))
+        self._jitted_path_indicator = False
+        self._path_indicator = self.make_slp_path_indicator(branching_decisions)
+        self._log_prob = self.make_slp_logprob(model, branching_decisions)
+        self._jitted_log_prob = False
+
+
+    def make_slp_path_indicator(self, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
+        @jax.jit
+        def _path_indicator(X: Trace):
+            maybe_jit_warning(self, "_jitted_path_indicator", "_path_indicator", self.short_repr(), to_shaped_array_trace(X))
+
+            b = jnp.array(True)
+            for sexpr, val in branching_decisions.decisions:
+                b = b & (sexpr.eval(X) == val)
+            return b
+        return _path_indicator
+
+    def make_slp_logprob(self, model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
+        @jax.jit
+        def _log_prob(X: Trace):
+            maybe_jit_warning(self, "_jitted_log_prob", "_slp_log_prob", self.short_repr(), to_shaped_array_trace(X))
+                            
+            slp_model_logprob = trace_branching(model.log_prob, branching_decisions, retrace=True)
+            # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
+            # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
+            
+            return jax.lax.select(self._path_indicator(X), slp_model_logprob(X), -jnp.inf)
+
+            
+        return _log_prob
 
     def __repr__(self) -> str:
         s = "SLP {"
@@ -80,6 +79,10 @@ class SLP:
         s += "\n  " + repr(self.decision_representative)
         s += "\n  " + repr(self.branching_decisions.decisions)
         s += "\n}"
+        return s
+    
+    def short_repr(self) -> str:
+        s = f"<SLP at {hex(id(self))}>"
         return s
     
     def path_indicator(self, X: Dict[str,jax.Array]):
