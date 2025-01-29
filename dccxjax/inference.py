@@ -8,24 +8,25 @@ from abc import ABC, abstractmethod
 from .types import PRNGKey, Trace
 import numpyro.distributions as dist
 from .utils import maybe_jit_warning, to_shaped_arrays
+from dataclasses import dataclass
 
-AbstractInferenceState = NamedTuple # ("AbstractInferenceState", [("position", Trace)])
-class InferenceState(AbstractInferenceState):
+
+@jax.tree_util.register_dataclass
+@dataclass
+class InferenceState(object):
     position: Trace
     
-def InferenceStateFromSubclass(state: AbstractInferenceState):
-    return InferenceState(position=state.position)
     
-Kernel = Callable[[AbstractInferenceState,PRNGKey],AbstractInferenceState]
+Kernel = Callable[[InferenceState,PRNGKey],InferenceState]
 
 class InferenceAlgorithm(ABC):
     @abstractmethod
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int) -> Kernel:
         raise NotImplementedError
 
-
-class MHState(AbstractInferenceState):
-    position: Trace
+@jax.tree_util.register_dataclass
+@dataclass
+class MHState(InferenceState):
     log_prob: float
 
 
@@ -113,11 +114,11 @@ class RandomWalk(InferenceAlgorithm):
 
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int) -> Kernel:
         @jax.jit
-        def _kernel(state: AbstractInferenceState, rng_key: PRNGKey) -> MHState:
+        def _kernel(state: InferenceState, rng_key: PRNGKey) -> MHState:
             maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays(state))
             X, Y = gibbs_model.split_trace(state.position)
             gibbs_model.set_Y(Y)
-            log_prob = state.log_prob if hasattr(state, "log_prob") else gibbs_model.log_prob(X)
+            log_prob = getattr(state, "log_prob") if hasattr(state, "log_prob") else gibbs_model.log_prob(X)
             current_mh_state = MHState(X, log_prob)
             next_mh_state = rw_kernel(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer)
             next_mh_state = MHState(gibbs_model.combine_to_trace(next_mh_state.position, Y), next_mh_state.log_prob)
@@ -157,12 +158,12 @@ def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_k
         kernels.append(inference_step.algo.make_kernel(gibbs_model, step_number))
 
     @jax.jit
-    def one_step(state: AbstractInferenceState, rng_key: PRNGKey) -> Tuple[AbstractInferenceState,Trace]:
+    def one_step(state: InferenceState, rng_key: PRNGKey) -> Tuple[InferenceState,Trace]:
         maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(state))
         for kernel in kernels:
             rng_key, kernel_key = jax.random.split(rng_key)
             state = kernel(state, kernel_key)
-        state = InferenceStateFromSubclass(state)
+        state = InferenceState(state.position)
         return state, state.position
     
     keys = jax.random.split(rng_key, n_samples)

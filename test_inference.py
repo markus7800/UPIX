@@ -3,6 +3,7 @@ from dccxjax import *
 import numpyro.distributions as dist
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
+from time import time
 
 import logging
 setup_logging(logging.DEBUG)
@@ -17,15 +18,19 @@ m: Model = normal(None)
 slp = convert_model_to_SLP(m)
 
 #%%
+t0 = time()
 result = mcmc(
     slp,
     InferenceStep(AllVariables(), RW(gaussian_random_walk(0.5))),
-    100_000,
+    10**5,
     1,
     jax.random.PRNGKey(0)
     )
+t1 = time()
 
 print(result)
+print(f"in {t1-t0:.3f} seconds")
+exit()
 #%%
 plt.hist(result["X"], density=True, bins=50)
 xs = jnp.linspace(-5.,5.,500)
