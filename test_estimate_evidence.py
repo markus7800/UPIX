@@ -1,3 +1,4 @@
+#%%
 from dccxjax import *
 import numpyro.distributions as dist
 import jax.numpy as jnp
@@ -50,9 +51,8 @@ def estimate_evidence(model: Model, rng_keys: PRNGKey):
     return jnp.mean(jnp.exp(jnp.array(lps)))
 
 keys = jax.random.split(jax.random.PRNGKey(0), 1_000_000)
-Z_est = estimate_evidence(m, keys[:10_000])
-print(f"{Z_est=}")
-# exit()
+# Z_est = estimate_evidence(m, keys[:10_000])
+# print(f"{Z_est=}")
 
 active_slps: List[SLP] = []
 for key in range(10):
@@ -62,7 +62,7 @@ for key in range(10):
 
     if all(slp.path_indicator(X) == 0 for slp in active_slps):
         active_slps.append(slp)
-
+#%%
 print()
 print()
 print("active_slps: ")
@@ -70,5 +70,7 @@ for slp in active_slps:
     print(slp)
     Z_slp_est = estimate_Z_for_SLP(slp, keys)
     print(f"{Z_slp_est=}")
+    result = mcmc(slp, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), 10, 2, jax.random.PRNGKey(0))
+    print(result)
 
 

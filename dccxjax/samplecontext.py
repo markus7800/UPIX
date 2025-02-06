@@ -41,7 +41,6 @@ class GenerateCtx(SampleContext):
         self.rng_key, key = jax.random.split(self.rng_key)
         value = distribution.sample(key)
         self.X[address] = value
-        # print(self.X)
         self.log_prior += distribution.log_prob(value)
         return value
     

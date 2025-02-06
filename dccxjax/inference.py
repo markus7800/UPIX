@@ -17,7 +17,7 @@ class InferenceState(object):
     position: Trace
     
     
-Kernel = Callable[[InferenceState,PRNGKey],InferenceState]
+Kernel = Callable[[PRNGKey,InferenceState],InferenceState]
 
 class InferenceAlgorithm(ABC):
     @abstractmethod
@@ -73,7 +73,7 @@ def gaussian_random_walk(scale: float):
 #                     proposer_map[address] = func
 #                     break
 
-#         def _kernel(X: InferenceState, rng_key: PRNGKey) -> MHState:
+#         def _kernel(rng_key: PRNGKey, X: InferenceState) -> MHState:
 #             log_prob = X.log_prob if hasattr(X, "log_prob") else gibbs_model.log_prob(X.position)
 #             state = MHState(X.position, log_prob)
 #             return mh_kernel(rng_key, state, gibbs_model.log_prob, proposer_map)
@@ -114,7 +114,7 @@ class RandomWalk(InferenceAlgorithm):
 
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int) -> Kernel:
         @jax.jit
-        def _rw_kernel(state: InferenceState, rng_key: PRNGKey) -> MHState:
+        def _rw_kernel(rng_key: PRNGKey, state: InferenceState) -> MHState:
             maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays(state))
             X, Y = gibbs_model.split_trace(state.position)
             gibbs_model.set_Y(Y)
@@ -151,24 +151,41 @@ class Gibbs(InferenceRegime):
                 yield from subregime
 
 
-def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey):
+def get_slp_mcmc_step_for_inference_regime(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool):
     kernels: List[Kernel] = []
     for step_number, inference_step in enumerate(regime):
         gibbs_model = GibbsModel(slp, inference_step.variable_selector)
         kernels.append(inference_step.algo.make_kernel(gibbs_model, step_number))
 
     @jax.jit
-    def one_step(state: InferenceState, rng_key: PRNGKey) -> Tuple[InferenceState,Trace]:
+    def one_step(state: InferenceState, rng_key: PRNGKey) -> Tuple[InferenceState,Optional[Trace]]:
         maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(state))
         for kernel in kernels:
             rng_key, kernel_key = jax.random.split(rng_key)
-            state = kernel(state, kernel_key)
+            if n_chains > 1:
+                kernel_keys = jax.random.split(kernel_key, n_chains)
+                state = jax.vmap(kernel)(kernel_keys, state)
+            else:
+                state = kernel(kernel_key, state)
         state = InferenceState(state.position)
-        return state, state.position
+        return state, state.position if collect_states else None
+    
+    return one_step
+
+def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey):
     
     keys = jax.random.split(rng_key, n_samples)
 
-    _, result = jax.lax.scan(one_step, InferenceState(slp.decision_representative), keys)
+    mcmc_step = get_slp_mcmc_step_for_inference_regime(slp, regime, n_chains, True)
+
+    if n_chains > 1:
+        # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
+        # and X[i,m,n,...] = X[j,m,n,...] for all i, j
+        init = InferenceState(jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), slp.decision_representative))
+    else:
+        init = InferenceState(slp.decision_representative)
+
+    _, result = jax.lax.scan(mcmc_step, init, keys)
     return result
 
 

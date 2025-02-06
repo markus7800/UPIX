@@ -78,7 +78,7 @@ class SLP:
         def _gen_likelihood_weight(key: PRNGKey):
             maybe_jit_warning(self, "_jitted_gen_likelihood_weight", "slp_gen_likelihood_weight", self.short_repr(), to_shaped_arrays(key))
 
-            # TODO: figure out why @jax.jit does not work here in combination with trace_branching
+            # cannot do @jax.jit here because model can do branching and has to be controlled by trace_branching transformation, before jitting
             def _gen_log_likelihood_and_X_from_prior(key: PRNGKey):
                 with GenerateCtx(key) as ctx:
                     model()
