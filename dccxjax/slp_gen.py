@@ -4,8 +4,8 @@ import jax
 import jax.numpy as jnp
 from jax.core import full_lower
 from typing import Dict, Callable, Set, NamedTuple
-from .types import Trace
-from .utils import maybe_jit_warning, to_shaped_array_trace
+from .types import Trace, PRNGKey
+from .utils import maybe_jit_warning, to_shaped_array_trace, to_shaped_arrays
 
 def replace_constants_with_svars(constant_object_ids_to_name: Dict[int, str], sexpr: SExpr) -> SExpr:
     if isinstance(sexpr, SConstant):
@@ -44,9 +44,10 @@ class SLP:
         self.branching_decisions = branching_decisions
         self._jitted_path_indicator = False
         self._path_indicator = self.make_slp_path_indicator(branching_decisions)
-        self._log_prob = self.make_slp_logprob(model, branching_decisions)
         self._jitted_log_prob = False
-
+        self._log_prob = self.make_slp_logprob(model, branching_decisions)
+        self._jitted_gen_likelihood_weight = False
+        self._gen_likelihood_weight = self.make_slp_gen_likelihood_weight(model, branching_decisions)
 
     def make_slp_path_indicator(self, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
         @jax.jit
@@ -69,9 +70,26 @@ class SLP:
             # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
             
             return jax.lax.select(self._path_indicator(X), slp_model_logprob(X), -jnp.inf)
-
-            
+   
         return _log_prob
+    
+    def make_slp_gen_likelihood_weight(self, model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], float]:
+        @jax.jit
+        def _gen_likelihood_weight(key: PRNGKey):
+            maybe_jit_warning(self, "_jitted_gen_likelihood_weight", "slp_gen_likelihood_weight", self.short_repr(), to_shaped_arrays(key))
+
+            # TODO: figure out why @jax.jit does not work here in combination with trace_branching
+            def _gen_log_likelihood_and_X_from_prior(key: PRNGKey):
+                with GenerateCtx(key) as ctx:
+                    model()
+                    return ctx.log_likelihood, ctx.X
+                            
+            gen_log_likelihood_and_X_from_prior = trace_branching(_gen_log_likelihood_and_X_from_prior, branching_decisions, retrace=True)
+            log_likelihood, X = gen_log_likelihood_and_X_from_prior(key)
+            
+            return jax.lax.select(self._path_indicator(X), log_likelihood, -jnp.inf)
+   
+        return _gen_likelihood_weight
 
     def __repr__(self) -> str:
         s = "SLP {"
@@ -98,7 +116,12 @@ class SLP:
         return self._log_prob(X)
     
 
-def sample_from_prior(model: Model, rng_key: jax.Array) -> Dict[str, jax.Array]:
+def estimate_Z_for_SLP(slp: SLP, rng_keys: PRNGKey):
+    lps = jax.vmap(slp._gen_likelihood_weight)(rng_keys)
+    # print(lps)
+    return jnp.mean(jnp.exp(lps))
+
+def sample_from_prior(model: Model, rng_key: PRNGKey) -> Dict[str, jax.Array]:
     ctx = GenerateCtx(rng_key)
     with ctx:
         model()
@@ -107,9 +130,9 @@ def sample_from_prior(model: Model, rng_key: jax.Array) -> Dict[str, jax.Array]:
 
 def slp_from_X(model: Model, decision_representative: Dict[str, jax.Array]) -> SLP:
     def f(X: Dict[str, jax.Array]):
-        ctx = LogprobCtx(X)
-        with ctx:
+        with LogprobCtx(X) as ctx:
             model()
+            return ctx.log_prob
 
     branching_decisions = BranchingDecisions()
     traced_f = trace_branching(f, branching_decisions)

@@ -114,7 +114,7 @@ class RandomWalk(InferenceAlgorithm):
 
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int) -> Kernel:
         @jax.jit
-        def _kernel(state: InferenceState, rng_key: PRNGKey) -> MHState:
+        def _rw_kernel(state: InferenceState, rng_key: PRNGKey) -> MHState:
             maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays(state))
             X, Y = gibbs_model.split_trace(state.position)
             gibbs_model.set_Y(Y)
@@ -123,7 +123,7 @@ class RandomWalk(InferenceAlgorithm):
             next_mh_state = rw_kernel(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer)
             next_mh_state = MHState(gibbs_model.combine_to_trace(next_mh_state.position, Y), next_mh_state.log_prob)
             return next_mh_state
-        return _kernel
+        return _rw_kernel
     
 RW = RandomWalk
 
