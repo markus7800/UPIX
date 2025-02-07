@@ -9,7 +9,7 @@ from .types import PRNGKey, Trace
 import numpyro.distributions as dist
 from .utils import maybe_jit_warning, to_shaped_arrays
 from dataclasses import dataclass
-
+from time import time
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -213,10 +213,6 @@ class DCC_Result:
         self.Zs: Dict[SLP, jax.Array] = dict()
     def add_samples(self, slp: SLP, samples: Trace, Z: Optional[jax.Array]):
 
-        print("add samples for", slp)
-        for addr, values in samples.items():
-            print(addr, values.shape)
-
         #  shape of trace entry for var:
         #  (n_samples_per_chain, n_chain, dim(var)) if multi_chain=True and intermediate_states=True
         #  (n_chain, dim(var)) if multi_chain=True and intermediate_states=False
@@ -236,9 +232,47 @@ class DCC_Result:
             if Z is not None:
                 self.Zs[slp] = Z
 
-        print("now have")
-        for addr, values in self.samples[slp].items():
-            print(addr, values.shape)
+    def get_samples_for_address(self, address: str, unstack_chains: bool = True):
+        undef_prob = 0.
+        Z = sum(z for _, z in self.Zs.items())
+        samples_for_address: Optional[jax.Array] = None
+        weigths_for_address: Optional[jax.Array] = None
+        for slp, samples in self.samples.items():
+            Z_slp = self.Zs[slp]
+            if address not in samples:
+                undef_prob += Z_slp / Z
+            else:
+                weights = jax.lax.full_like(samples[address], Z_slp / Z)
+                if samples_for_address is None:
+                    samples_for_address = samples[address]
+                    weigths_for_address = weights
+                else:
+                    assert weigths_for_address is not None
+                    samples_for_address = jax.lax.concatenate((samples_for_address, samples[address]), 0)
+                    weigths_for_address = jax.lax.concatenate((weigths_for_address, weights), 0)
+
+        if unstack_chains and self.multi_chain and samples_for_address is not None:
+            assert weigths_for_address is not None
+            shape = samples_for_address.shape
+            assert len(shape) >= 2
+            var_dim = () if len(shape) < 3 else (shape[2],)
+            n_samples = shape[0]
+            n_chains = shape[1]
+            samples_for_address = jax.lax.reshape(samples_for_address, (n_samples * n_chains, *var_dim))
+            weigths_for_address = jax.lax.reshape(weigths_for_address, (n_samples * n_chains, *var_dim))
+        
+        return samples_for_address, weigths_for_address, undef_prob
+    
+    def n_samples(self):
+        n = 0
+        for _, samples in self.samples.items():
+            _, some_entry = next(iter(samples.items()))
+            if self.multi_chain:
+                n += some_entry.shape[0] * some_entry.shape[1]
+            else:
+                n += some_entry.shape[0]
+        return n
+
 
 from copy import deepcopy
 
@@ -258,6 +292,7 @@ def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Con
 
     combined_result = DCC_Result(multi_chain=config.n_chains > 1, intermediate_states=config.collect_intermediate_chain_states)
     
+    t0 = time()
     for slp in active_slps:
         mcmc_step = slp_to_mcmc_step[slp]
         init = get_initial_inference_state(slp, config.n_chains)
@@ -270,6 +305,9 @@ def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Con
         Z_est_keys = jax.random.split(key2, config.n_samples_for_Z_est)
         Z = estimate_Z_for_SLP(slp, Z_est_keys)
         combined_result.add_samples(slp, all_positions if config.collect_intermediate_chain_states else last_position, Z)
-
+    t1 = time()
+    t = t1 - t0
+    n_samples = combined_result.n_samples()
+    print("DCC: collected", n_samples, f"samples in {t:.3f}s ({n_samples / t / 1000:.3f}K/s)")
 
     return combined_result

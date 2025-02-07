@@ -6,6 +6,8 @@ import jax._src.core as jax_core
 from .types import Trace, PRNGKey
 from .utils import maybe_jit_warning
 
+dist.Distribution.set_default_validate_args(True)
+
 class SampleContext(ABC):
     @abstractmethod
     def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
