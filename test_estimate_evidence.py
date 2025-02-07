@@ -78,24 +78,20 @@ for slp in active_slps:
 #%%
 config = DCC_Config(
     n_samples_from_prior = 10,
-    n_chains = 100,
+    n_chains = 20,
     collect_intermediate_chain_states = True,
     n_samples_per_chain = 1000,
     n_samples_for_Z_est = 10**6
 )
 result = dcc(m, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), jax.random.PRNGKey(0), config)
 # %%
-samples, weights, undef_prob = result.get_samples_for_address("u", unstack_chains=True)
-assert samples is not None and weights is not None
-print(samples.shape, weights.shape, undef_prob)
-
-fig, axs = plt.subplots(1,2,sharey="all",width_ratios=[0.9,0.1])
-plt.subplots_adjust(wspace=0, hspace=0)
-axs[0].hist(samples, weights=weights, density=True, bins=100, alpha=0.5)
-kde = jax.scipy.stats.gaussian_kde(samples, weights=weights)
-xs = jax.numpy.linspace(samples.min(), samples.max(), 200)
-axs[0].plot(xs, kde(xs), color="tab:blue")
-axs[1].bar(["undef"],[undef_prob])
-axs[1].margins(0.5, 0)
+# plot_histogram(result, "u")
+plot_trace(result, "u")
+plt.show()
+# plot_histogram(result, "m1")
+plot_trace(result, "m1")
+plt.show()
+# plot_histogram(result, "m2")
+plot_trace(result, "m2")
 plt.show()
 # %%

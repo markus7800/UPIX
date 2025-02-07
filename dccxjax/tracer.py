@@ -21,14 +21,33 @@ class SExpr(ABC):
     @abstractmethod
     def eval(self, X: dict[str, jax.Array]) -> jax.Array:
         raise NotImplementedError
-    
+    @abstractmethod
+    def to_human_readable(self) -> str:
+        raise NotImplementedError
+
+SUnaryOps = {
+}
+SBinOps = {
+    "less": "<"
+}
 class SOp(SExpr):
     def __init__(self, primitive: jax_core.Primitive, args: List[SExpr], params) -> None:
         self.primitive = primitive
         self.params = params
         self.args = args
+    
     def __repr__(self) -> str:
         return primitive_name(self.primitive, self.params) + "(" + ", ".join(map(repr, self.args)) + ")"
+    
+    def to_human_readable(self) -> str:
+        op_name = self.params["name"] if self.primitive.name == "pjit" else self.primitive.name
+        sargs = list(map(lambda a: a.to_human_readable(), self.args))
+        if op_name in SUnaryOps:
+            return f"{SUnaryOps[op_name]}{sargs[0]}"
+        if op_name in SBinOps:
+            return f"({sargs[0]} {SBinOps[op_name]} {sargs[1]})"
+        return f"{op_name}(" + ", ".join(sargs) + ")"
+
     def eval(self, X: dict[str, jax.Array]) -> jax.Array:
         args = [arg.eval(X) for arg in self.args]
         # print("eval", primitive_name(self.primitive, self.params), "with", args, self.args, self.params)
@@ -73,8 +92,21 @@ class SConstant(SExpr):
     def __init__(self, constant) -> None:
         # print("Constant", constant, type(constant), id(constant))
         self.constant = constant
+
     def __repr__(self) -> str:
         return f"Constant({self.constant})"
+    
+    def to_human_readable(self) -> str:
+        if isinstance(self.constant, jax.Array):
+            if self.constant.shape == ():
+                return repr(self.constant.item())
+            else:
+                return repr(self.constant)
+        elif isinstance(self.constant, (bool, int, float)):
+            return repr(self.constant)
+        else:
+            return f"Constant<{type(self.constant)}>"
+
     def eval(self, X: dict[str, jax.Array]):
         return self.constant
     # def __eq__(self, value: object) -> bool:
@@ -94,6 +126,8 @@ class SVar(SExpr):
     def __init__(self, name: str) -> None:
         self.name = name
     def __repr__(self) -> str:
+        return self.name
+    def to_human_readable(self) -> str:
         return self.name
     def eval(self, X: dict[str, jax.Array]) -> jax.Array:
         return X[self.name]
@@ -123,6 +157,18 @@ class BranchingDecisions:
     def __init__(self) -> None:
         self.decisions: List[Tuple[SExpr, Any]] = []
 
+    def to_human_readable(self) -> str:
+        expressions: List[str] = []
+        for sexpr, val in self.decisions:
+            expr = sexpr.to_human_readable()
+            if isinstance(val, jax.Array) and val.dtype == jax.numpy.dtype("bool") and val.shape == ():
+                expressions.append(expr if val.item() else "~"+expr)
+            else:
+                expressions.append(expr + " = " + SConstant(val).to_human_readable())
+        if len(expressions) == 0:
+            return "No decisions."
+        else:
+            return " and\n".join(expressions)
 
 # based on JVPTrace / JVPTracer
 

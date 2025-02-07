@@ -5,3 +5,4 @@ from .gibbs import *
 from .inference import *
 from .variable_selector import *
 from .utils import setup_logging
+from .plots import *
