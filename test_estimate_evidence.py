@@ -70,7 +70,17 @@ for slp in active_slps:
     print(slp)
     Z_slp_est = estimate_Z_for_SLP(slp, keys)
     print(f"{Z_slp_est=}")
-    result = mcmc(slp, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), 10, 2, jax.random.PRNGKey(0))
+    result = mcmc(slp, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), 10, 1, jax.random.PRNGKey(0))
     print(result)
 
 
+#%%
+config = DCC_Config(
+    n_samples_from_prior = 10,
+    n_chains = 2,
+    collect_intermediate_chain_states = False,
+    n_samples_per_chain = 100,
+    n_samples_for_Z_est = 10**6
+)
+result = dcc(m, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), jax.random.PRNGKey(0), config)
+# %%

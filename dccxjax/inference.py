@@ -1,4 +1,4 @@
-from .slp_gen import SLP
+from .slp_gen import SLP, sample_from_prior, slp_from_X, estimate_Z_for_SLP
 from .variable_selector import VariableSelector
 from .gibbs import GibbsModel
 from typing import List, Dict, Optional, Tuple, Generator, Any, NamedTuple, Callable
@@ -151,7 +151,8 @@ class Gibbs(InferenceRegime):
                 yield from subregime
 
 
-def get_slp_mcmc_step_for_inference_regime(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool):
+# TODO: we could always vmap even if n_chains = 1 to simplify
+def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool):
     kernels: List[Kernel] = []
     for step_number, inference_step in enumerate(regime):
         gibbs_model = GibbsModel(slp, inference_step.variable_selector)
@@ -172,20 +173,103 @@ def get_slp_mcmc_step_for_inference_regime(slp: SLP, regime: InferenceRegime, n_
     
     return one_step
 
-def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey):
-    
-    keys = jax.random.split(rng_key, n_samples)
 
-    mcmc_step = get_slp_mcmc_step_for_inference_regime(slp, regime, n_chains, True)
-
+def get_initial_inference_state(slp: SLP, n_chains: int):
     if n_chains > 1:
         # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
         # and X[i,m,n,...] = X[j,m,n,...] for all i, j
-        init = InferenceState(jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), slp.decision_representative))
+        return InferenceState(jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), slp.decision_representative))
     else:
-        init = InferenceState(slp.decision_representative)
+        return InferenceState(slp.decision_representative)
+    
+def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey, collect_states: bool = True):
+    
+    keys = jax.random.split(rng_key, n_samples)
 
-    _, result = jax.lax.scan(mcmc_step, init, keys)
-    return result
+    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_states)
+
+    init = get_initial_inference_state(slp, n_chains)
+
+    last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
+ 
+    return all_positions if collect_states else last_state.position
 
 
+@dataclass
+class DCC_Config:
+    n_samples_from_prior: int
+    n_chains: int
+    collect_intermediate_chain_states: bool
+    n_samples_per_chain: int
+    n_samples_for_Z_est: int
+
+
+class DCC_Result:
+    def __init__(self, multi_chain: bool, intermediate_states: bool) -> None:
+        self.multi_chain = multi_chain
+        self.intermediate_states = intermediate_states
+        self.samples: Dict[SLP, Trace] = dict()
+        # samples have shape (n_samples, n_chain, dim(var)) if multi_chain else (n_samples, dim(var))
+        self.Zs: Dict[SLP, jax.Array] = dict()
+    def add_samples(self, slp: SLP, samples: Trace, Z: Optional[jax.Array]):
+
+        print("add samples for", slp)
+        for addr, values in samples.items():
+            print(addr, values.shape)
+
+        #  shape of trace entry for var:
+        #  (n_samples_per_chain, n_chain, dim(var)) if multi_chain=True and intermediate_states=True
+        #  (n_chain, dim(var)) if multi_chain=True and intermediate_states=False
+        #  (n_samples_per_chain, dim(var)) if multi_chain=False and intermediate_states=True
+        #  (dim(var),) if multi_chain=False and intermediate_states=False
+        # if dim(var) == 1 dimension of trace entry is ommited, e.g. (n_samples_per_chain, n_chain) in the first case and () in the last case
+        if not self.intermediate_states:
+            samples = jax.tree_map(lambda x: jax.lax.broadcast(x, (1,)), samples)
+        if slp not in self.samples:
+            self.samples[slp] = samples
+            assert Z is not None
+            self.Zs[slp] = Z
+        else:
+            # samples have shape (n_samples_per_chain, n_chain, dim(var)) or (n_samples_per_chain, dim(var)) where n_samples_per_chain can be 1
+            prev_samples = self.samples[slp]
+            self.samples[slp] = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), prev_samples, samples)
+            if Z is not None:
+                self.Zs[slp] = Z
+
+        print("now have")
+        for addr, values in self.samples[slp].items():
+            print(addr, values.shape)
+
+from copy import deepcopy
+
+def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Config):
+
+    active_slps: List[SLP] = []
+    slp_to_mcmc_step = dict()
+
+    for _ in range(config.n_samples_from_prior):
+        rng_key, key = jax.random.split(rng_key)
+        X = sample_from_prior(model, key)
+        slp = slp_from_X(model, X)
+
+        if all(slp.path_indicator(X) == 0 for slp in active_slps):
+            active_slps.append(slp)
+            slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
+
+    combined_result = DCC_Result(multi_chain=config.n_chains > 1, intermediate_states=config.collect_intermediate_chain_states)
+    
+    for slp in active_slps:
+        mcmc_step = slp_to_mcmc_step[slp]
+        init = get_initial_inference_state(slp, config.n_chains)
+        rng_key, key1, key2 = jax.random.split(rng_key, 3)
+
+        mcmc_keys = jax.random.split(key1, config.n_samples_per_chain)
+        last_state, all_positions = jax.lax.scan(mcmc_step, init, mcmc_keys)
+        last_position = last_state.position
+
+        Z_est_keys = jax.random.split(key2, config.n_samples_for_Z_est)
+        Z = estimate_Z_for_SLP(slp, Z_est_keys)
+        combined_result.add_samples(slp, all_positions if config.collect_intermediate_chain_states else last_position, Z)
+
+
+    return combined_result
