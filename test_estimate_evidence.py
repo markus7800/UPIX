@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
 import logging
-# setup_logging(logging.DEBUG)
+setup_logging(logging.WARNING)
 
 @model
 def mm(p):
@@ -69,7 +69,7 @@ print()
 print("active_slps: ")
 for slp in active_slps:
     print(slp)
-    Z_slp_est = estimate_Z_for_SLP(slp, keys)
+    Z_slp_est = estimate_Z_for_SLP_from_prior(slp, 1_000_000, jax.random.PRNGKey(0))
     print(f"{Z_slp_est=}")
     result = mcmc(slp, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), 10, 1, jax.random.PRNGKey(0))
     print(result)
@@ -84,6 +84,7 @@ config = DCC_Config(
     n_samples_for_Z_est = 10**6
 )
 result = dcc(m, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), jax.random.PRNGKey(0), config)
+exit()
 # %%
 # plot_histogram(result, "u")
 plot_trace(result, "u")

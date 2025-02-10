@@ -1,4 +1,4 @@
-from .slp_gen import SLP, sample_from_prior, slp_from_X, estimate_Z_for_SLP
+from .slp_gen import SLP, sample_from_prior, slp_from_X, estimate_Z_for_SLP_from_mcmc, estimate_Z_for_SLP_from_prior
 from .variable_selector import VariableSelector
 from .gibbs import GibbsModel
 from typing import List, Dict, Optional, Tuple, Generator, Any, NamedTuple, Callable
@@ -163,11 +163,8 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_
         maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(state))
         for kernel in kernels:
             rng_key, kernel_key = jax.random.split(rng_key)
-            if n_chains > 1:
-                kernel_keys = jax.random.split(kernel_key, n_chains)
-                state = jax.vmap(kernel)(kernel_keys, state)
-            else:
-                state = kernel(kernel_key, state)
+            kernel_keys = jax.random.split(kernel_key, n_chains)
+            state = jax.vmap(kernel)(kernel_keys, state)
         state = InferenceState(state.position)
         return state, state.position if collect_states else None
     
@@ -175,12 +172,10 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_
 
 
 def get_initial_inference_state(slp: SLP, n_chains: int):
-    if n_chains > 1:
-        # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
-        # and X[i,m,n,...] = X[j,m,n,...] for all i, j
-        return InferenceState(jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), slp.decision_representative))
-    else:
-        return InferenceState(slp.decision_representative)
+    # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
+    # and X[i,m,n,...] = X[j,m,n,...] for all i, j
+    return InferenceState(jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), slp.decision_representative))
+
     
 def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey, collect_states: bool = True):
     
@@ -204,9 +199,24 @@ class DCC_Config:
     n_samples_for_Z_est: int
 
 
+def _unstack_chains(values: jax.Array):
+    shape = values.shape
+    assert len(shape) >= 2
+    var_dim = () if len(shape) < 3 else (shape[2],)
+    n_samples = shape[0]
+    n_chains = shape[1]
+    return jax.lax.reshape(values, (n_samples * n_chains, *var_dim))
+
+def unstack_chains(Xs: Trace):
+    return jax.tree_map(_unstack_chains, Xs)
+
+def n_samples(Xs: Trace):
+    _, some_entry = next(iter(Xs.items()))
+    return some_entry.shape[0] * some_entry.shape[1]
+
+
 class DCC_Result:
-    def __init__(self, multi_chain: bool, intermediate_states: bool) -> None:
-        self.multi_chain = multi_chain
+    def __init__(self, intermediate_states: bool) -> None:
         self.intermediate_states = intermediate_states
         self.samples: Dict[SLP, Trace] = dict()
         # samples have shape (n_samples, n_chain, dim(var)) if multi_chain else (n_samples, dim(var))
@@ -216,8 +226,6 @@ class DCC_Result:
         #  shape of trace entry for var:
         #  (n_samples_per_chain, n_chain, dim(var)) if multi_chain=True and intermediate_states=True
         #  (n_chain, dim(var)) if multi_chain=True and intermediate_states=False
-        #  (n_samples_per_chain, dim(var)) if multi_chain=False and intermediate_states=True
-        #  (dim(var),) if multi_chain=False and intermediate_states=False
         # if dim(var) == 1 dimension of trace entry is ommited, e.g. (n_samples_per_chain, n_chain) in the first case and () in the last case
         if not self.intermediate_states:
             samples = jax.tree_map(lambda x: jax.lax.broadcast(x, (1,)), samples)
@@ -251,26 +259,16 @@ class DCC_Result:
                     samples_for_address = jax.lax.concatenate((samples_for_address, samples[address]), 0)
                     weigths_for_address = jax.lax.concatenate((weigths_for_address, weights), 0)
 
-        if unstack_chains and self.multi_chain and samples_for_address is not None:
-            assert weigths_for_address is not None
-            shape = samples_for_address.shape
-            assert len(shape) >= 2
-            var_dim = () if len(shape) < 3 else (shape[2],)
-            n_samples = shape[0]
-            n_chains = shape[1]
-            samples_for_address = jax.lax.reshape(samples_for_address, (n_samples * n_chains, *var_dim))
-            weigths_for_address = jax.lax.reshape(weigths_for_address, (n_samples * n_chains, *var_dim))
+        if unstack_chains and samples_for_address is not None and weigths_for_address is not None:
+            samples_for_address = _unstack_chains(samples_for_address)
+            weigths_for_address = _unstack_chains(weigths_for_address)
         
         return samples_for_address, weigths_for_address, undef_prob
     
     def n_samples(self):
         n = 0
         for _, samples in self.samples.items():
-            _, some_entry = next(iter(samples.items()))
-            if self.multi_chain:
-                n += some_entry.shape[0] * some_entry.shape[1]
-            else:
-                n += some_entry.shape[0]
+            n += n_samples(samples)
         return n
 
 
@@ -290,7 +288,7 @@ def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Con
             active_slps.append(slp)
             slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
 
-    combined_result = DCC_Result(multi_chain=config.n_chains > 1, intermediate_states=config.collect_intermediate_chain_states)
+    combined_result = DCC_Result(intermediate_states=config.collect_intermediate_chain_states)
     
     t0 = time()
     for slp in active_slps:
@@ -302,12 +300,15 @@ def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Con
         last_state, all_positions = jax.lax.scan(mcmc_step, init, mcmc_keys)
         last_position = last_state.position
 
-        Z_est_keys = jax.random.split(key2, config.n_samples_for_Z_est)
-        Z = estimate_Z_for_SLP(slp, Z_est_keys)
+        Z = estimate_Z_for_SLP_from_prior(slp, config.n_samples_for_Z_est, key2)
         combined_result.add_samples(slp, all_positions if config.collect_intermediate_chain_states else last_position, Z)
+
+        # Z2 = estimate_Z_for_SLP_from_mcmc(slp, 1.0, config.n_samples_for_Z_est // (config.n_samples_per_chain * config.n_chains) + 1, key2, unstack_chains(all_positions))
+        # print(f"{Z=} vs {Z2=}")
     t1 = time()
     t = t1 - t0
     n_samples = combined_result.n_samples()
     print("DCC: collected", n_samples, f"samples in {t:.3f}s ({n_samples / t / 1000:.3f}K/s)")
+
 
     return combined_result

@@ -1,6 +1,6 @@
 
 from abc import ABC, abstractmethod
-from typing import Callable
+from typing import Callable, TypeVar, Dict
 
 class VariableSelector(ABC):
     @abstractmethod
@@ -34,3 +34,11 @@ class PredicateSelector(VariableSelector):
         self.predicate = predicate
     def contains(self, variable: str) -> bool:
         return self.predicate(variable)
+    
+
+T = TypeVar("T")
+def find_or_error(d: Dict[VariableSelector, T], address: str) -> T:
+    for selector, item in d.items():
+        if selector.contains(address):
+            return item
+    raise ValueError()

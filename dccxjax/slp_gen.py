@@ -6,6 +6,8 @@ from jax.core import full_lower
 from typing import Dict, Callable, Set, NamedTuple
 from .types import Trace, PRNGKey
 from .utils import maybe_jit_warning, to_shaped_array_trace, to_shaped_arrays
+from jax.flatten_util import ravel_pytree
+import numpyro.distributions as dist
 
 def replace_constants_with_svars(constant_object_ids_to_name: Dict[int, str], sexpr: SExpr) -> SExpr:
     if isinstance(sexpr, SConstant):
@@ -68,8 +70,8 @@ class SLP:
             slp_model_logprob = trace_branching(model.log_prob, branching_decisions, retrace=True)
             # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
             # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
-            
-            return jax.lax.select(self._path_indicator(X), slp_model_logprob(X), -jnp.inf)
+            lp = slp_model_logprob(X)
+            return jax.lax.select(self._path_indicator(X), lp, jax.lax.full_like(lp, -jnp.inf))
    
         return _log_prob
     
@@ -116,10 +118,30 @@ class SLP:
         return self._log_prob(X)
     
 
-def estimate_Z_for_SLP(slp: SLP, rng_keys: PRNGKey):
-    lps = jax.vmap(slp._gen_likelihood_weight)(rng_keys)
-    # print(lps)
-    return jnp.mean(jnp.exp(lps))
+def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
+    rng_keys = jax.random.split(rng_key, N)
+    weights = jax.vmap(slp._gen_likelihood_weight)(rng_keys)
+    return jnp.mean(jnp.exp(weights))
+
+def estimate_Z_for_SLP_from_mcmc(slp: SLP, scale: float, samples_per_trace: int, seed: PRNGKey, Xs: Trace):
+    @jax.jit
+    def _log_IS_weight(rng_key: PRNGKey, X: Trace):
+        X_flat, unravel_fn = ravel_pytree(X)
+        Q = dist.Normal(X_flat, scale) # type: ignore
+        X_prime_flat = Q.sample(rng_key)
+        X_prime = unravel_fn(X_prime_flat)
+        return slp._log_prob(X_prime) - Q.log_prob(X_prime_flat).sum()
+    
+    _, some_entry = next(iter(Xs.items()))
+    N = some_entry.shape[0]
+    @jax.jit
+    def _weight_sum_for_Xs(rng_key: PRNGKey):
+        rng_keys = jax.random.split(rng_key, N)
+        return jnp.sum(jnp.exp(jax.vmap(_log_IS_weight)(rng_keys, Xs)))
+                       
+    weights = jax.vmap(_weight_sum_for_Xs)(jax.random.split(seed, samples_per_trace))
+    return jnp.sum(weights) / (N * samples_per_trace)
+    
 
 def sample_from_prior(model: Model, rng_key: PRNGKey) -> Dict[str, jax.Array]:
     ctx = GenerateCtx(rng_key)
