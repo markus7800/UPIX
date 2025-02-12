@@ -16,7 +16,7 @@ m: Model = mm()
 X = sample_from_prior(m, jax.random.PRNGKey(0))
 print(X)
 
-slp = slp_from_X(m, X)
+slp = slp_from_decision_representative(m, X)
 
 for (n_chains, collect_states) in [(1,False), (1,True), (4,False), (4,True)]:
     print(f"{n_chains=}, {collect_states=}")

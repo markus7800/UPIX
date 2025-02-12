@@ -28,7 +28,10 @@ class SExpr(ABC):
 SUnaryOps = {
 }
 SBinOps = {
-    "less": "<"
+    "less": "<",
+    "greater": ">",
+    "add": "+",
+    "bitwise_and": "&",
 }
 class SOp(SExpr):
     def __init__(self, primitive: jax_core.Primitive, args: List[SExpr], params) -> None:

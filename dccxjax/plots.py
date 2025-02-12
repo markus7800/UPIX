@@ -26,10 +26,6 @@ def plot_trace(result: DCC_Result, address: str):
     fig, axs = plt.subplots(len(slp_samples),2,sharex="col", sharey="col", width_ratios=[0.5,1.])
     
     for i, (slp,samples) in enumerate(slp_samples.items()):
-        n_samples = samples.shape[0]
-        if not result.multi_chain:
-            assert len(samples.shape) == 1 # multi-dim variables not plottable
-            samples = samples.reshape((n_samples,1))
         assert len(samples.shape) == 2 # multi-dim variables not plottable
         n_chains = samples.shape[1]
         
@@ -51,5 +47,5 @@ def plot_trace(result: DCC_Result, address: str):
 
     fig.suptitle(f"Markov chains for \"{address}\"")
     plt.tight_layout()
-    
+
     return fig

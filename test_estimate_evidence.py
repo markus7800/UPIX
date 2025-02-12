@@ -59,7 +59,7 @@ active_slps: List[SLP] = []
 for key in range(10):
     rng_key = jax.random.PRNGKey(key)
     X = sample_from_prior(m, rng_key)
-    slp = slp_from_X(m, X)
+    slp = slp_from_decision_representative(m, X)
 
     if all(slp.path_indicator(X) == 0 for slp in active_slps):
         active_slps.append(slp)

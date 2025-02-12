@@ -1,21 +1,23 @@
-from .samplecontext import GenerateCtx, LogprobCtx, Model
+from .samplecontext import GenerateCtx, LogprobCtx, Model, SampleContext
 from .tracer import trace_branching, BranchingDecisions, SExpr, SVar, SConstant, SOp, BranchingTracer
 import jax
 import jax.numpy as jnp
 from jax.core import full_lower
-from typing import Dict, Callable, Set, NamedTuple
+from typing import Dict, Callable, Set, NamedTuple, Tuple, Optional
 from .types import Trace, PRNGKey
 from .utils import maybe_jit_warning, to_shaped_array_trace, to_shaped_arrays
 from jax.flatten_util import ravel_pytree
 import numpyro.distributions as dist
 
-def replace_constants_with_svars(constant_object_ids_to_name: Dict[int, str], sexpr: SExpr) -> SExpr:
+def replace_constants_with_svars(constant_object_ids_to_name: Dict[int, str], sexpr: SExpr, variables: Set[str]) -> SExpr:
     if isinstance(sexpr, SConstant):
         if isinstance(sexpr.constant, jax.Array) and id(sexpr.constant) in constant_object_ids_to_name:
-            return SVar(constant_object_ids_to_name[id(sexpr.constant)])
+            svar = SVar(constant_object_ids_to_name[id(sexpr.constant)])
+            variables.add(svar.name)
+            return svar
         return sexpr
     elif isinstance(sexpr, SOp):
-        sexpr.args = list(map(lambda arg: replace_constants_with_svars(constant_object_ids_to_name, arg), sexpr.args))
+        sexpr.args = list(map(lambda arg: replace_constants_with_svars(constant_object_ids_to_name, arg, variables), sexpr.args))
         return sexpr
     else:
         assert isinstance(sexpr, SVar)
@@ -39,19 +41,23 @@ class SLP:
     model: Model
     decision_representative: Trace
     branching_decisions: BranchingDecisions
+    branching_variables: Set[str]
 
-    def __init__(self, model: Model, decision_representative: Trace, branching_decisions: BranchingDecisions) -> None:
+    def __init__(self, model: Model, decision_representative: Trace, branching_decisions: BranchingDecisions, branching_variables: Set[str]) -> None:
         self.model = model
         self.decision_representative = decision_representative
         self.branching_decisions = branching_decisions
+        self.branching_variables = branching_variables
         self._jitted_path_indicator = False
         self._path_indicator = self.make_slp_path_indicator(branching_decisions)
         self._jitted_log_prob = False
-        self._log_prob = self.make_slp_logprob(model, branching_decisions)
+        self._log_prob = self.make_slp_log_prob(model, branching_decisions)
+        self._jitted_grad_log_prob = False
+        self._grad_log_prob = self.make_slp_log_prob_and_grad()
         self._jitted_gen_likelihood_weight = False
         self._gen_likelihood_weight = self.make_slp_gen_likelihood_weight(model, branching_decisions)
 
-    def make_slp_path_indicator(self, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
+    def make_slp_path_indicator(self, branching_decisions: BranchingDecisions) -> Callable[[Trace], bool]:
         @jax.jit
         def _path_indicator(X: Trace):
             maybe_jit_warning(self, "_jitted_path_indicator", "_path_indicator", self.short_repr(), to_shaped_array_trace(X))
@@ -62,7 +68,7 @@ class SLP:
             return b
         return _path_indicator
 
-    def make_slp_logprob(self, model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
+    def make_slp_log_prob(self, model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
         @jax.jit
         def _log_prob(X: Trace):
             maybe_jit_warning(self, "_jitted_log_prob", "_slp_log_prob", self.short_repr(), to_shaped_array_trace(X))
@@ -74,6 +80,13 @@ class SLP:
             return jax.lax.select(self._path_indicator(X), lp, jax.lax.full_like(lp, -jnp.inf))
    
         return _log_prob
+    
+    def make_slp_log_prob_and_grad(self) -> Callable[[Trace], Tuple[float,Trace]]:
+        @jax.jit
+        def _grad_log_prob(X: Trace):
+            maybe_jit_warning(self, "_jitted_grad_log_prob", "_slp_grad_log_prob", self.short_repr(), to_shaped_array_trace(X))
+            return jax.value_and_grad(self._log_prob)(X)
+        return _grad_log_prob
     
     def make_slp_gen_likelihood_weight(self, model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], float]:
         @jax.jit
@@ -107,7 +120,7 @@ class SLP:
     
     def path_indicator(self, X: Dict[str,jax.Array]):
         if self.decision_representative.keys() != X.keys():
-            return -jnp.array(0)
+            return False
         else:
             return self._path_indicator(X)
 
@@ -143,15 +156,37 @@ def estimate_Z_for_SLP_from_mcmc(slp: SLP, scale: float, samples_per_trace: int,
     return jnp.sum(weights) / (N * samples_per_trace)
     
 
-def sample_from_prior(model: Model, rng_key: PRNGKey) -> Dict[str, jax.Array]:
+class DecisionRepresentativeCtx(SampleContext):
+    def __init__(self, partial_X: Trace, rng_key: PRNGKey) -> None:
+        self.rng_key = rng_key
+        self.partial_X = partial_X
+        self.X: Trace = dict()
+    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+        if observed is not None:
+            return observed
+        if address in self.partial_X:
+            value = self.partial_X[address]
+        else:
+            self.rng_key, sample_key = jax.random.split(self.rng_key)
+            value = distribution.sample(sample_key)
+        self.X[address] = value
+        return value
+    
+def decision_representative_from_partial_trace(model: Model, partial_X: Trace, rng_key: PRNGKey):
+    with DecisionRepresentativeCtx(partial_X, rng_key) as ctx:
+        model()
+        return ctx.X
+
+
+def sample_from_prior(model: Model, rng_key: PRNGKey) -> Trace:
     ctx = GenerateCtx(rng_key)
     with ctx:
         model()
     return ctx.X
 
 
-def slp_from_X(model: Model, decision_representative: Dict[str, jax.Array]) -> SLP:
-    def f(X: Dict[str, jax.Array]):
+def slp_from_decision_representative(model: Model, decision_representative: Trace) -> SLP:
+    def f(X: Trace):
         with LogprobCtx(X) as ctx:
             model()
             return ctx.log_prob
@@ -161,15 +196,16 @@ def slp_from_X(model: Model, decision_representative: Dict[str, jax.Array]) -> S
     traced_f(decision_representative)
 
     sexpr_object_ids_to_name = {id(array): addr for addr, array in decision_representative.items()}
-    branching_decisions.decisions = [(replace_constants_with_svars(sexpr_object_ids_to_name, sexpr), val) for sexpr, val in branching_decisions.decisions]
+    branching_variables: Set[str] = set()
+    branching_decisions.decisions = [(replace_constants_with_svars(sexpr_object_ids_to_name, sexpr, branching_variables), val) for sexpr, val in branching_decisions.decisions]
 
 
-    return SLP(model, decision_representative, branching_decisions)
+    return SLP(model, decision_representative, branching_decisions, branching_variables)
 
 
 # assumes model has no branching
 def convert_model_to_SLP(model: Model) -> SLP:
     X = sample_from_prior(model, jax.random.PRNGKey(0))
-    slp = slp_from_X(model, X)
+    slp = slp_from_decision_representative(model, X)
     assert len(slp.branching_decisions.decisions) == 0
     return slp

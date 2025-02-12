@@ -55,7 +55,7 @@ for key in range(10):
     rng_key = jax.random.PRNGKey(key)
     X = sample_from_prior(m, rng_key)
     print(X.keys())
-    slp = slp_from_X(m, X)
+    slp = slp_from_decision_representative(m, X)
     print(slp)
     print("lp =", slp.log_prob(slp.decision_representative))
     print("lp =", slp.log_prob(slp.decision_representative))
