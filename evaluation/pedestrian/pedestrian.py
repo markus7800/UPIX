@@ -24,6 +24,17 @@ def pedestrian():
 
 
 m: Model = pedestrian()
+def find_t_max(slp: SLP):
+    t_max = 0
+    for addr in slp.decision_representative.keys():
+        if addr.startswith("step_"):
+            t_max = max(t_max, int(addr[5:]))
+    return t_max
+def formatter(slp: SLP):
+    t_max = find_t_max(slp)
+    return f"#steps={t_max}"
+m.set_slp_formatter(formatter)
+m.set_slp_sort_key(find_t_max)
 
 config = DCC_Config(
     n_samples_from_prior = 10,
@@ -36,3 +47,5 @@ result = dcc(m, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.
 
 plot_histogram(result, "start")
 plt.show()
+plot_histogram_by_slp(result, "start")
+plt.savefig("tmp.pdf")

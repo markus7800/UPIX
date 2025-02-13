@@ -59,33 +59,3 @@ class LogprobCtx(SampleContext):
         value = self.X[address]
         self.log_prob += distribution.log_prob(value)
         return value
-    
-
-class Model:
-    def __init__(self, f: Callable, args, kwargs) -> None:
-        self.f = f
-        self.args = args
-        self.kwargs = kwargs
-
-        self._jitted_log_prob = False
-        # self._log_prob = self.make_model_logprob()
-
-    def __call__(self) -> Any:
-        return self.f(*self.args, **self.kwargs)
-    
-    # not jitted
-    def log_prob(self, X: Trace) -> float:
-        with LogprobCtx(X) as ctx:
-            self.f(*self.args, **self.kwargs)
-            return ctx.log_prob
-
-    def __repr__(self) -> str:
-        return f"Model({self.f.__name__}, {self.args}, {self.kwargs})"
-    
-    def short_repr(self) -> str:
-        return f"Model({self.f.__name__} at {hex(id(self))})"
-
-def model(f):
-    def _f(*args, **kwargs):
-        return Model(f, args, kwargs)
-    return _f

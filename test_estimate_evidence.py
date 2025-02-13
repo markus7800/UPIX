@@ -21,6 +21,7 @@ def mm(p):
 p = 0.7
 
 m: Model = mm(p) # type: ignore
+m.set_slp_formatter(HumanReadableDecisionsFormatter())
 
 
 U = jnp.linspace(0.,1.,1000)
@@ -84,15 +85,18 @@ config = DCC_Config(
     n_samples_for_Z_est = 10**6
 )
 result = dcc(m, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), jax.random.PRNGKey(0), config)
-exit()
+# exit()
 # %%
-# plot_histogram(result, "u")
+plot_histogram(result, "u")
 plot_trace(result, "u")
+plot_histogram_by_slp(result, "u")
 plt.show()
-# plot_histogram(result, "m1")
+plot_histogram(result, "m1")
 plot_trace(result, "m1")
+plot_histogram_by_slp(result, "m1")
 plt.show()
-# plot_histogram(result, "m2")
+plot_histogram(result, "m2")
 plot_trace(result, "m2")
+plot_histogram_by_slp(result, "m2")
 plt.show()
 # %%

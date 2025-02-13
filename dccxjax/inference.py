@@ -1,10 +1,9 @@
-from .slp_gen import SLP, sample_from_prior, slp_from_decision_representative, estimate_Z_for_SLP_from_mcmc, estimate_Z_for_SLP_from_prior
+from .slp_gen import Model, SLP, sample_from_prior, slp_from_decision_representative, estimate_Z_for_SLP_from_mcmc, estimate_Z_for_SLP_from_prior
 from .slp_gen import decision_representative_from_partial_trace
 from .variable_selector import VariableSelector
 from .gibbs import GibbsModel
 from typing import List, Dict, Optional, Tuple, Generator, Any, NamedTuple, Callable, Set
 import jax
-from .samplecontext import Model
 from abc import ABC, abstractmethod
 from .types import PRNGKey, Trace
 import numpyro.distributions as dist
@@ -241,6 +240,20 @@ class DCC_Result:
             if Z is not None:
                 self.Zs[slp] = Z
 
+    def get_samples_for_address_and_slp(self, address: str, slp: SLP, unstack_chains: bool = True):
+        Z_slp = self.Zs[slp]
+        Z = sum(z for _, z in self.Zs.items())
+        samples = self.samples[slp]
+        assert address in samples
+        samples_for_address = samples[address]
+        weigths_for_address = jax.lax.full_like(samples_for_address, Z_slp / Z)
+
+        if unstack_chains:
+            samples_for_address = _unstack_chains(samples_for_address)
+            weigths_for_address = _unstack_chains(weigths_for_address)
+
+        return samples_for_address, weigths_for_address
+
     def get_samples_for_address(self, address: str, unstack_chains: bool = True):
         undef_prob = 0.
         Z = sum(z for _, z in self.Zs.items())
@@ -320,7 +333,7 @@ def propose_new_slps_from_last_positions(slp: SLP, last_positions: Trace, active
         if not in_support_of_any_slp:
             new_slp = slp_from_decision_representative(slp.model, decision_representative)
             proposed_slps[new_slp] = 1
-            print(f"Proposed new slp {new_slp.short_repr()}", new_slp.branching_decisions.to_human_readable().splitlines()[-1])
+            print(f"Proposed new slp {new_slp.short_repr()}", new_slp.formatted())
 
 
     # def in_support_of_other_slp(other_slp: SLP):
@@ -408,8 +421,7 @@ def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Con
             did_mcmc = True
 
             mcmc_step = slp_to_mcmc_step[slp]
-            # logger.debug(f"Run mcmc for {slp.short_repr()} with decisions {slp.branching_decisions.to_human_readable()}")
-            print(f"Run mcmc for {slp.short_repr()}", slp.branching_decisions.to_human_readable().splitlines()[-1])
+            print(f"Run mcmc for {slp.short_repr()}", slp.formatted())
             
             init = get_initial_inference_state(slp, config.n_chains)
             rng_key, key1, key2, key3 = jax.random.split(rng_key, 4)
@@ -431,7 +443,7 @@ def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Con
             for proposed_slp, count in proposed_slps.items():
                 if count > 10:
                     add_to_active.append(proposed_slp)
-                    print(f"Add to active: slp {proposed_slp.short_repr()}", proposed_slp.branching_decisions.to_human_readable().splitlines()[-1])
+                    print(f"Add to active: slp {proposed_slp.short_repr()}", proposed_slp.formatted())
             for proposed_slp in add_to_active:
                 active_slps.append(proposed_slp)
                 slp_to_mcmc_step[proposed_slp] = get_inference_regime_mcmc_step_for_slp(proposed_slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)

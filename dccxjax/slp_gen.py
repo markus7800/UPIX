@@ -1,9 +1,9 @@
-from .samplecontext import GenerateCtx, LogprobCtx, Model, SampleContext
+from .samplecontext import GenerateCtx, LogprobCtx, SampleContext
 from .tracer import trace_branching, BranchingDecisions, SExpr, SVar, SConstant, SOp, BranchingTracer
 import jax
 import jax.numpy as jnp
 from jax.core import full_lower
-from typing import Dict, Callable, Set, NamedTuple, Tuple, Optional
+from typing import Dict, Callable, Set, NamedTuple, Tuple, Optional, Any
 from .types import Trace, PRNGKey
 from .utils import maybe_jit_warning, to_shaped_array_trace, to_shaped_arrays
 from jax.flatten_util import ravel_pytree
@@ -37,17 +37,60 @@ def replace_sexpr_with_svars(sexpr_object_ids_to_name: Dict[int, str], sexpr: SE
 
 
 
+class Model:
+    def __init__(self, f: Callable, args, kwargs) -> None:
+        self.f = f
+        self.args = args
+        self.kwargs = kwargs
+
+        self._jitted_log_prob = False
+        self.slp_formatter: Optional[Callable[["SLP"],str]] = None
+        self.slp_sort_key: Optional[Callable[["SLP"], Any]] = None
+        # self._log_prob = self.make_model_logprob()
+
+    def __call__(self) -> Any:
+        return self.f(*self.args, **self.kwargs)
+    
+    # not jitted
+    def log_prob(self, X: Trace) -> float:
+        with LogprobCtx(X) as ctx:
+            self.f(*self.args, **self.kwargs)
+            return ctx.log_prob
+
+    def __repr__(self) -> str:
+        return f"Model({self.f.__name__}, {self.args}, {self.kwargs})"
+    
+    def short_repr(self) -> str:
+        return f"Model({self.f.__name__} at {hex(id(self))})"
+    
+    def set_slp_formatter(self, formatter: Callable[["SLP"],str]):
+        self.slp_formatter = formatter
+
+    def set_slp_sort_key(self, key: Callable[["SLP"], Any]):
+        self.slp_sort_key = key
+
+def model(f):
+    def _f(*args, **kwargs):
+        return Model(f, args, kwargs)
+    return _f
+
 class SLP:
     model: Model
     decision_representative: Trace
     branching_decisions: BranchingDecisions
     branching_variables: Set[str]
 
-    def __init__(self, model: Model, decision_representative: Trace, branching_decisions: BranchingDecisions, branching_variables: Set[str]) -> None:
+    def __init__(self,
+                 model: Model,
+                 decision_representative: Trace,
+                 branching_decisions: BranchingDecisions,
+                 branching_variables: Set[str]) -> None:
+        
         self.model = model
         self.decision_representative = decision_representative
         self.branching_decisions = branching_decisions
         self.branching_variables = branching_variables
+
         self._jitted_path_indicator = False
         self._path_indicator = self.make_slp_path_indicator(branching_decisions)
         self._jitted_log_prob = False
@@ -118,6 +161,18 @@ class SLP:
         s = f"<SLP at {hex(id(self))}>"
         return s
     
+    def formatted(self) -> str:
+        if self.model.slp_formatter is not None:
+            return self.model.slp_formatter(self)
+        else:
+            return self.short_repr()
+        
+    def sort_key(self):
+        if self.model.slp_sort_key is not None:
+            return self.model.slp_sort_key(self)
+        else:
+            return self.short_repr()
+
     def path_indicator(self, X: Dict[str,jax.Array]):
         if self.decision_representative.keys() != X.keys():
             return False
@@ -130,6 +185,11 @@ class SLP:
             return -jnp.inf
         return self._log_prob(X)
     
+
+def HumanReadableDecisionsFormatter():
+    def _formatter(slp: SLP):
+        return slp.branching_decisions.to_human_readable()
+    return _formatter
 
 def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
     rng_keys = jax.random.split(rng_key, N)
