@@ -43,7 +43,7 @@ config = DCC_Config(
     n_samples_per_chain = 128,
     n_samples_for_Z_est = 10**6
 )
-result = dcc(m, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), jax.random.PRNGKey(0), config)
+result = dcc(m, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), block_update=False)), jax.random.PRNGKey(0), config)
 
 plot_histogram(result, "start")
 plt.show()

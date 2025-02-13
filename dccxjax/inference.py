@@ -4,6 +4,7 @@ from .variable_selector import VariableSelector
 from .gibbs import GibbsModel
 from typing import List, Dict, Optional, Tuple, Generator, Any, NamedTuple, Callable, Set
 import jax
+import jax.numpy as jnp
 from abc import ABC, abstractmethod
 from .types import PRNGKey, Trace
 import numpyro.distributions as dist
@@ -105,14 +106,49 @@ def rw_kernel(
     accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
     new_state = jax.lax.cond(accept, lambda _: MHState(proposed_value, proposed_log_prob), lambda _: current_state, operand=None)
     return new_state
+
+def rw_kernel_elementwise(
+    rng_key: PRNGKey,
+    current_state: MHState,
+    log_prob_fn: Callable[[Trace], float],
+    proposer: Callable[[jax.Array], dist.Distribution],
+    N: int
+):
+    def _body(i: int, current_position: Trace, current_log_prob: float, body_rng_key):
+        current_value_flat, unravel_fn = ravel_pytree(current_position)
+        sub_current_value_flat = current_value_flat[i]
+        proposal_dist = proposer(sub_current_value_flat)
+        body_rng_key, proposal_key = jax.random.split(body_rng_key)
+        sub_proposed_value_flat = proposal_dist.sample(proposal_key)
+        proposed_value_flat = current_value_flat.at[i].set(sub_proposed_value_flat)
+        proposed_value = unravel_fn(proposed_value_flat)
+        proposed_log_prob = log_prob_fn(proposed_value)
+
+        backward_dist = proposer(sub_proposed_value_flat)
+        Q = backward_dist.log_prob(sub_current_value_flat).sum() - proposal_dist.log_prob(sub_proposed_value_flat).sum()
+        P = proposed_log_prob - current_log_prob
+
+        body_rng_key, accept_key = jax.random.split(body_rng_key)
+        accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
+
+        return jax.lax.cond(accept, lambda _: (proposed_value, proposed_log_prob, body_rng_key), lambda _: (current_position, current_log_prob, body_rng_key), operand=None)
+
+
+    new_position, new_log_prob, _ = jax.lax.fori_loop(0, N, lambda i, a: _body(i, *a), (current_state.position, current_state.log_prob, rng_key))
     
+    return MHState(new_position, new_log_prob)
     
 class RandomWalk(InferenceAlgorithm):
-    def __init__(self, proposer: Callable[[jax.Array],dist.Distribution]) -> None:
+    def __init__(self, proposer: Callable[[jax.Array],dist.Distribution], block_update: bool = True) -> None:
         self.proposer = proposer
         self.jitted_kernel = False
+        self.block_update = block_update
 
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int) -> Kernel:
+        if not self.block_update:
+            X, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
+            assert all(values.shape == () for _, values in X.items())      
+
         @jax.jit
         def _rw_kernel(rng_key: PRNGKey, state: InferenceState) -> MHState:
             maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays(state))
@@ -120,7 +156,12 @@ class RandomWalk(InferenceAlgorithm):
             gibbs_model.set_Y(Y)
             log_prob = getattr(state, "log_prob") if hasattr(state, "log_prob") else gibbs_model.log_prob(X)
             current_mh_state = MHState(X, log_prob)
-            next_mh_state = rw_kernel(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer)
+            if self.block_update:
+                next_mh_state = rw_kernel(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer)
+            else:
+                next_mh_state = rw_kernel_elementwise(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer, len(gibbs_model.variables))
+
+
             next_mh_state = MHState(gibbs_model.combine_to_trace(next_mh_state.position, Y), next_mh_state.log_prob)
             return next_mh_state
         return _rw_kernel
@@ -151,7 +192,6 @@ class Gibbs(InferenceRegime):
                 yield from subregime
 
 
-# TODO: we could always vmap even if n_chains = 1 to simplify
 def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool):
     kernels: List[Kernel] = []
     for step_number, inference_step in enumerate(regime):
@@ -335,64 +375,6 @@ def propose_new_slps_from_last_positions(slp: SLP, last_positions: Trace, active
             proposed_slps[new_slp] = 1
             print(f"Proposed new slp {new_slp.short_repr()}", new_slp.formatted())
 
-
-    # def in_support_of_other_slp(other_slp: SLP):
-    #     assert len(other_slp.branching_variables.intersection(slp.branching_variables)) > 0
-    #     extended_jittered_positions: Trace = dict()
-    #     for addr in other_slp.decision_representative.keys():
-    #         if addr in jittered_positions:
-    #             extended_jittered_positions[addr] = jittered_positions[addr]
-    #         else:
-    #             extended_jittered_positions[addr] = jax.lax.broadcast(other_slp.decision_representative[addr], (n_chains,))
-    #     return jax.vmap(other_slp._path_indicator)(extended_jittered_positions)
-    
-    # in_support_of_any_slp = jax.lax.full((n_chains,), 0)
-    # for other_slp in active_slps:
-    #     if other_slp.decision_representative.keys() <= jittered_positions.keys():
-    #         # if we change values in trace, then some sample statements may not be encountered anymore
-    #         # to avoid adding the same SLP multiple times we check for subset instead of equality
-    #         in_support_of_any_slp = in_support_of_any_slp | jax.vmap(other_slp._path_indicator)(jittered_positions)
-    #         if in_support_of_any_slp.sum() == n_chains:
-    #             break
-
-    # for other_slp, count in proposed_slps.items():
-    #     # if other_slp.decision_representative.keys() <= jittered_positions.keys():
-    #     #     in_support_of_proposed_slp = jax.vmap(other_slp._path_indicator)(jittered_positions)
-    #     #     in_support_of_any_slp = in_support_of_any_slp | in_support_of_proposed_slp
-    #     #     # proposed_slps[other_slp] = count + in_support_of_any_slp.sum().item()
-    #     # else:
-    #     extended_jittered_positions: Trace = dict()
-    #     for addr in other_slp.branching_variables:
-    #         if addr in jittered_positions:
-    #             extended_jittered_positions[addr] = jittered_positions[addr]
-    #         else:
-    #             extended_jittered_positions[addr] = jax.lax.broadcast(other_slp.decision_representative[addr], (n_chains,))
-    #     in_support_of_proposed_slp = jax.vmap(other_slp._path_indicator)(extended_jittered_positions)
-    #     in_support_of_any_slp = in_support_of_any_slp | in_support_of_proposed_slp
-
-    # print(in_support_of_any_slp)
-            
-    # for i in range(n_chains):
-    #     if in_support_of_any_slp[i] == 0:
-    #         partial_X: Trace = {addr: values[i,:] if len(values.shape) == 2 else values[i] for addr, values in jittered_positions.items()}
-    #         decision_representative = decision_representative_from_partial_trace(slp.model, partial_X)
-    #         new_slp = slp_from_decision_representative(slp.model, decision_representative)
-
-    #         extended_jittered_positions: Trace = dict()
-    #         for addr in new_slp.branching_variables:
-    #             if addr in jittered_positions:
-    #                 extended_jittered_positions[addr] = jittered_positions[addr]
-    #             else:
-    #                 extended_jittered_positions[addr] = jax.lax.broadcast(new_slp.decision_representative[addr], (n_chains,))
-    #         in_support_of_proposed_slp = jax.vmap(new_slp._path_indicator)(extended_jittered_positions)
-    #         in_support_of_any_slp = in_support_of_any_slp | in_support_of_proposed_slp
-
-    #         proposed_slps[new_slp] = 0
-    #         print(f"Proposed new slp {new_slp.short_repr()}", new_slp.branching_decisions.to_human_readable().splitlines()[-1])
-    
-
-
-
 def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Config):
     all_slps: List[SLP] = []
     active_slps: List[SLP] = []
@@ -432,7 +414,8 @@ def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Con
             # shape of entries of all_positions is (n_samples_per_chain, n_chains, dim(var))
             # shape of entries of last_positions is (n_chains, dim(var))
 
-            Z = estimate_Z_for_SLP_from_prior(slp, config.n_samples_for_Z_est, key2)
+            Z, ess = estimate_Z_for_SLP_from_prior(slp, config.n_samples_for_Z_est, key2)
+            print(f"... estimated {Z=} with {ess=}")
             combined_result.add_samples(slp, all_positions if config.collect_intermediate_chain_states else last_positions, Z)
 
             # Z2 = estimate_Z_for_SLP_from_mcmc(slp, 1.0, config.n_samples_for_Z_est // (config.n_samples_per_chain * config.n_chains) + 1, key2, unstack_chains(all_positions))

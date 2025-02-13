@@ -193,8 +193,11 @@ def HumanReadableDecisionsFormatter():
 
 def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
     rng_keys = jax.random.split(rng_key, N)
-    weights = jax.vmap(slp._gen_likelihood_weight)(rng_keys)
-    return jnp.mean(jnp.exp(weights))
+    log_weights = jax.vmap(slp._gen_likelihood_weight)(rng_keys)
+    weights = jnp.exp(log_weights)
+    weights_sum = jnp.sum(weights)
+    ess = (weights_sum ** 2) / jnp.sum(weights ** 2)
+    return weights_sum / N, ess
 
 def estimate_Z_for_SLP_from_mcmc(slp: SLP, scale: float, samples_per_trace: int, seed: PRNGKey, Xs: Trace):
     @jax.jit

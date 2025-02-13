@@ -14,6 +14,7 @@ def make_gibbs_log_prob(slp: SLP, conditional_variables: Set[str]):
 
 class GibbsModel:
     def __init__(self, slp: SLP, variable_selector: VariableSelector, Y: Optional[Trace] = None) -> None:
+        self.slp = slp
         self.variables: Set[str] = set()
         self.conditional_variables: Set[str] = set()
         for address in slp.decision_representative.keys():

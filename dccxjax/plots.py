@@ -56,8 +56,8 @@ def plot_histogram_by_slp(result: DCC_Result, address: str, N: Optional[int] = N
 
         _ax = axs[i]
 
-        _ax[0].hist(samples, weights=weights, density=True, bins=100, alpha=0.5)
-        kde = jax.scipy.stats.gaussian_kde(samples, weights=weights)
+        _ax[0].hist(samples, density=True, bins=100, alpha=0.5)#, weights=weights)
+        kde = jax.scipy.stats.gaussian_kde(samples)#, weights=weights)
         xs = jax.numpy.linspace(samples.min(), samples.max(), 200)
         _ax[0].plot(xs, kde(xs), color="tab:blue")
         _ax[1].bar(["prob"],[result.Zs[slp] / Z])
@@ -69,9 +69,9 @@ def plot_histogram_by_slp(result: DCC_Result, address: str, N: Optional[int] = N
         _ax[1].set_ylim((0.,1.))
 
     
+    plt.tight_layout()
 
     fig.suptitle(f"Posterior of \"{address} per SLP\"")
-    plt.tight_layout()
 
     return fig
 
