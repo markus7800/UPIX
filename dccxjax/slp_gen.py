@@ -197,7 +197,8 @@ def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
     weights = jnp.exp(log_weights)
     weights_sum = jnp.sum(weights)
     ess = (weights_sum ** 2) / jnp.sum(weights ** 2)
-    return weights_sum / N, ess
+    frac_out_of_support = jnp.mean(jnp.isinf(log_weights))
+    return weights_sum / N, ess, frac_out_of_support
 
 def estimate_Z_for_SLP_from_mcmc(slp: SLP, scale: float, samples_per_trace: int, seed: PRNGKey, Xs: Trace):
     @jax.jit
@@ -213,10 +214,18 @@ def estimate_Z_for_SLP_from_mcmc(slp: SLP, scale: float, samples_per_trace: int,
     @jax.jit
     def _weight_sum_for_Xs(rng_key: PRNGKey):
         rng_keys = jax.random.split(rng_key, N)
-        return jnp.sum(jnp.exp(jax.vmap(_log_IS_weight)(rng_keys, Xs)))
+        log_weights = jax.vmap(_log_IS_weight)(rng_keys, Xs)
+        weights = jnp.exp(log_weights)
+        return jnp.sum(weights), jnp.sum(weights ** 2), jnp.sum(jnp.isinf(log_weights))
                        
-    weights = jax.vmap(_weight_sum_for_Xs)(jax.random.split(seed, samples_per_trace))
-    return jnp.sum(weights) / (N * samples_per_trace)
+    weights_sums, weights_squared_sums, out_of_supports = jax.vmap(_weight_sum_for_Xs)(jax.random.split(seed, samples_per_trace))
+
+    weights_sum = jnp.sum(weights_sums)
+    weights_squared_sum = jnp.sum(weights_squared_sums)
+    frac_out_of_support = jnp.sum(out_of_supports) / (N * samples_per_trace)
+
+    ess = (weights_sum ** 2) / weights_squared_sum
+    return weights_sum / (N * samples_per_trace), ess, frac_out_of_support
     
 
 class DecisionRepresentativeCtx(SampleContext):

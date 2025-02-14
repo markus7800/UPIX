@@ -30,7 +30,7 @@ def plot_histogram_by_slp(result: DCC_Result, address: str, N: Optional[int] = N
     if N is not None:
         slps = slps[:N]
 
-    fig, axs = plt.subplots(len(slps)+1,2,sharex="col",width_ratios=[0.9,0.1],figsize=(6.4,2.*(len(slps)+1)))
+    fig, axs = plt.subplots(len(slps)+1, 2, sharex="col", width_ratios=[0.9,0.1], figsize=(6.4, 2.*(len(slps)+1)), layout="constrained")
     Z = sum(z for _, z in result.Zs.items())
 
     samples, weights, undef_prob = result.get_samples_for_address(address, unstack_chains=True)
@@ -69,7 +69,7 @@ def plot_histogram_by_slp(result: DCC_Result, address: str, N: Optional[int] = N
         _ax[1].set_ylim((0.,1.))
 
     
-    plt.tight_layout()
+    # plt.tight_layout()
 
     fig.suptitle(f"Posterior of \"{address} per SLP\"")
 
@@ -77,16 +77,18 @@ def plot_histogram_by_slp(result: DCC_Result, address: str, N: Optional[int] = N
 
 
 def plot_trace(result: DCC_Result, address: str):
-    slp_samples = {slp: slp_samples[address] for slp, slp_samples in result.samples.items() if address in slp_samples}
+    slps = [slp for slp, slp_samples in result.samples.items() if address in slp_samples]
+    slps = sorted(slps, key=lambda slp: slp.sort_key())
     Z = sum(z for _, z in result.Zs.items())
 
-    fig, axs = plt.subplots(len(slp_samples),2,sharex="col", sharey="col", width_ratios=[0.5,1.])
+    fig, axs = plt.subplots(len(slps), 2, sharex="col", sharey="col", width_ratios=[0.5,1.], figsize=(6.4, 2*len(slps)), layout="constrained")
     
-    for i, (slp,samples) in enumerate(slp_samples.items()):
+    for i, slp in enumerate(slps):
+        samples = result.samples[slp][address]
         assert len(samples.shape) == 2 # multi-dim variables not plottable
         n_chains = samples.shape[1]
         
-        _axs = axs[i] if len(slp_samples) > 1 else axs
+        _axs = axs[i] if len(slps) > 1 else axs
         w = result.Zs[slp] / Z
         _axs[0].set_title(f"w = {w:.4f}")
         _axs[0].set_ylabel(slp.formatted())
@@ -103,6 +105,6 @@ def plot_trace(result: DCC_Result, address: str):
         # _axs[0].set_ylim([0.,None])
 
     fig.suptitle(f"Markov chains for \"{address}\"")
-    plt.tight_layout()
+    # plt.tight_layout()
 
     return fig

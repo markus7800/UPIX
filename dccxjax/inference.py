@@ -11,6 +11,8 @@ import numpyro.distributions as dist
 from .utils import maybe_jit_warning, to_shaped_arrays, logger
 from dataclasses import dataclass
 from time import time
+from .coordinate_ascent import coordinate_ascent
+import math
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -92,7 +94,7 @@ def rw_kernel(
 ):
     current_value_flat, unravel_fn = ravel_pytree(current_state.position)
     proposal_dist = proposer(current_value_flat)
-    rng_key, proposal_key = jax.random.split(rng_key)
+    proposal_key, accept_key = jax.random.split(rng_key)
     proposed_value_flat = proposal_dist.sample(proposal_key)
     proposed_value = unravel_fn(proposed_value_flat)
     proposed_log_prob = log_prob_fn(proposed_value)
@@ -101,11 +103,46 @@ def rw_kernel(
     Q = backward_dist.log_prob(current_value_flat).sum() - proposal_dist.log_prob(proposed_value_flat).sum()
     P = proposed_log_prob - current_state.log_prob
 
-
-    rng_key, accept_key = jax.random.split(rng_key)
     accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
     new_state = jax.lax.cond(accept, lambda _: MHState(proposed_value, proposed_log_prob), lambda _: current_state, operand=None)
     return new_state
+
+def rw_kernel_sparse(   
+    rng_key: PRNGKey,
+    current_state: MHState,
+    log_prob_fn: Callable[[Trace], float],
+    proposer: Callable[[jax.Array], dist.Distribution],
+    p: float # static
+):
+    current_value_flat, unravel_fn = ravel_pytree(current_state.position)
+
+    def step(current_value_flat: jax.Array, current_log_prob: jax.Array, step_key: PRNGKey):
+        proposal_dist = proposer(current_value_flat)
+        proposal_key, mask_key, accept_key = jax.random.split(step_key,3)
+        proposed_value_flat = proposal_dist.sample(proposal_key)
+
+        mask = jax.random.bernoulli(mask_key, p, proposed_value_flat.shape)
+        proposed_value_flat = jax.lax.select(mask, proposed_value_flat, current_value_flat)
+
+        proposed_value = unravel_fn(proposed_value_flat)
+        proposed_log_prob = log_prob_fn(proposed_value)
+
+        backward_dist = proposer(proposed_value_flat)
+        Q = backward_dist.log_prob(current_value_flat).sum() - proposal_dist.log_prob(proposed_value_flat).sum()
+        P = proposed_log_prob - current_log_prob
+
+        accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
+        new_value_flat = jax.lax.select(accept, proposed_value_flat, current_value_flat)
+        new_log_prob = jax.lax.select(accept, proposed_log_prob, current_log_prob)
+
+        return (new_value_flat, new_log_prob), None
+    
+    scan_keys = jax.random.split(rng_key, int(math.ceil(1./p)))
+    (last_position_flat, last_log_prob), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_value_flat, current_state.log_prob), scan_keys)
+
+
+    return MHState(unravel_fn(last_position_flat), last_log_prob)
+    
 
 def rw_kernel_elementwise(
     rng_key: PRNGKey,
@@ -139,15 +176,33 @@ def rw_kernel_elementwise(
     return MHState(new_position, new_log_prob)
     
 class RandomWalk(InferenceAlgorithm):
-    def __init__(self, proposer: Callable[[jax.Array],dist.Distribution], block_update: bool = True) -> None:
+    def __init__(self,
+                 proposer: Callable[[jax.Array],dist.Distribution],
+                 block_update: bool = True,
+                 sparse_frac: Optional[float] = None,
+                 sparse_numvar: Optional[int] = None
+                 ) -> None:
+        
         self.proposer = proposer
         self.jitted_kernel = False
         self.block_update = block_update
+        self.sparse_frac = sparse_frac
+        self.sparse_numvar = sparse_numvar
 
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int) -> Kernel:
         if not self.block_update:
             X, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
-            assert all(values.shape == () for _, values in X.items())      
+            assert all(values.shape == () for _, values in X.items())
+
+        sparse = self.sparse_frac is not None or self.sparse_numvar is not None
+        sparse_p = 0.
+        if sparse:
+            assert self.block_update
+            assert (self.sparse_frac is None) ^ (self.sparse_numvar is None)
+            if self.sparse_frac is not None:
+                sparse_p = self.sparse_frac
+            if self.sparse_numvar is not None:
+                sparse_p = self.sparse_numvar / len(gibbs_model.slp.decision_representative)            
 
         @jax.jit
         def _rw_kernel(rng_key: PRNGKey, state: InferenceState) -> MHState:
@@ -157,7 +212,10 @@ class RandomWalk(InferenceAlgorithm):
             log_prob = getattr(state, "log_prob") if hasattr(state, "log_prob") else gibbs_model.log_prob(X)
             current_mh_state = MHState(X, log_prob)
             if self.block_update:
-                next_mh_state = rw_kernel(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer)
+                if sparse:
+                    next_mh_state = rw_kernel_sparse(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer, sparse_p)
+                else:
+                    next_mh_state = rw_kernel(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer)
             else:
                 next_mh_state = rw_kernel_elementwise(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer, len(gibbs_model.variables))
 
@@ -192,7 +250,7 @@ class Gibbs(InferenceRegime):
                 yield from subregime
 
 
-def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool):
+def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool) -> Callable[[InferenceState,PRNGKey],Tuple[InferenceState,Optional[Trace]]]:
     kernels: List[Kernel] = []
     for step_number, inference_step in enumerate(regime):
         gibbs_model = GibbsModel(slp, inference_step.variable_selector)
@@ -214,7 +272,12 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_
 def get_initial_inference_state(slp: SLP, n_chains: int):
     # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
     # and X[i,m,n,...] = X[j,m,n,...] for all i, j
-    return InferenceState(jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), slp.decision_representative))
+    # return InferenceState(jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), slp.decision_representative))
+
+    result, lp = coordinate_ascent(slp, 0.1, 1000, n_chains, jax.random.PRNGKey(0))
+    assert not jnp.isinf(lp).any()
+    print("HERE", result["start"], lp)
+    return InferenceState(result)
 
     
 def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey, collect_states: bool = True):
@@ -247,12 +310,16 @@ def _unstack_chains(values: jax.Array):
     n_chains = shape[1]
     return jax.lax.reshape(values, (n_samples * n_chains, *var_dim))
 
-def unstack_chains(Xs: Trace):
+def unstack_chains(Xs: Trace) -> Trace:
     return jax.tree_map(_unstack_chains, Xs)
 
-def n_samples(Xs: Trace):
+def n_samples_for_stacked_chains(Xs: Trace):
     _, some_entry = next(iter(Xs.items()))
     return some_entry.shape[0] * some_entry.shape[1]
+
+def n_samples_for_unstacked_chains(Xs: Trace):
+    _, some_entry = next(iter(Xs.items()))
+    return some_entry.shape[0]
 
 
 class DCC_Result:
@@ -322,7 +389,7 @@ class DCC_Result:
     def n_samples(self):
         n = 0
         for _, samples in self.samples.items():
-            n += n_samples(samples)
+            n += n_samples_for_stacked_chains(samples)
         return n
 
 
@@ -414,23 +481,23 @@ def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Con
             # shape of entries of all_positions is (n_samples_per_chain, n_chains, dim(var))
             # shape of entries of last_positions is (n_chains, dim(var))
 
-            Z, ess = estimate_Z_for_SLP_from_prior(slp, config.n_samples_for_Z_est, key2)
+            Z, ess, _ = estimate_Z_for_SLP_from_prior(slp, config.n_samples_for_Z_est, key2)
             print(f"... estimated {Z=} with {ess=}")
             combined_result.add_samples(slp, all_positions if config.collect_intermediate_chain_states else last_positions, Z)
 
-            # Z2 = estimate_Z_for_SLP_from_mcmc(slp, 1.0, config.n_samples_for_Z_est // (config.n_samples_per_chain * config.n_chains) + 1, key2, unstack_chains(all_positions))
-            # print(f"{Z=} vs {Z2=}")
+            Z2, _, _ = estimate_Z_for_SLP_from_mcmc(slp, 1.0, config.n_samples_for_Z_est // (config.n_samples_per_chain * config.n_chains) + 1, key2, unstack_chains(all_positions))
+            print(f"{Z=} vs {Z2=}")
 
-            propose_new_slps_from_last_positions(slp, last_positions, active_slps, proposed_slps, config.n_chains, key3, 1.)
-            add_to_active: List[SLP] = []
-            for proposed_slp, count in proposed_slps.items():
-                if count > 10:
-                    add_to_active.append(proposed_slp)
-                    print(f"Add to active: slp {proposed_slp.short_repr()}", proposed_slp.formatted())
-            for proposed_slp in add_to_active:
-                active_slps.append(proposed_slp)
-                slp_to_mcmc_step[proposed_slp] = get_inference_regime_mcmc_step_for_slp(proposed_slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
-                del proposed_slps[proposed_slp]
+            # propose_new_slps_from_last_positions(slp, last_positions, active_slps, proposed_slps, config.n_chains, key3, 1.)
+            # add_to_active: List[SLP] = []
+            # for proposed_slp, count in proposed_slps.items():
+            #     if count > config.n_chains // 10:
+            #         add_to_active.append(proposed_slp)
+            #         print(f"Add to active: slp {proposed_slp.short_repr()}", proposed_slp.formatted())
+            # for proposed_slp in add_to_active:
+            #     active_slps.append(proposed_slp)
+            #     slp_to_mcmc_step[proposed_slp] = get_inference_regime_mcmc_step_for_slp(proposed_slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
+            #     del proposed_slps[proposed_slp]
 
 
         if not did_mcmc:
