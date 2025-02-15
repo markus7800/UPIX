@@ -72,7 +72,12 @@ for i, slp in enumerate(active_slps):
     n_samples_per_chain = 1_000
     keys = jax.random.split(rng_key, n_samples_per_chain)
 
-    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), sparse_numvar=2)), n_chains, True)
+    # regime = InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), sparse_numvar=2))
+    regime = Gibbs(
+        InferenceStep(PrefixSelector("step_"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.05), -1.,1.), sparse_numvar=2)),
+        InferenceStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.05), 0., 3.)))
+    )
+    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, True)
 
     init = InferenceState(position)
     last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
@@ -84,9 +89,9 @@ for i, slp in enumerate(active_slps):
     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(all_positions_unstacked)), jax.random.PRNGKey(0), all_positions_unstacked)
     print("\t", f" mcmc {Z=}, {ESS=}, {frac_out_of_support=}")
 
-#     plt.figure()
-#     plt.plot(all_positions["start"], alpha=0.5)
-# plt.show()
+    plt.figure()
+    plt.plot(all_positions["start"], alpha=0.5)
+plt.show()
 
 # config = DCC_Config(
 #     n_samples_from_prior = 10,
