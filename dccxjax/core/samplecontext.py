@@ -7,12 +7,7 @@ from ..types import Trace, PRNGKey
 
 __all__ = [
     "sample",
-    "distributions",
 ]
-
-distributions = dist
-
-dist.Distribution.set_default_validate_args(True)
 
 class SampleContext(ABC):
     @abstractmethod

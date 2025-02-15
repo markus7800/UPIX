@@ -1,5 +1,5 @@
 import jax
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Callable
 from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
 from ..types import Trace, PRNGKey
 from dataclasses import dataclass
@@ -93,7 +93,7 @@ class DCC_Result:
         return n
 
 
-def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Config):
+def dcc(model: Model, regime_factory: Callable[[SLP], InferenceRegime], rng_key: PRNGKey, config: DCC_Config):
     all_slps: List[SLP] = []
     active_slps: List[SLP] = []
     proposed_slps: Dict[SLP,int] = dict()
@@ -107,7 +107,7 @@ def dcc(model: Model, regime: InferenceRegime, rng_key: PRNGKey, config: DCC_Con
 
         if all(slp.path_indicator(X) == 0 for slp in active_slps):
             active_slps.append(slp)
-            slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
+            slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, regime_factory(slp), config.n_chains, config.collect_intermediate_chain_states)
 
     combined_result = DCC_Result(intermediate_states=config.collect_intermediate_chain_states)
     

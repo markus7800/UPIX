@@ -97,14 +97,14 @@ for i, slp in enumerate(active_slps):
     plt.plot(all_positions["start"], alpha=0.5)
 plt.show()
 
-# config = DCC_Config(
-#     n_samples_from_prior = 10,
-#     n_chains = 4,
-#     collect_intermediate_chain_states = True,
-#     n_samples_per_chain = 1024,
-#     n_samples_for_Z_est = 10**6
-# )
-# result = dcc(m, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.25), block_update=False)), jax.random.PRNGKey(0), config)
+config = DCC_Config(
+    n_samples_from_prior = 10,
+    n_chains = 4,
+    collect_intermediate_chain_states = True,
+    n_samples_per_chain = 1024,
+    n_samples_for_Z_est = 10**6
+)
+result = dcc(m, lambda _: InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.25), block_update=False)), jax.random.PRNGKey(0), config)
 
 # # plot_histogram(result, "start")
 # # plt.show()
