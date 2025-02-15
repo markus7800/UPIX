@@ -4,6 +4,10 @@ from .types import Trace
 import jax
 from jax.core import full_lower
 
+__all__ = [
+    "setup_logging",
+]
+
 logger = logging.getLogger("dccxjax")
 
 def setup_logging(level: int | str):

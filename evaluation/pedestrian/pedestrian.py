@@ -3,13 +3,14 @@ sys.path.insert(0, ".")
 
 from dccxjax import *
 import jax
+import jax.numpy as jnp
 import numpyro.distributions as dist
 from tqdm.auto import tqdm
+import matplotlib.pyplot as plt
 
 import logging
 setup_logging(logging.WARNING)
 
-@model
 def pedestrian():
     start = sample("start", dist.Uniform(0.,3.))
     position = start
@@ -24,7 +25,8 @@ def pedestrian():
     return start
 
 
-m: Model = pedestrian()
+m: Model = model(pedestrian)()
+
 def find_t_max(slp: SLP):
     t_max = 0
     for addr in slp.decision_representative.keys():
@@ -58,6 +60,8 @@ def distance_position(X: Trace):
             position += value
             distance += jax.lax.abs(value)
     return distance, position
+
+from dccxjax.infer.mcmc import InferenceState, get_inference_regime_mcmc_step_for_slp
 
 n_chains = 4
 for i, slp in enumerate(active_slps):

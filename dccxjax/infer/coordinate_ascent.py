@@ -1,9 +1,15 @@
-from .slp_gen import SLP
+from dccxjax.core import SLP
 import jax
-from .types import PRNGKey, Trace
+from ..types import PRNGKey, Trace
 from typing import NamedTuple
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
+
+__all__ = [
+    "coordinate_ascent",
+    "simulated_annealing",
+    "sparse_coordinate_ascent",
+]
 
 class CoordianteAscentState(NamedTuple):
     i: jax.Array
@@ -73,7 +79,7 @@ def simulated_annealing(slp: SLP, temp: float, n_iter: int, n_chains: int, seed:
         return next_state, unravel_fn(next_state.flat_position)
     
 
-    first_state = SimulatedAnnealingState(1, temp, flat_X, lp, flat_X, lp)
+    first_state = SimulatedAnnealingState(1, temp, flat_X, lp, flat_X, lp) # type: ignore
     first_states = jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), first_state)
     
     keys = jax.random.split(seed, (n_iter, n_chains))
@@ -106,7 +112,7 @@ def sparse_coordinate_ascent(slp: SLP, scale: float, p: float, n_iter: int, n_ch
         return SparseCoordianteAscentState(next_flat_position, next_log_prob), unravel_fn(next_flat_position)
     
 
-    first_state = SparseCoordianteAscentState(flat_X, lp)
+    first_state = SparseCoordianteAscentState(flat_X, lp) # type: ignore
     first_states = jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), first_state)
     
     keys = jax.random.split(seed, (n_iter * int(jax.lax.ceil(1. / p)), n_chains))

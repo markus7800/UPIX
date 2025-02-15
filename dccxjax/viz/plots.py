@@ -1,7 +1,13 @@
-from .inference import DCC_Result
+from dccxjax.infer.dcc import DCC_Result
 import matplotlib.pyplot as plt
 import jax
 from typing import Optional
+
+__all__ = [
+    "plot_histogram",
+    "plot_histogram_by_slp",
+    "plot_trace",
+]
 
 def plot_histogram(result: DCC_Result, address: str):
     samples, weights, undef_prob = result.get_samples_for_address(address, unstack_chains=True)

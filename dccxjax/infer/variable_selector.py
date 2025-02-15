@@ -2,6 +2,14 @@
 from abc import ABC, abstractmethod
 from typing import Callable, TypeVar, Dict
 
+__all__ = [
+    "AllVariables",
+    "SingleVariable",
+    "VariableSet",
+    "PrefixSelector",
+    "PredicateSelector"
+]
+
 class VariableSelector(ABC):
     @abstractmethod
     def contains(self, variable: str) -> bool:

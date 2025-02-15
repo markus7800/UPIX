@@ -1,8 +1,8 @@
-from .slp_gen import SLP
+from dccxjax.core import SLP
 from .variable_selector import VariableSelector
-from typing import Dict, Set, Optional, Tuple
+from typing import Set, Optional, Tuple
 import jax
-from .types import Trace
+from ..types import Trace
 
 
 def make_gibbs_log_prob(slp: SLP, conditional_variables: Set[str]):

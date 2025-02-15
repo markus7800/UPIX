@@ -1,41 +1,17 @@
-from .samplecontext import GenerateCtx, LogprobCtx, SampleContext
-from .tracer import trace_branching, BranchingDecisions, SExpr, SVar, SConstant, SOp, BranchingTracer
 import jax
 import jax.numpy as jnp
-from jax.core import full_lower
-from typing import Dict, Callable, Set, NamedTuple, Tuple, Optional, Any
-from .types import Trace, PRNGKey
-from .utils import maybe_jit_warning, to_shaped_array_trace, to_shaped_arrays
-from jax.flatten_util import ravel_pytree
-import numpyro.distributions as dist
+from typing import Callable, Optional, Any, Set, Tuple, Dict
+from .samplecontext import LogprobCtx, GenerateCtx
+from ..types import Trace, PRNGKey
+from ..utils import maybe_jit_warning, to_shaped_arrays, to_shaped_array_trace
+from .branching_tracer import BranchingDecisions, trace_branching
 
-def replace_constants_with_svars(constant_object_ids_to_name: Dict[int, str], sexpr: SExpr, variables: Set[str]) -> SExpr:
-    if isinstance(sexpr, SConstant):
-        if isinstance(sexpr.constant, jax.Array) and id(sexpr.constant) in constant_object_ids_to_name:
-            svar = SVar(constant_object_ids_to_name[id(sexpr.constant)])
-            variables.add(svar.name)
-            return svar
-        return sexpr
-    elif isinstance(sexpr, SOp):
-        sexpr.args = list(map(lambda arg: replace_constants_with_svars(constant_object_ids_to_name, arg, variables), sexpr.args))
-        return sexpr
-    else:
-        assert isinstance(sexpr, SVar)
-        return sexpr
-    
-def replace_sexpr_with_svars(sexpr_object_ids_to_name: Dict[int, str], sexpr: SExpr) -> SExpr:
-    if id(sexpr) in sexpr_object_ids_to_name:
-        return SVar(sexpr_object_ids_to_name[id(sexpr)])
-    if isinstance(sexpr, SConstant):
-        return sexpr
-    elif isinstance(sexpr, SOp):
-        sexpr.args = list(map(lambda arg: replace_sexpr_with_svars(sexpr_object_ids_to_name, arg), sexpr.args))
-        return sexpr
-    else:
-        assert isinstance(sexpr, SVar)
-        return sexpr
-
-
+__all__ = [
+    "Model",
+    "model",
+    "SLP",
+    "HumanReadableDecisionsFormatter"
+]
 
 class Model:
     def __init__(self, f: Callable, args, kwargs) -> None:
@@ -69,7 +45,7 @@ class Model:
     def set_slp_sort_key(self, key: Callable[["SLP"], Any]):
         self.slp_sort_key = key
 
-def model(f):
+def model(f:Callable):
     def _f(*args, **kwargs):
         return Model(f, args, kwargs)
     return _f
@@ -190,94 +166,3 @@ def HumanReadableDecisionsFormatter():
     def _formatter(slp: SLP):
         return slp.branching_decisions.to_human_readable()
     return _formatter
-
-def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
-    rng_keys = jax.random.split(rng_key, N)
-    log_weights = jax.vmap(slp._gen_likelihood_weight)(rng_keys)
-    weights = jnp.exp(log_weights)
-    weights_sum = jnp.sum(weights)
-    ess = (weights_sum ** 2) / jnp.sum(weights ** 2)
-    frac_out_of_support = jnp.mean(jnp.isinf(log_weights))
-    return weights_sum / N, ess, frac_out_of_support
-
-def estimate_Z_for_SLP_from_mcmc(slp: SLP, scale: float, samples_per_trace: int, seed: PRNGKey, Xs: Trace):
-    @jax.jit
-    def _log_IS_weight(rng_key: PRNGKey, X: Trace):
-        X_flat, unravel_fn = ravel_pytree(X)
-        Q = dist.Normal(X_flat, scale) # type: ignore
-        X_prime_flat = Q.sample(rng_key)
-        X_prime = unravel_fn(X_prime_flat)
-        return slp._log_prob(X_prime) - Q.log_prob(X_prime_flat).sum()
-    
-    _, some_entry = next(iter(Xs.items()))
-    N = some_entry.shape[0]
-    @jax.jit
-    def _weight_sum_for_Xs(rng_key: PRNGKey):
-        rng_keys = jax.random.split(rng_key, N)
-        log_weights = jax.vmap(_log_IS_weight)(rng_keys, Xs)
-        weights = jnp.exp(log_weights)
-        return jnp.sum(weights), jnp.sum(weights ** 2), jnp.sum(jnp.isinf(log_weights))
-                       
-    weights_sums, weights_squared_sums, out_of_supports = jax.vmap(_weight_sum_for_Xs)(jax.random.split(seed, samples_per_trace))
-
-    weights_sum = jnp.sum(weights_sums)
-    weights_squared_sum = jnp.sum(weights_squared_sums)
-    frac_out_of_support = jnp.sum(out_of_supports) / (N * samples_per_trace)
-
-    ess = (weights_sum ** 2) / weights_squared_sum
-    return weights_sum / (N * samples_per_trace), ess, frac_out_of_support
-    
-
-class DecisionRepresentativeCtx(SampleContext):
-    def __init__(self, partial_X: Trace, rng_key: PRNGKey) -> None:
-        self.rng_key = rng_key
-        self.partial_X = partial_X
-        self.X: Trace = dict()
-    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
-        if observed is not None:
-            return observed
-        if address in self.partial_X:
-            value = self.partial_X[address]
-        else:
-            self.rng_key, sample_key = jax.random.split(self.rng_key)
-            value = distribution.sample(sample_key)
-        self.X[address] = value
-        return value
-    
-def decision_representative_from_partial_trace(model: Model, partial_X: Trace, rng_key: PRNGKey):
-    with DecisionRepresentativeCtx(partial_X, rng_key) as ctx:
-        model()
-        return ctx.X
-
-
-def sample_from_prior(model: Model, rng_key: PRNGKey) -> Trace:
-    ctx = GenerateCtx(rng_key)
-    with ctx:
-        model()
-    return ctx.X
-
-
-def slp_from_decision_representative(model: Model, decision_representative: Trace) -> SLP:
-    def f(X: Trace):
-        with LogprobCtx(X) as ctx:
-            model()
-            return ctx.log_prob
-
-    branching_decisions = BranchingDecisions()
-    traced_f = trace_branching(f, branching_decisions)
-    traced_f(decision_representative)
-
-    sexpr_object_ids_to_name = {id(array): addr for addr, array in decision_representative.items()}
-    branching_variables: Set[str] = set()
-    branching_decisions.decisions = [(replace_constants_with_svars(sexpr_object_ids_to_name, sexpr, branching_variables), val) for sexpr, val in branching_decisions.decisions]
-
-
-    return SLP(model, decision_representative, branching_decisions, branching_variables)
-
-
-# assumes model has no branching
-def convert_model_to_SLP(model: Model) -> SLP:
-    X = sample_from_prior(model, jax.random.PRNGKey(0))
-    slp = slp_from_decision_representative(model, X)
-    assert len(slp.branching_decisions.decisions) == 0
-    return slp

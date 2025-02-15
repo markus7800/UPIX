@@ -2,9 +2,15 @@ import jax
 import numpyro.distributions as dist
 from typing import Any, Optional, Dict, Callable
 from abc import ABC, abstractmethod
-import jax._src.core as jax_core
-from .types import Trace, PRNGKey
-from .utils import maybe_jit_warning
+from ..types import Trace, PRNGKey
+
+
+__all__ = [
+    "sample",
+    "distributions",
+]
+
+distributions = dist
 
 dist.Distribution.set_default_validate_args(True)
 
@@ -56,6 +62,7 @@ class LogprobCtx(SampleContext):
         if observed is not None:
             self.log_prob += distribution.log_prob(observed).sum()
             return observed
+        assert distribution._validate_args
         value = self.X[address]
         self.log_prob += distribution.log_prob(value)
         return value
