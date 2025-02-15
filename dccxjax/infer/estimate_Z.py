@@ -3,7 +3,7 @@ from ..types import PRNGKey, Trace
 import jax
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
-import numpyro.distributions as dist
+import dccxjax.distributions as dist
 
 __all__ = [
     "estimate_Z_for_SLP_from_prior",

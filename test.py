@@ -1,6 +1,6 @@
 
 from dccxjax import *
-import numpyro.distributions as dist
+import dccxjax.distributions as dist
 import jax
 
 def test_if():

@@ -1,7 +1,7 @@
 import jax
 from typing import Callable, Dict, Optional
 from ..types import PRNGKey, Trace
-import numpyro.distributions as dist
+import dccxjax.distributions as dist
 from .mcmc import InferenceState, InferenceAlgorithm, Kernel
 from dataclasses import dataclass
 import math

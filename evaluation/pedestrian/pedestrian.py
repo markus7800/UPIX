@@ -4,7 +4,7 @@ sys.path.insert(0, ".")
 from dccxjax import *
 import jax
 import jax.numpy as jnp
-import numpyro.distributions as dist
+import dccxjax.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 

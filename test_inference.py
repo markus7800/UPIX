@@ -1,6 +1,6 @@
 #%%
 from dccxjax import *
-import numpyro.distributions as dist
+import dccxjax.distributions as dist
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
 from time import time

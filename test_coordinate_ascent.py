@@ -1,5 +1,5 @@
 from dccxjax import *
-import numpyro.distributions as dist
+import dccxjax.distributions as dist
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 

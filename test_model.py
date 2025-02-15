@@ -1,6 +1,6 @@
 from dccxjax import *
 import jax
-import numpyro.distributions as dist
+import dccxjax.distributions as dist
 
 @model
 def simple():

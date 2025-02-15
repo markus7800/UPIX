@@ -1,5 +1,5 @@
 import jax
-import numpyro.distributions as dist
+import dccxjax.distributions as dist
 from typing import Any, Optional, Dict, Callable
 from abc import ABC, abstractmethod
 from ..types import Trace, PRNGKey
