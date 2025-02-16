@@ -80,9 +80,34 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_
     
     return one_step
 
+class ProgressbarManager:
+    def __init__(self) -> None:
+        self.tqdm_bar: Optional[tqdm_auto] = None
+
+    def start_progress(self, num_samples: int):
+        self.tqdm_bar = tqdm_auto(range(num_samples), position=0)
+        self.tqdm_bar.set_description("Compiling... ", refresh=True)
+
+    def _init_tqdm(self):
+        if self.tqdm_bar is not None:
+            self.tqdm_bar.set_description(f"Running MCMC", refresh=True)
+            # t1 = time()
+            # tqdm_auto.write(f"Compile time {t1-t0:.3f}s")
+
+    def _update_tqdm(self, increment):
+        if self.tqdm_bar is not None:
+            increment = int(increment)
+            self.tqdm_bar.update(increment)
+
+    def _close_tqdm(self, increment):
+        if self.tqdm_bar is not None:
+            increment = int(increment)
+            self.tqdm_bar.update(increment)
+            self.tqdm_bar.close()
+            self.tqdm_bar = None
 
 # adapted form numpyro/util.py
-def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel) -> MCMCKernel:
+def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel) -> Tuple[ProgressbarManager,MCMCKernel]:
 
     if num_samples > 100:
         print_rate = int(num_samples / 100)
@@ -92,24 +117,10 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel) -> MCM
 
     remainder = num_samples % print_rate
 
-    tqdm_bar = tqdm_auto(range(num_samples), position=0)
-    tqdm_bar.set_description("Compiling... ", refresh=True)
 
+    progressbar_mngr = ProgressbarManager()
     # t0 = 0
 
-    def _init_tqdm():
-        tqdm_bar.set_description(f"Running MCMC", refresh=True)
-        # t1 = time()
-        # tqdm_auto.write(f"Compile time {t1-t0:.3f}s")
-
-    def _update_tqdm(increment):
-        increment = int(increment)
-        tqdm_bar.update(increment)
-
-    def _close_tqdm(increment):
-        increment = int(increment)
-        tqdm_bar.update(increment)
-        tqdm_bar.close()
     
     def _update_progress_bar(iter_num: jax.Array):
         # nonlocal t0
@@ -118,19 +129,19 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel) -> MCM
         iter_num = iter_num[0] + 1 # all chains are at the same iteration
         _ = jax.lax.cond(
             iter_num == 1,
-            lambda _: jax.experimental.io_callback(_init_tqdm, None),
+            lambda _: jax.experimental.io_callback(progressbar_mngr._init_tqdm, None),
             lambda _: None,
             operand=None,
         )
         _ = jax.lax.cond(
             iter_num % print_rate == 0,
-            lambda _: jax.experimental.io_callback(_update_tqdm, None, print_rate),
+            lambda _: jax.experimental.io_callback(progressbar_mngr._update_tqdm, None, print_rate),
             lambda _: None,
             operand=None,
         )
         _ = jax.lax.cond(
             iter_num == num_samples,
-            lambda _: jax.experimental.io_callback(_close_tqdm, None, remainder),
+            lambda _: jax.experimental.io_callback(progressbar_mngr._close_tqdm, None, remainder),
             lambda _: None,
             operand=None,
         )
@@ -139,7 +150,7 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel) -> MCM
         _update_progress_bar(state.iteration) # NOTE: we don't have to return something for this to work?
         return kernel(state, rng_key)
     
-    return wrapped_kernel
+    return progressbar_mngr, wrapped_kernel
 
 
 

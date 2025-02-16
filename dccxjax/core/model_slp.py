@@ -50,6 +50,55 @@ def model(f:Callable):
         return Model(f, args, kwargs)
     return _f
 
+def _make_slp_path_indicator(slp: "SLP", branching_decisions: BranchingDecisions) -> Callable[[Trace], bool]:
+    @jax.jit
+    def _path_indicator(X: Trace):
+        maybe_jit_warning(slp, "_jitted_path_indicator", "_path_indicator", slp.short_repr(), to_shaped_array_trace(X))
+
+        b = jnp.array(True)
+        for sexpr, val in branching_decisions.decisions:
+            b = b & (sexpr.eval(X) == val)
+        return b
+    return _path_indicator
+
+def _make_slp_log_prob(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
+    @jax.jit
+    def _log_prob(X: Trace):
+        maybe_jit_warning(slp, "_jitted_log_prob", "_slp_log_prob", slp.short_repr(), to_shaped_array_trace(X))
+                        
+        slp_model_logprob = trace_branching(model.log_prob, branching_decisions, retrace=True)
+        # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
+        # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
+        lp = slp_model_logprob(X)
+        return jax.lax.select(slp._path_indicator(X), lp, jax.lax.full_like(lp, -jnp.inf))
+
+    return _log_prob
+
+def _make_slp_log_prob_and_grad(slp: "SLP") -> Callable[[Trace], Tuple[float,Trace]]:
+    @jax.jit
+    def _grad_log_prob(X: Trace):
+        maybe_jit_warning(slp, "_jitted_grad_log_prob", "_slp_grad_log_prob", slp.short_repr(), to_shaped_array_trace(X))
+        return jax.value_and_grad(slp._log_prob)(X)
+    return _grad_log_prob
+
+def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], float]:
+    @jax.jit
+    def _gen_likelihood_weight(key: PRNGKey):
+        maybe_jit_warning(slp, "_jitted_gen_likelihood_weight", "slp_gen_likelihood_weight", slp.short_repr(), to_shaped_arrays(key))
+
+        # cannot do @jax.jit here because model can do branching and has to be controlled by trace_branching transformation, before jitting
+        def _gen_log_likelihood_and_X_from_prior(key: PRNGKey):
+            with GenerateCtx(key) as ctx:
+                model()
+                return ctx.log_likelihood, ctx.X
+                        
+        gen_log_likelihood_and_X_from_prior = trace_branching(_gen_log_likelihood_and_X_from_prior, branching_decisions, retrace=True)
+        log_likelihood, X = gen_log_likelihood_and_X_from_prior(key)
+        
+        return jax.lax.select(slp._path_indicator(X), log_likelihood, -jnp.inf)
+
+    return _gen_likelihood_weight
+
 class SLP:
     model: Model
     decision_representative: Trace
@@ -68,62 +117,13 @@ class SLP:
         self.branching_variables = branching_variables
 
         self._jitted_path_indicator = False
-        self._path_indicator = self.make_slp_path_indicator(branching_decisions)
+        self._path_indicator = _make_slp_path_indicator(self, branching_decisions)
         self._jitted_log_prob = False
-        self._log_prob = self.make_slp_log_prob(model, branching_decisions)
+        self._log_prob = _make_slp_log_prob(self, model, branching_decisions)
         self._jitted_grad_log_prob = False
-        self._grad_log_prob = self.make_slp_log_prob_and_grad()
+        self._grad_log_prob = _make_slp_log_prob_and_grad(self)
         self._jitted_gen_likelihood_weight = False
-        self._gen_likelihood_weight = self.make_slp_gen_likelihood_weight(model, branching_decisions)
-
-    def make_slp_path_indicator(self, branching_decisions: BranchingDecisions) -> Callable[[Trace], bool]:
-        @jax.jit
-        def _path_indicator(X: Trace):
-            maybe_jit_warning(self, "_jitted_path_indicator", "_path_indicator", self.short_repr(), to_shaped_array_trace(X))
-
-            b = jnp.array(True)
-            for sexpr, val in branching_decisions.decisions:
-                b = b & (sexpr.eval(X) == val)
-            return b
-        return _path_indicator
-
-    def make_slp_log_prob(self, model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
-        @jax.jit
-        def _log_prob(X: Trace):
-            maybe_jit_warning(self, "_jitted_log_prob", "_slp_log_prob", self.short_repr(), to_shaped_array_trace(X))
-                            
-            slp_model_logprob = trace_branching(model.log_prob, branching_decisions, retrace=True)
-            # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
-            # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
-            lp = slp_model_logprob(X)
-            return jax.lax.select(self._path_indicator(X), lp, jax.lax.full_like(lp, -jnp.inf))
-   
-        return _log_prob
-    
-    def make_slp_log_prob_and_grad(self) -> Callable[[Trace], Tuple[float,Trace]]:
-        @jax.jit
-        def _grad_log_prob(X: Trace):
-            maybe_jit_warning(self, "_jitted_grad_log_prob", "_slp_grad_log_prob", self.short_repr(), to_shaped_array_trace(X))
-            return jax.value_and_grad(self._log_prob)(X)
-        return _grad_log_prob
-    
-    def make_slp_gen_likelihood_weight(self, model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], float]:
-        @jax.jit
-        def _gen_likelihood_weight(key: PRNGKey):
-            maybe_jit_warning(self, "_jitted_gen_likelihood_weight", "slp_gen_likelihood_weight", self.short_repr(), to_shaped_arrays(key))
-
-            # cannot do @jax.jit here because model can do branching and has to be controlled by trace_branching transformation, before jitting
-            def _gen_log_likelihood_and_X_from_prior(key: PRNGKey):
-                with GenerateCtx(key) as ctx:
-                    model()
-                    return ctx.log_likelihood, ctx.X
-                            
-            gen_log_likelihood_and_X_from_prior = trace_branching(_gen_log_likelihood_and_X_from_prior, branching_decisions, retrace=True)
-            log_likelihood, X = gen_log_likelihood_and_X_from_prior(key)
-            
-            return jax.lax.select(self._path_indicator(X), log_likelihood, -jnp.inf)
-   
-        return _gen_likelihood_weight
+        self._gen_likelihood_weight = _make_slp_gen_likelihood_weight(self, model, branching_decisions)
 
     def __repr__(self) -> str:
         s = "SLP {"

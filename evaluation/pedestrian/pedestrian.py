@@ -8,6 +8,7 @@ import dccxjax.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List
+from time import time
 
 import logging
 setup_logging(logging.WARNING)
@@ -15,6 +16,7 @@ setup_logging(logging.WARNING)
 compilation_time_tracker = CompilationTimeTracker()
 jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
 
+t0 = time()
 
 def pedestrian():
     start = sample("start", dist.Uniform(0.,3.))
@@ -80,7 +82,8 @@ for i, slp in enumerate(active_slps):
     log_prob.block_until_ready()
     
     n_samples_per_chain = 1_000
-    keys = jax.random.split(rng_key, n_samples_per_chain)
+    rng_key, key = jax.random.split(rng_key)
+    keys = jax.random.split(key, n_samples_per_chain)
 
     # regime = InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), sparse_numvar=2))
     regime = Gibbs(
@@ -88,9 +91,16 @@ for i, slp in enumerate(active_slps):
         InferenceStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.05), 0., 3.)))
     )
     mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, True)
-    mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
+    progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
 
     init = InferenceState(jax.lax.broadcast(0, (n_chains,)), position)
+    progressbar_mng.start_progress(n_samples_per_chain)
+    last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
+    last_state.iteration.block_until_ready()
+
+    rng_key, key = jax.random.split(rng_key)
+    keys = jax.random.split(key, n_samples_per_chain)
+    progressbar_mng.start_progress(n_samples_per_chain)
     last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
     last_state.iteration.block_until_ready()
 
@@ -105,7 +115,11 @@ for i, slp in enumerate(active_slps):
 #     plt.plot(all_positions["start"], alpha=0.5)
 # plt.show()
 
-print(f"Total compilation time: {compilation_time_tracker.get_total_compilation_time_secs():.3f}s")
+t1 = time()
+
+print(f"Total time: {t1-t0:.3f}s")
+comp_time = compilation_time_tracker.get_total_compilation_time_secs()
+print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
 
 # config = DCC_Config(
 #     n_samples_from_prior = 10,
