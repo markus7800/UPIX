@@ -4,7 +4,7 @@ from jax.tree_util import tree_flatten, tree_unflatten
 from typing import List, Tuple, Any, Optional, Callable
 from .sexpr import SExpr, SConstant, SOp
 
-__all_ = [
+__all__ = [
     "branching"
 ]
 

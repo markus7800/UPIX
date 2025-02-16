@@ -44,7 +44,7 @@ def mh_kernel(
 
     rng_key, accept_key = jax.random.split(rng_key)
     accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
-    new_state = jax.lax.cond(accept, lambda _: MHState(proposed_position, proposed_log_prob), lambda _: current_state, operand=None)
+    new_state = jax.lax.cond(accept, lambda _: MHState(current_state.iteration, proposed_position, proposed_log_prob), lambda _: current_state, operand=None)
     return new_state
 
 def gaussian_random_walk(scale: float):
@@ -91,7 +91,7 @@ def rw_kernel(
     P = proposed_log_prob - current_state.log_prob
 
     accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
-    new_state = jax.lax.cond(accept, lambda _: MHState(proposed_value, proposed_log_prob), lambda _: current_state, operand=None)
+    new_state = jax.lax.cond(accept, lambda _: MHState(current_state.iteration, proposed_value, proposed_log_prob), lambda _: current_state, operand=None)
     return new_state
 
 def rw_kernel_sparse(   
@@ -128,7 +128,7 @@ def rw_kernel_sparse(
     (last_position_flat, last_log_prob), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_value_flat, current_state.log_prob), scan_keys) # type: ignore TODO
 
 
-    return MHState(unravel_fn(last_position_flat), last_log_prob)  # type: ignore TODO
+    return MHState(current_state.iteration, unravel_fn(last_position_flat), last_log_prob)  # type: ignore TODO
     
 
 def rw_kernel_elementwise(
@@ -160,7 +160,7 @@ def rw_kernel_elementwise(
 
     new_position, new_log_prob, _ = jax.lax.fori_loop(0, N, lambda i, a: _body(i, *a), (current_state.position, current_state.log_prob, rng_key))
     
-    return MHState(new_position, new_log_prob)
+    return MHState(current_state.iteration, new_position, new_log_prob)
     
 class RandomWalk(InferenceAlgorithm):
     def __init__(self,
@@ -197,7 +197,7 @@ class RandomWalk(InferenceAlgorithm):
             X, Y = gibbs_model.split_trace(state.position)
             gibbs_model.set_Y(Y)
             log_prob = getattr(state, "log_prob") if hasattr(state, "log_prob") else gibbs_model.log_prob(X)
-            current_mh_state = MHState(X, log_prob)
+            current_mh_state = MHState(state.iteration, X, log_prob)
             if self.block_update:
                 if sparse:
                     next_mh_state = rw_kernel_sparse(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer, sparse_p)
@@ -207,7 +207,7 @@ class RandomWalk(InferenceAlgorithm):
                 next_mh_state = rw_kernel_elementwise(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer, len(gibbs_model.variables))
 
 
-            next_mh_state = MHState(gibbs_model.combine_to_trace(next_mh_state.position, Y), next_mh_state.log_prob)
+            next_mh_state = MHState(state.iteration, gibbs_model.combine_to_trace(next_mh_state.position, Y), next_mh_state.log_prob)
             return next_mh_state
         return _rw_kernel
     
