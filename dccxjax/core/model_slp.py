@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from typing import Callable, Optional, Any, Set, Tuple, Dict
-from .samplecontext import LogprobCtx, GenerateCtx
+from .samplecontext import LogprobCtx, GenerateCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
 from ..types import Trace, PRNGKey
 from ..utils import maybe_jit_warning, to_shaped_arrays, to_shaped_array_trace
 from .branching_tracer import BranchingDecisions, trace_branching
@@ -74,12 +74,48 @@ def _make_slp_log_prob(slp: "SLP", model: Model, branching_decisions: BranchingD
 
     return _log_prob
 
+
 def _make_slp_log_prob_and_grad(slp: "SLP") -> Callable[[Trace], Tuple[float,Trace]]:
     @jax.jit
     def _grad_log_prob(X: Trace):
         maybe_jit_warning(slp, "_jitted_grad_log_prob", "_slp_grad_log_prob", slp.short_repr(), to_shaped_array_trace(X))
         return jax.value_and_grad(slp._log_prob)(X)
     return _grad_log_prob
+
+def _make_slp_unconstrained_log_prob(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Tuple[float, Trace]]:
+    @jax.jit
+    def _unconstrained_log_prob(X_unconstrained: Trace):
+        maybe_jit_warning(slp, "_jitted_unconstrained_log_prob", "_slp_unconstrained_log_prob", slp.short_repr(), to_shaped_array_trace(X_unconstrained))
+        
+        def _unconstrained_log_prob_with_ctx(_X_unconstrained: Trace):
+            with UnconstrainedLogprobCtx(_X_unconstrained) as ctx:
+                model()
+                return ctx.log_prob, ctx.X_constrained
+
+        traced_f = trace_branching(_unconstrained_log_prob_with_ctx, branching_decisions, retrace=True)
+        
+        log_prob, X_constrained = traced_f(X_unconstrained)
+
+        return jax.lax.select(slp._path_indicator(X_constrained), log_prob, jax.lax.full_like(log_prob, -jnp.inf)), X_constrained
+
+    return _unconstrained_log_prob
+
+# def _make_slp_transform_unconstrained_to_support(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Trace]:
+#     # this is not expected to be called often, and thus not jitted to save (?) compile time
+#     # vmap does not require jit
+#     def _transform_unconstrained_to_support(X_unconstrained: Trace):
+#         def _transform_unconstrained_to_support_with_ctx(_X_unconstrained: Trace):
+#             with TransformToUnconstrainedCtx(_X_unconstrained) as ctx:
+#                 model()
+#                 return ctx.X_unconstrained
+
+#         traced_f = trace_branching(_transform_unconstrained_to_support_with_ctx, branching_decisions, retrace=True)
+        
+#         X_unconstrained = traced_f(X_unconstrained)
+
+#         return X_unconstrained
+    
+#     return _transform_unconstrained_to_support
 
 def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], float]:
     @jax.jit
@@ -118,12 +154,23 @@ class SLP:
 
         self._jitted_path_indicator = False
         self._path_indicator = _make_slp_path_indicator(self, branching_decisions)
+
         self._jitted_log_prob = False
         self._log_prob = _make_slp_log_prob(self, model, branching_decisions)
+
         self._jitted_grad_log_prob = False
         self._grad_log_prob = _make_slp_log_prob_and_grad(self)
+
         self._jitted_gen_likelihood_weight = False
         self._gen_likelihood_weight = _make_slp_gen_likelihood_weight(self, model, branching_decisions)
+
+        self._jitted_unconstrained_log_prob = False
+        self._unconstrained_log_prob = _make_slp_unconstrained_log_prob(self, model, branching_decisions)
+
+        # this is not jitted
+        # self._transform_unconstrained_to_support = _make_slp_transform_unconstrained_to_support(self, model, branching_decisions)
+
+        self.is_discrete_map: Optional[Dict[str,bool]] = None
 
     def __repr__(self) -> str:
         s = "SLP {"
@@ -149,18 +196,38 @@ class SLP:
         else:
             return self.short_repr()
 
-    def path_indicator(self, X: Dict[str,jax.Array]):
+    def path_indicator(self, X: Trace):
         if self.decision_representative.keys() != X.keys():
             return False
         else:
             return self._path_indicator(X)
 
-    
-    def log_prob(self, X: Dict[str,jax.Array]):
+    def log_prob(self, X: Trace):
         if self.decision_representative.keys() != X.keys():
             return -jnp.inf
         return self._log_prob(X)
     
+    def unconstrained_log_prob(self, X_unconstrained: Trace) -> Tuple[float, Trace]:
+        if self.decision_representative.keys() != X_unconstrained.keys():
+            return -jnp.inf, self.transform_to_constrained(X_unconstrained)
+        return self._unconstrained_log_prob(X_unconstrained)
+    
+    def transform_to_constrained(self, X_unconstrained: Trace) -> Trace:
+        with TransformToConstrainedCtx(X_unconstrained) as ctx:
+            self.model()
+            return ctx.X_constrained
+        
+    def transform_to_unconstrained(self, X: Trace) -> Trace:
+        with TransformToUnconstrainedCtx(X) as ctx:
+            self.model()
+            return ctx.X_unconstrained
+        
+    def get_is_discrete_map(self):
+        if self.is_discrete_map is None:
+            with CollectDistributionTypesCtx(self.decision_representative) as ctx:
+                self.model()
+                self.is_discrete_map = ctx.is_discrete
+        return self.is_discrete_map
 
 def HumanReadableDecisionsFormatter():
     def _formatter(slp: SLP):

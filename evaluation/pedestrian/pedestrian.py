@@ -55,9 +55,21 @@ for _ in tqdm(range(1_000)):
 
     if all(slp.path_indicator(X) == 0 for slp in active_slps):
         active_slps.append(slp)
+
         # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
 active_slps = sorted(active_slps, key=m.slp_sort_key)
 active_slps = active_slps[:10]
+
+slp = active_slps[4]
+print(slp.get_is_discrete_map())
+X_unconstrained = slp.transform_to_unconstrained(slp.decision_representative)
+print("decision_representative", slp.decision_representative)
+print("X_unconstrained", X_unconstrained)
+lp, X_constrained = slp.unconstrained_log_prob(X_unconstrained)
+print(lp, X_constrained)
+print("X_constrained", slp.transform_to_constrained(X_unconstrained))
+
+exit()
 
 def distance_position(X: Trace):
     position = X["start"]

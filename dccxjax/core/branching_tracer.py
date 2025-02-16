@@ -1,7 +1,7 @@
 import jax
 import jax._src.core as jax_core
 from jax.tree_util import tree_flatten, tree_unflatten
-from typing import List, Tuple, Any, Optional, Callable
+from typing import List, Tuple, Any, Optional, Callable, TypeVar
 from .sexpr import SExpr, SConstant, SOp
 
 __all__ = [
@@ -134,9 +134,9 @@ class BranchingTrace(jax_core.Trace):
             # print("out1 =", out, out_tracer)
         return out_tracer
 
-
-def trace_branching(f: Callable, branching_decisions: BranchingDecisions, retrace: bool = False):
-    def _f(*args):
+RET_TYPE = TypeVar("RET_TYPE")
+def trace_branching(f: Callable[..., RET_TYPE], branching_decisions: BranchingDecisions, retrace: bool = False):
+    def _f(*args) -> RET_TYPE:
         with jax_core.take_current_trace() as parent_trace:
             trace = BranchingTrace(parent_trace, branching_decisions, retrace)
             with jax_core.set_current_trace(trace):
