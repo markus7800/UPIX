@@ -19,6 +19,7 @@ __all__ = [
     "unstack_chains",
     "n_samples_for_stacked_chains",
     "n_samples_for_unstacked_chains",
+    "mcmc",
 ]
 
 @jax.tree_util.register_dataclass

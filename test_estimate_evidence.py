@@ -3,6 +3,8 @@ from dccxjax import *
 import dccxjax.distributions as dist
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+from typing import List
+from dccxjax.types import PRNGKey
 
 import logging
 setup_logging(logging.WARNING)
@@ -84,7 +86,7 @@ config = DCC_Config(
     n_samples_per_chain = 1000,
     n_samples_for_Z_est = 10**6
 )
-result = dcc(m, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), block_update=False)), jax.random.PRNGKey(0), config)
+result = dcc(m, lambda slp: InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), block_update=False)), jax.random.PRNGKey(0), config)
 # exit()
 # %%
 plot_histogram(result, "u")
