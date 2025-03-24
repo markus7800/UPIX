@@ -60,16 +60,16 @@ for _ in tqdm(range(1_000)):
 active_slps = sorted(active_slps, key=m.slp_sort_key)
 active_slps = active_slps[:10]
 
-slp = active_slps[4]
-print(slp.get_is_discrete_map())
-X_unconstrained = slp.transform_to_unconstrained(slp.decision_representative)
-print("decision_representative", slp.decision_representative)
-print("X_unconstrained", X_unconstrained)
-lp, X_constrained = slp.unconstrained_log_prob(X_unconstrained)
-print(lp, X_constrained)
-print("X_constrained", slp.transform_to_constrained(X_unconstrained))
+# slp = active_slps[4]
+# print(slp.get_is_discrete_map())
+# X_unconstrained = slp.transform_to_unconstrained(slp.decision_representative)
+# print("decision_representative", slp.decision_representative)
+# print("X_unconstrained", X_unconstrained)
+# lp, X_constrained = slp.unconstrained_log_prob(X_unconstrained)
+# print(lp, X_constrained)
+# print("X_constrained", slp.transform_to_constrained(X_unconstrained))
 
-exit()
+# exit()
 
 def distance_position(X: Trace):
     position = X["start"]
@@ -110,18 +110,31 @@ for i, slp in enumerate(active_slps):
     last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
     last_state.iteration.block_until_ready()
 
-    rng_key, key = jax.random.split(rng_key)
-    keys = jax.random.split(key, n_samples_per_chain)
-    progressbar_mng.start_progress(n_samples_per_chain)
-    last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
-    last_state.iteration.block_until_ready()
+    # rng_key, key = jax.random.split(rng_key)
+    # keys = jax.random.split(key, n_samples_per_chain)
+    # progressbar_mng.start_progress(n_samples_per_chain)
+    # last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
+    # last_state.iteration.block_until_ready()
 
-    # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.PRNGKey(0))
-    # print("\t", f"prior {Z=}, {ESS=}, {frac_out_of_support=}")
-    # all_positions_unstacked = unstack_chains(all_positions)
+    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.PRNGKey(0))
+    print("\t", f"prior {Z=}, {ESS=}, {frac_out_of_support=}")
 
-    # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(all_positions_unstacked)), jax.random.PRNGKey(0), all_positions_unstacked)
-    # print("\t", f" mcmc {Z=}, {ESS=}, {frac_out_of_support=}")
+    position = jax.tree_map(lambda x: jax.lax.broadcast(x, (1,)), position)
+    positions_unstacked = unstack_chains(position)
+    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked)), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked)
+    print("\t", f" MLE constrained {Z=}, {ESS=}, {frac_out_of_support=}")
+
+    positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked)
+    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked_unconstrained)), jax.random.PRNGKey(0), Xs_unconstrained=positions_unstacked_unconstrained)
+    print("\t", f" MLE unconstrained {Z=}, {ESS=}, {frac_out_of_support=}")
+
+    all_positions_unstacked = unstack_chains(all_positions)
+    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(all_positions_unstacked)), jax.random.PRNGKey(0), Xs_constrained=all_positions_unstacked)
+    print("\t", f" MCMC constrained {Z=}, {ESS=}, {frac_out_of_support=}")
+
+    all_positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(all_positions_unstacked)
+    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(all_positions_unstacked_unconstrained)), jax.random.PRNGKey(0), Xs_unconstrained=all_positions_unstacked_unconstrained)
+    print("\t", f" MCMC unconstrained {Z=}, {ESS=}, {frac_out_of_support=}")
 
 #     plt.figure()
 #     plt.plot(all_positions["start"], alpha=0.5)

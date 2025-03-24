@@ -2,7 +2,7 @@ import jax
 import jax._src.core as jax_core
 from jax.tree_util import tree_flatten, tree_unflatten
 from typing import List, Tuple, Any, Optional, Callable, TypeVar
-from .sexpr import SExpr, SConstant, SOp
+from .sexpr import SExpr, SConstant, SOp, primitive_name
 
 __all__ = [
     "branching"
@@ -51,12 +51,19 @@ class BranchingTracer(jax_core.Tracer):
         if self._trace.retrace:
             _, b = decisions[self._trace.decision_cnt]
             self._trace.decision_cnt += 1
+
+            # self.val is tracer of parent trace
+            with jax_core.set_current_trace(self._trace.parent_trace):
+                #print(f"{self.val=} {concrete_val=} {self.val == concrete_val} {self._trace.path_condition=}")
+                self._trace.path_condition = self._trace.path_condition & (self.val == b)
+
             return b
         else:
             concrete_val = jax_core.to_concrete_value(self.val)
             assert concrete_val is not None
             b = concrete_val
             decisions.append((self.sexpr, b))
+
             return b
 
     def __bool__(self):
@@ -69,8 +76,11 @@ class BranchingTracer(jax_core.Tracer):
         return jax_core.full_lower(self.val)
     
 
-def branching(tracer: BranchingTracer):
-    return tracer._branching()
+def branching(a: jax.typing.ArrayLike):
+    if isinstance(a, BranchingTracer):
+        return a._branching()
+    else:
+        return a
     
 # op(tracer) -> op(tracer.aval)
 # setattr(tracer, f"__{operator_name}__", _forward_operator_to_aval(operator_name)) for operator_name in _array_operators in _set_tracer_aval_forwarding(tracer)
@@ -107,18 +117,19 @@ def maybe_branching_tracer(trace: "BranchingTrace", val, sexpr: Optional[SExpr] 
 # -> lower(t2_tracer) ~> t1_tracer
 # t2_tracer(t1_tracer(val))
 # -> process_primitive may call parent_trace.process_primitive
-# -> t2_trace.process_primitive may call t1_trace.process_primitive
+# -> t2_trace.process_primitive may call t1_trace.process_primitive 
 
 class BranchingTrace(jax_core.Trace):
     def __init__(self, parent_trace, branching_decisions: BranchingDecisions, retrace: bool) -> None:
         # print("parent_trace of", self, "is", parent_trace)
         self.parent_trace = parent_trace
         self.branching_decisions = branching_decisions
+        self.path_condition = True
         self.retrace = retrace
         self.decision_cnt = 0
 
     def process_primitive(self, primitive: jax_core.Primitive, tracers, params):
-        # print("process_primitive", primitive_name(primitive, params), tracers)
+        print("process_primitive", primitive_name(primitive, params), tracers)
         # print(params)
         args = [tracer.val if isinstance(tracer, BranchingTracer) else tracer for tracer in tracers]
         # print("args =", args)
@@ -133,21 +144,47 @@ class BranchingTrace(jax_core.Trace):
             out_tracer = maybe_branching_tracer(self, out, sexpr=sop)
             # print("out1 =", out, out_tracer)
         return out_tracer
+    
+    def process_custom_jvp_call(self, primitive: jax_core.Primitive, fun, jvp, tracers, *, symbolic_zeros):
+        print(primitive)
+        print(fun)
+        print(jvp)
+        args = [tracer.val if isinstance(tracer, BranchingTracer) else tracer for tracer in tracers]
+        sargs = [tracer.sexpr if isinstance(tracer, BranchingTracer) else SConstant(tracer) for tracer in tracers]
+        params = dict(symbolic_zeros=symbolic_zeros)
+        out = primitive.bind_with_trace(self.parent_trace, (fun, jvp) + tuple(args), params)
+        sop = SOp(primitive, [SConstant(fun), SConstant(jvp)] + sargs, params)
+        assert primitive.multiple_results
+        out_tracer = [maybe_branching_tracer(self, o, sexpr=sop) for o in out]
+        return out_tracer
+
 
 RET_TYPE = TypeVar("RET_TYPE")
-def trace_branching(f: Callable[..., RET_TYPE], branching_decisions: BranchingDecisions, retrace: bool = False):
-    def _f(*args) -> RET_TYPE:
+def execute_tracing_with_trace(trace: BranchingTrace, f: Callable[..., RET_TYPE], args) -> RET_TYPE:
+    with jax_core.set_current_trace(trace):
+        in_flat, in_tree = tree_flatten(args)
+        in_flat = map(lambda x: maybe_branching_tracer(trace, x), in_flat)
+        # print("in_tree =", in_tree)
+        # print("in_flat =", in_flat)
+        in_tracers = tree_unflatten(in_tree, in_flat)
+        out = f(*in_tracers)
+        out_flat, out_tree = tree_flatten(out)
+        out_flat = list(map(lambda x: x.val if isinstance(x, BranchingTracer) else x, out_flat))
+        # print("out_flat =", out_flat)
+        out_unflat = tree_unflatten(out_tree, out_flat)
+        return out_unflat
+
+def retrace_branching(f: Callable[..., RET_TYPE], branching_decisions: BranchingDecisions):
+    def _f(*args) -> Tuple[RET_TYPE,bool]:
         with jax_core.take_current_trace() as parent_trace:
-            trace = BranchingTrace(parent_trace, branching_decisions, retrace)
-            with jax_core.set_current_trace(trace):
-                in_flat, in_tree = tree_flatten(args)
-                in_flat = map(lambda x: maybe_branching_tracer(trace, x), in_flat)
-                # print("in_tree =", in_tree)
-                # print("in_flat =", in_flat)
-                in_tracers = tree_unflatten(in_tree, in_flat)
-                out = f(*in_tracers)
-                out_flat, out_tree = tree_flatten(out)
-                out_flat = list(map(lambda x: x.val if isinstance(x, BranchingTracer) else x, out_flat))
-                # print("out_flat =", out_flat)
-                return tree_unflatten(out_tree, out_flat)
+            trace = BranchingTrace(parent_trace, branching_decisions, retrace=True)
+            out = execute_tracing_with_trace(trace, f, args)
+            return out, trace.path_condition
     return _f
+
+def trace_branching(f: Callable, *args):
+    branching_decisions = BranchingDecisions()
+    with jax_core.take_current_trace() as parent_trace:
+        trace = BranchingTrace(parent_trace, branching_decisions, retrace=False)
+        _ = execute_tracing_with_trace(trace, f, args)
+    return branching_decisions

@@ -19,9 +19,7 @@ def slp_from_decision_representative(model: Model, decision_representative: Trac
             model()
             return ctx.log_prob
 
-    branching_decisions = BranchingDecisions()
-    traced_f = trace_branching(f, branching_decisions)
-    traced_f(decision_representative)
+    branching_decisions = trace_branching(f, decision_representative)
 
     sexpr_object_ids_to_name = {id(array): addr for addr, array in decision_representative.items()}
     branching_variables: Set[str] = set()

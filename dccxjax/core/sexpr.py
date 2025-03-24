@@ -1,6 +1,8 @@
 import jax
 import jax._src.core as jax_core
 import jax._src.pjit as jax_pjit
+import jax._src.custom_derivatives as jax_custom_deriv
+import jax._src.linear_util as jax_lu
 from abc import ABC, abstractmethod
 from typing import List, Dict, Set
 
@@ -47,6 +49,22 @@ class SOp(SExpr):
 
     def eval(self, X: dict[str, jax.Array]) -> jax.Array:
         args = [arg.eval(X) for arg in self.args]
+
+        if self.primitive is jax_custom_deriv.custom_jvp_call_p:
+            print("EVAL SEXPR")
+            assert isinstance(self.args[0], SConstant)
+            fun: jax_lu.WrappedFun = self.args[0].constant
+            jvp = self.args[1]
+            assert len(fun.stores) == 1
+            store = fun.stores[0]
+            assert isinstance(store, jax_lu.Store)
+            store.reset()
+            print(fun.stores)
+            print(fun.transforms)
+            print(f"{fun.f_transformed=}")
+            print(fun.f_transformed(*args[2:]))
+            # assert False
+
         # print("eval", primitive_name(self.primitive, self.params), "with", args, self.args, self.params)
         # out = self.primitive.impl(*args, **self.params)
         out = self.primitive.bind(*args, **self.params) # bind instead of impl is important here to be able to jit-compile it later

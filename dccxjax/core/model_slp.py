@@ -4,7 +4,7 @@ from typing import Callable, Optional, Any, Set, Tuple, Dict
 from .samplecontext import LogprobCtx, GenerateCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
 from ..types import Trace, PRNGKey
 from ..utils import maybe_jit_warning, to_shaped_arrays, to_shaped_array_trace
-from .branching_tracer import BranchingDecisions, trace_branching
+from .branching_tracer import BranchingDecisions, trace_branching, retrace_branching
 
 __all__ = [
     "Model",
@@ -66,10 +66,10 @@ def _make_slp_log_prob(slp: "SLP", model: Model, branching_decisions: BranchingD
     def _log_prob(X: Trace):
         maybe_jit_warning(slp, "_jitted_log_prob", "_slp_log_prob", slp.short_repr(), to_shaped_array_trace(X))
                         
-        slp_model_logprob = trace_branching(model.log_prob, branching_decisions, retrace=True)
+        slp_model_logprob = retrace_branching(model.log_prob, branching_decisions)
         # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
         # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
-        lp = slp_model_logprob(X)
+        lp, _ = slp_model_logprob(X)
         return jax.lax.select(slp._path_indicator(X), lp, jax.lax.full_like(lp, -jnp.inf))
 
     return _log_prob
@@ -92,9 +92,9 @@ def _make_slp_unconstrained_log_prob(slp: "SLP", model: Model, branching_decisio
                 model()
                 return ctx.log_prob, ctx.X_constrained
 
-        traced_f = trace_branching(_unconstrained_log_prob_with_ctx, branching_decisions, retrace=True)
+        traced_f = retrace_branching(_unconstrained_log_prob_with_ctx, branching_decisions)
         
-        log_prob, X_constrained = traced_f(X_unconstrained)
+        (log_prob, X_constrained), _ = traced_f(X_unconstrained)
 
         return jax.lax.select(slp._path_indicator(X_constrained), log_prob, jax.lax.full_like(log_prob, -jnp.inf)), X_constrained
 
@@ -128,8 +128,8 @@ def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decision
                 model()
                 return ctx.log_likelihood, ctx.X
                         
-        gen_log_likelihood_and_X_from_prior = trace_branching(_gen_log_likelihood_and_X_from_prior, branching_decisions, retrace=True)
-        log_likelihood, X = gen_log_likelihood_and_X_from_prior(key)
+        gen_log_likelihood_and_X_from_prior = retrace_branching(_gen_log_likelihood_and_X_from_prior, branching_decisions)
+        (log_likelihood, X), _ = gen_log_likelihood_and_X_from_prior(key)
         
         return jax.lax.select(slp._path_indicator(X), log_likelihood, -jnp.inf)
 
@@ -171,6 +171,8 @@ class SLP:
         # self._transform_unconstrained_to_support = _make_slp_transform_unconstrained_to_support(self, model, branching_decisions)
 
         self.is_discrete_map: Optional[Dict[str,bool]] = None
+        self._all_discrete: Optional[bool] = None
+        self._all_continuous: Optional[bool] = None
 
     def __repr__(self) -> str:
         s = "SLP {"
@@ -213,14 +215,18 @@ class SLP:
         return self._unconstrained_log_prob(X_unconstrained)
     
     def transform_to_constrained(self, X_unconstrained: Trace) -> Trace:
-        with TransformToConstrainedCtx(X_unconstrained) as ctx:
-            self.model()
-            return ctx.X_constrained
-        
+        def _transform_to_constrained(X_unconstrained: Trace):
+            with TransformToConstrainedCtx(X_unconstrained) as ctx:
+                self.model()
+                return ctx.X_constrained
+        return retrace_branching(_transform_to_constrained, self.branching_decisions)(X_unconstrained)[0]
+
     def transform_to_unconstrained(self, X: Trace) -> Trace:
-        with TransformToUnconstrainedCtx(X) as ctx:
-            self.model()
-            return ctx.X_unconstrained
+        def _transform_to_unconstrained(X: Trace):
+            with TransformToUnconstrainedCtx(X) as ctx:
+                self.model()
+                return ctx.X_unconstrained
+        return retrace_branching(_transform_to_unconstrained, self.branching_decisions)(X)[0]
         
     def get_is_discrete_map(self):
         if self.is_discrete_map is None:
@@ -228,6 +234,17 @@ class SLP:
                 self.model()
                 self.is_discrete_map = ctx.is_discrete
         return self.is_discrete_map
+    
+    def all_discrete(self):
+        if self._all_discrete is None:
+            self._all_discrete = all(b for _, b in self.get_is_discrete_map().items())
+        return self._all_discrete
+    
+    def all_continuous(self):
+        if self._all_continuous is None:
+            self._all_continuous = not any(b for _, b in self.get_is_discrete_map().items())
+        return self._all_continuous
+
 
 def HumanReadableDecisionsFormatter():
     def _formatter(slp: SLP):
