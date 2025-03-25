@@ -36,7 +36,7 @@ def estimate_Z_for_SLP_from_mcmc(
 
 def estimate_Z_for_SLP_from_unconstrained_gausian_mixture(slp: SLP, scale: float, samples_per_point: int, seed: PRNGKey, centers: Trace, unconstrained: bool = True):
     all_continuous = slp.all_continuous()
-    @jax.jit
+    #@jax.jit
     def _log_IS_weight(rng_key: PRNGKey, X: Trace):
         if all_continuous:
             X_flat, unravel_fn = ravel_pytree(X)

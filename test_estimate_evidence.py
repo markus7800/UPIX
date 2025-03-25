@@ -1,5 +1,6 @@
 #%%
 from dccxjax import *
+from dccxjax.core.samplecontext import GenerateCtx
 import dccxjax.distributions as dist
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -72,9 +73,10 @@ print()
 print("active_slps: ")
 for slp in active_slps:
     print(slp)
+    print(slp.formatted())
     Z_slp_est = estimate_Z_for_SLP_from_prior(slp, 1_000_000, jax.random.PRNGKey(0))
     print(f"{Z_slp_est=}")
-    result = mcmc(slp, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1))), 10, 1, jax.random.PRNGKey(0))
+    result = mcmc(slp, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), block_update=False)), 10, 1, jax.random.PRNGKey(0))
     print(result)
 
 

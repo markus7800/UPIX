@@ -129,7 +129,7 @@ class BranchingTrace(jax_core.Trace):
         self.decision_cnt = 0
 
     def process_primitive(self, primitive: jax_core.Primitive, tracers, params):
-        print("process_primitive", primitive_name(primitive, params), tracers)
+        # print("process_primitive", primitive_name(primitive, params), tracers)
         # print(params)
         args = [tracer.val if isinstance(tracer, BranchingTracer) else tracer for tracer in tracers]
         # print("args =", args)
@@ -146,9 +146,9 @@ class BranchingTrace(jax_core.Trace):
         return out_tracer
     
     def process_custom_jvp_call(self, primitive: jax_core.Primitive, fun, jvp, tracers, *, symbolic_zeros):
-        print(primitive)
-        print(fun)
-        print(jvp)
+        # print(primitive)
+        # print(fun)
+        # print(jvp)
         args = [tracer.val if isinstance(tracer, BranchingTracer) else tracer for tracer in tracers]
         sargs = [tracer.sexpr if isinstance(tracer, BranchingTracer) else SConstant(tracer) for tracer in tracers]
         params = dict(symbolic_zeros=symbolic_zeros)

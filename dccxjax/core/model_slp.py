@@ -50,15 +50,15 @@ def model(f:Callable):
         return Model(f, args, kwargs)
     return _f
 
-def _make_slp_path_indicator(slp: "SLP", branching_decisions: BranchingDecisions) -> Callable[[Trace], bool]:
+def _make_slp_path_indicator(slp: "SLP",  model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], bool]:
     @jax.jit
     def _path_indicator(X: Trace):
         maybe_jit_warning(slp, "_jitted_path_indicator", "_path_indicator", slp.short_repr(), to_shaped_array_trace(X))
+        slp_model_logprob = retrace_branching(model.log_prob, branching_decisions)
+        lp, path_condition = slp_model_logprob(X)
+        return path_condition
 
-        b = jnp.array(True)
-        for sexpr, val in branching_decisions.decisions:
-            b = b & (sexpr.eval(X) == val)
-        return b
+
     return _path_indicator
 
 def _make_slp_log_prob(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
@@ -69,8 +69,8 @@ def _make_slp_log_prob(slp: "SLP", model: Model, branching_decisions: BranchingD
         slp_model_logprob = retrace_branching(model.log_prob, branching_decisions)
         # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
         # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
-        lp, _ = slp_model_logprob(X)
-        return jax.lax.select(slp._path_indicator(X), lp, jax.lax.full_like(lp, -jnp.inf))
+        lp, path_condition = slp_model_logprob(X)
+        return jax.lax.select(path_condition, lp, jax.lax.full_like(lp, -jnp.inf))
 
     return _log_prob
 
@@ -94,9 +94,9 @@ def _make_slp_unconstrained_log_prob(slp: "SLP", model: Model, branching_decisio
 
         traced_f = retrace_branching(_unconstrained_log_prob_with_ctx, branching_decisions)
         
-        (log_prob, X_constrained), _ = traced_f(X_unconstrained)
+        (log_prob, X_constrained), path_condition = traced_f(X_unconstrained)
 
-        return jax.lax.select(slp._path_indicator(X_constrained), log_prob, jax.lax.full_like(log_prob, -jnp.inf)), X_constrained
+        return jax.lax.select(path_condition, log_prob, jax.lax.full_like(log_prob, -jnp.inf)), X_constrained
 
     return _unconstrained_log_prob
 
@@ -129,9 +129,9 @@ def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decision
                 return ctx.log_likelihood, ctx.X
                         
         gen_log_likelihood_and_X_from_prior = retrace_branching(_gen_log_likelihood_and_X_from_prior, branching_decisions)
-        (log_likelihood, X), _ = gen_log_likelihood_and_X_from_prior(key)
+        (log_likelihood, X), path_condition = gen_log_likelihood_and_X_from_prior(key)
         
-        return jax.lax.select(slp._path_indicator(X), log_likelihood, -jnp.inf)
+        return jax.lax.select(path_condition, log_likelihood, -jnp.inf)
 
     return _gen_likelihood_weight
 
@@ -153,7 +153,7 @@ class SLP:
         self.branching_variables = branching_variables
 
         self._jitted_path_indicator = False
-        self._path_indicator = _make_slp_path_indicator(self, branching_decisions)
+        self._path_indicator = _make_slp_path_indicator(self, model, branching_decisions)
 
         self._jitted_log_prob = False
         self._log_prob = _make_slp_log_prob(self, model, branching_decisions)

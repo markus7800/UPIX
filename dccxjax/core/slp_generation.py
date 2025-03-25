@@ -22,6 +22,7 @@ def slp_from_decision_representative(model: Model, decision_representative: Trac
     branching_decisions = trace_branching(f, decision_representative)
 
     sexpr_object_ids_to_name = {id(array): addr for addr, array in decision_representative.items()}
+    # TODO: this can be removed, we only need list of decisions not symbolic representation for path eval
     branching_variables: Set[str] = set()
     branching_decisions.decisions = [(replace_constants_with_svars(sexpr_object_ids_to_name, sexpr, branching_variables), val) for sexpr, val in branching_decisions.decisions]
 

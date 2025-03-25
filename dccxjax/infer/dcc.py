@@ -136,7 +136,7 @@ def dcc(model: Model, regime_factory: Callable[[SLP], InferenceRegime], rng_key:
             print(f"... estimated {Z=} with {ess=}")
             combined_result.add_samples(slp, all_positions if config.collect_intermediate_chain_states else last_positions, Z)
 
-            Z2, _, _ = estimate_Z_for_SLP_from_mcmc(slp, 1.0, config.n_samples_for_Z_est // (config.n_samples_per_chain * config.n_chains) + 1, key2, unstack_chains(all_positions))
+            Z2, _, _ = estimate_Z_for_SLP_from_mcmc(slp, 1.0, config.n_samples_for_Z_est // (config.n_samples_per_chain * config.n_chains) + 1, key2, Xs_unconstrained=unstack_chains(all_positions))
             print(f"{Z=} vs {Z2=}")
 
             # propose_new_slps_from_last_positions(slp, last_positions, active_slps, proposed_slps, config.n_chains, key3, 1.)

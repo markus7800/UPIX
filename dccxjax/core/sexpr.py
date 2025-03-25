@@ -15,9 +15,6 @@ def primitive_name(primitive: jax_core.Primitive, params):
     
 class SExpr(ABC):
     @abstractmethod
-    def eval(self, X: dict[str, jax.Array]) -> jax.Array:
-        raise NotImplementedError
-    @abstractmethod
     def to_human_readable(self) -> str:
         raise NotImplementedError
 
@@ -47,47 +44,6 @@ class SOp(SExpr):
             return f"({sargs[0]} {SBinOps[op_name]} {sargs[1]})"
         return f"{op_name}(" + ", ".join(sargs) + ")"
 
-    def eval(self, X: dict[str, jax.Array]) -> jax.Array:
-        args = [arg.eval(X) for arg in self.args]
-
-        if self.primitive is jax_custom_deriv.custom_jvp_call_p:
-            print("EVAL SEXPR")
-            assert isinstance(self.args[0], SConstant)
-            fun: jax_lu.WrappedFun = self.args[0].constant
-            jvp = self.args[1]
-            assert len(fun.stores) == 1
-            store = fun.stores[0]
-            assert isinstance(store, jax_lu.Store)
-            store.reset()
-            print(fun.stores)
-            print(fun.transforms)
-            print(f"{fun.f_transformed=}")
-            print(fun.f_transformed(*args[2:]))
-            # assert False
-
-        # print("eval", primitive_name(self.primitive, self.params), "with", args, self.args, self.params)
-        # out = self.primitive.impl(*args, **self.params)
-        out = self.primitive.bind(*args, **self.params) # bind instead of impl is important here to be able to jit-compile it later
-        # pjit always returns []
-        if self.primitive.multiple_results:
-
-            # if a functions is jitted then the call to pjit_p.bind is in _python_pjit_helper
-            # in this helper function the input and output are flattened and unflattend according to in_tree and out_tree
-            # we do not have access to in_tree and out_tree from the primitive only to in_layout and out_layout
-            # which specifies the number of input and output arguments of the jaxpr which we call
-
-            if self.primitive is jax_pjit.pjit_p and self.params["out_layouts"] == (None,):
-                # print("out1jit =", out)
-                return out[0]
-            else:
-                # print("outm =", out)
-                return out
-        else:
-            # print("out1 =", out)
-            return out
-        
-
-
 class SConstant(SExpr):
     def __init__(self, constant) -> None:
         # print("Constant", constant, type(constant), id(constant))
@@ -107,9 +63,6 @@ class SConstant(SExpr):
         else:
             return f"Constant<{type(self.constant)}>"
 
-    def eval(self, X: dict[str, jax.Array]):
-        return self.constant
-    
 
 class SVar(SExpr):
     def __init__(self, name: str) -> None:
@@ -118,8 +71,6 @@ class SVar(SExpr):
         return self.name
     def to_human_readable(self) -> str:
         return self.name
-    def eval(self, X: dict[str, jax.Array]) -> jax.Array:
-        return X[self.name]
     
 
 def replace_constants_with_svars(constant_object_ids_to_name: Dict[int, str], sexpr: SExpr, variables: Set[str]) -> SExpr:

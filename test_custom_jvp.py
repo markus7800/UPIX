@@ -46,18 +46,15 @@ f(1)
 print("BRANCHING CUSTOM_JVP")
 decisions = trace_branching(f, 1.)
 print("retrace_branching=", retrace_branching(f, decisions)(1.))
-print(jax.make_jaxpr((retrace_branching(f, decisions)))(1.))
+print(make_jaxpr((retrace_branching(f, decisions)))(1.))
 print(decisions.to_human_readable())
-for sexpr, value in decisions.decisions:
-  print(sexpr.eval({}), value)
 
 
-# print("GT CUSTOM_JVP")
-# print(make_jaxpr(grad(log1pexp2))(1.))
+print("GT CUSTOM_JVP")
+print(make_jaxpr(grad(log1pexp2))(1.))
 
-# print("BRANCHING CUSTOM_JVP")
-# with jax.checking_leaks():
-#     print(make_jaxpr(trace_branching(grad(log1pexp2), decisions))(1.))
+print("BRANCHING CUSTOM_JVP")
+print(make_jaxpr(retrace_branching(grad(log1pexp2), decisions))(1.))
 
 
 
