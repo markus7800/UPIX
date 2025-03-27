@@ -126,10 +126,10 @@ def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decision
         def _gen_log_likelihood_and_X_from_prior(key: PRNGKey):
             with GenerateCtx(key) as ctx:
                 model()
-                return ctx.log_likelihood, ctx.X
+                return ctx.log_likelihood
                         
         gen_log_likelihood_and_X_from_prior = retrace_branching(_gen_log_likelihood_and_X_from_prior, branching_decisions)
-        (log_likelihood, X), path_condition = gen_log_likelihood_and_X_from_prior(key)
+        log_likelihood, path_condition = gen_log_likelihood_and_X_from_prior(key)
         
         return jax.lax.select(path_condition, log_likelihood, -jnp.inf)
 

@@ -57,8 +57,6 @@ for _ in tqdm(range(1_000)):
         active_slps.append(slp)
 
         # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
-active_slps = sorted(active_slps, key=m.slp_sort_key)
-active_slps = active_slps[:10]
 
 # slp = active_slps[4]
 # print(slp.get_is_discrete_map())
@@ -81,8 +79,16 @@ def distance_position(X: Trace):
     return distance, position
 
 from dccxjax.infer.mcmc import InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
+from dccxjax.infer.dcc import DCC_Result
 
-n_chains = 1_000
+active_slps = sorted(active_slps, key=m.slp_sort_key)
+active_slps = active_slps[:10]
+
+collect_states = True
+combined_result = DCC_Result(collect_states)
+n_chains = 10
+n_samples_per_chain = 1_000_000
+
 for i, slp in enumerate(active_slps):
     print(slp.short_repr(), slp.formatted())
     # print("\t", distance_position(slp.decision_representative), slp.log_prob(slp.decision_representative))
@@ -93,22 +99,24 @@ for i, slp in enumerate(active_slps):
     # print("\t", distance_position(position), log_prob)
     log_prob.block_until_ready()
     
-    n_samples_per_chain = 1_000
     rng_key, key = jax.random.split(rng_key)
     keys = jax.random.split(key, n_samples_per_chain)
 
     # regime = InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), sparse_numvar=2))
     regime = Gibbs(
-        InferenceStep(PrefixSelector("step_"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.05), -1.,1.), sparse_numvar=2)),
-        InferenceStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.05), 0., 3.)))
+        InferenceStep(PrefixSelector("step_"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
+        InferenceStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
     )
-    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, True)
+    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_states, return_map = lambda trace: {"start": trace["start"]})
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
 
     init = InferenceState(jax.lax.broadcast(0, (n_chains,)), position)
     progressbar_mng.start_progress(n_samples_per_chain)
     last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
     last_state.iteration.block_until_ready()
+    last_positions = last_state.position
+
+
 
     # rng_key, key = jax.random.split(rng_key)
     # keys = jax.random.split(key, n_samples_per_chain)
@@ -116,28 +124,34 @@ for i, slp in enumerate(active_slps):
     # last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
     # last_state.iteration.block_until_ready()
 
-    # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.PRNGKey(0))
-    # print("\t", f"prior {Z=}, {ESS=}, {frac_out_of_support=}")
+    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.PRNGKey(0))
+    print("\t", f" prior {Z=}, {ESS=}, {frac_out_of_support=}")
 
-    # position = jax.tree_map(lambda x: jax.lax.broadcast(x, (1,)), position)
-    # positions_unstacked = unstack_chains(position)
-    # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked)), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked)
-    # print("\t", f" MLE constrained {Z=}, {ESS=}, {frac_out_of_support=}")
+    Z_final, ESS_final = Z, ESS
+
+    result_positions: Trace =  all_positions if all_positions is not None else last_positions
+
+    positions_unstacked = unstack_chains(result_positions) if collect_states else result_positions
+
+    # for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
+    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked)), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked)
+    #     if ESS > ESS_final:
+    #         Z_final, ESS_final = Z, ESS
+
+    #     print("\t", f" MCMC constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
 
     # positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked)
-    # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked_unconstrained)), jax.random.PRNGKey(0), Xs_unconstrained=positions_unstacked_unconstrained)
-    # print("\t", f" MLE unconstrained {Z=}, {ESS=}, {frac_out_of_support=}")
+    # for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
+    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked_unconstrained)), jax.random.PRNGKey(0), Xs_unconstrained=positions_unstacked_unconstrained)
+    #     if ESS > ESS_final:
+    #         Z_final, ESS_final = Z, ESS
+    #     print("\t", f" MCMC unconstrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
 
-    # all_positions_unstacked = unstack_chains(all_positions)
-    # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(all_positions_unstacked)), jax.random.PRNGKey(0), Xs_constrained=all_positions_unstacked)
-    # print("\t", f" MCMC constrained {Z=}, {ESS=}, {frac_out_of_support=}")
-
-    # all_positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(all_positions_unstacked)
-    # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, 0.1, 10_000_000 // (n_samples_for_unstacked_chains(all_positions_unstacked_unconstrained)), jax.random.PRNGKey(0), Xs_unconstrained=all_positions_unstacked_unconstrained)
-    # print("\t", f" MCMC unconstrained {Z=}, {ESS=}, {frac_out_of_support=}")
-
+    combined_result.add_samples(slp, result_positions, Z_final)
 #     plt.figure()
-#     plt.plot(all_positions["start"], alpha=0.5)
+#     # plt.plot(all_positions["start"], alpha=0.5)
+#     plt.hist(all_positions["start"].reshape(-1), alpha=0.5)
+#     plt.title(slp.formatted())
 # plt.show()
 
 t1 = time()
@@ -146,6 +160,15 @@ print(f"Total time: {t1-t0:.3f}s")
 comp_time = compilation_time_tracker.get_total_compilation_time_secs()
 print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
 
+plot_histogram(combined_result, "start")
+
+qs = jnp.load("evaluation/pedestrian/gt_qs.npy")
+ps = jnp.load("evaluation/pedestrian/gt_ps.npy")
+
+fig = plt.gcf()
+ax = fig.axes[0]
+ax.plot(qs, ps)
+plt.show()
 # config = DCC_Config(
 #     n_samples_from_prior = 10,
 #     n_chains = 4,

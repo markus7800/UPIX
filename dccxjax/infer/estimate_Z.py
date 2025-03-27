@@ -9,7 +9,7 @@ from typing import Optional
 __all__ = [
     "estimate_Z_for_SLP_from_prior",
     "estimate_Z_for_SLP_from_mcmc",
-    "estimate_Z_for_SLP_from_unconstrained_gausian_mixture",
+    "estimate_Z_for_SLP_from_unconstrained_gaussian_mixture",
 ]
 
 def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
@@ -27,14 +27,14 @@ def estimate_Z_for_SLP_from_mcmc(
 ):
     assert (Xs_unconstrained is not None) ^ (Xs_constrained is not None)
     if Xs_unconstrained is not None:
-        return estimate_Z_for_SLP_from_unconstrained_gausian_mixture(slp, scale, samples_per_trace, seed, Xs_unconstrained, True)
+        return estimate_Z_for_SLP_from_unconstrained_gaussian_mixture(slp, scale, samples_per_trace, seed, Xs_unconstrained, True)
     elif Xs_constrained is not None:
-        return estimate_Z_for_SLP_from_unconstrained_gausian_mixture(slp, scale, samples_per_trace, seed, Xs_constrained, False)
+        return estimate_Z_for_SLP_from_unconstrained_gaussian_mixture(slp, scale, samples_per_trace, seed, Xs_constrained, False)
     else:
         raise Exception
 
 
-def estimate_Z_for_SLP_from_unconstrained_gausian_mixture(slp: SLP, scale: float, samples_per_point: int, seed: PRNGKey, centers: Trace, unconstrained: bool = True):
+def estimate_Z_for_SLP_from_unconstrained_gaussian_mixture(slp: SLP, scale: float, samples_per_point: int, seed: PRNGKey, centers: Trace, unconstrained: bool = True):
     all_continuous = slp.all_continuous()
     #@jax.jit
     def _log_IS_weight(rng_key: PRNGKey, X: Trace):
@@ -52,7 +52,7 @@ def estimate_Z_for_SLP_from_unconstrained_gausian_mixture(slp: SLP, scale: float
     
     _, some_entry = next(iter(centers.items()))
     N = some_entry.shape[0]
-    @jax.jit
+    #@jax.jit
     def _weight_sum_for_Xs(rng_key: PRNGKey):
         rng_keys = jax.random.split(rng_key, N)
         log_weights = jax.vmap(_log_IS_weight)(rng_keys, centers)

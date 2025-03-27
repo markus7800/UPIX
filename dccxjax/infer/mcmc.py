@@ -63,7 +63,7 @@ class Gibbs(InferenceRegime):
 MCMCKernel = Callable[[InferenceState,PRNGKey],Tuple[InferenceState,Optional[Trace]]]
 
 # TODO: track compile time + progressbar
-def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool) -> MCMCKernel:
+def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool, return_map: Callable[[Trace],Trace] = lambda x: x) -> MCMCKernel:
     kernels: List[Kernel] = []
     for step_number, inference_step in enumerate(regime):
         gibbs_model = GibbsModel(slp, inference_step.variable_selector)
@@ -77,7 +77,7 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_
             kernel_keys = jax.random.split(kernel_key, n_chains)
             state = jax.vmap(kernel)(kernel_keys, state)
         state = InferenceState(state.iteration + 1, state.position)
-        return state, state.position if collect_states else None
+        return state, return_map(state.position) if collect_states else None
     
     return one_step
 
