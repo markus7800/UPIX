@@ -87,7 +87,7 @@ active_slps = active_slps[:10]
 collect_states = True
 combined_result = DCC_Result(collect_states)
 n_chains = 10
-n_samples_per_chain = 1_000_000
+n_samples_per_chain = 1_000
 
 for i, slp in enumerate(active_slps):
     print(slp.short_repr(), slp.formatted())
@@ -95,8 +95,12 @@ for i, slp in enumerate(active_slps):
     # position, log_prob, result = coordinate_ascent(slp, 0.1, 10000, n_chains, jax.random.PRNGKey(0))
     # position, log_prob, result = simulated_annealing(slp, 0.1, 10000, n_chains, jax.random.PRNGKey(0))
     p = min(1., 2. / len(slp.decision_representative))
-    position, log_prob, result = sparse_coordinate_ascent(slp, 0.1, p, 1_000, n_chains, jax.random.PRNGKey(0))
-    # print("\t", distance_position(position), log_prob)
+    mle_position, log_prob, result = sparse_coordinate_ascent(slp, 0.1, p, 1_000, 1, jax.random.PRNGKey(0))
+    print("\t", f"{mle_position=}")
+    print("\t", f"{log_prob=}, {jnp.exp(log_prob)=}")
+    print("\t", distance_position(mle_position))
+    # position = broadcast_trace(mle_position, (n_chains,))
+    position = jax.tree.map(lambda v: jax.lax.broadcast_in_dim(v, (n_chains,)+v.shape[1:], range(len(v.shape))), mle_position)
     log_prob.block_until_ready()
     
     rng_key, key = jax.random.split(rng_key)
@@ -107,7 +111,7 @@ for i, slp in enumerate(active_slps):
         InferenceStep(PrefixSelector("step_"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
         InferenceStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
     )
-    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_states, return_map = lambda trace: {"start": trace["start"]})
+    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_states)#, return_map = lambda trace: {"start": trace["start"]})
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
 
     init = InferenceState(jax.lax.broadcast(0, (n_chains,)), position)
@@ -125,13 +129,18 @@ for i, slp in enumerate(active_slps):
     # last_state.iteration.block_until_ready()
 
     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.PRNGKey(0))
-    print("\t", f" prior {Z=}, {ESS=}, {frac_out_of_support=}")
+    print("\t", f" prior Z={Z.item()}, ESS={ESS.item()}, {frac_out_of_support=}")
 
     Z_final, ESS_final = Z, ESS
 
     result_positions: Trace =  all_positions if all_positions is not None else last_positions
 
-    positions_unstacked = unstack_chains(result_positions) if collect_states else result_positions
+
+    for s in [0.01, 0.05, 0.1, 0.5, 1.0,1.5,2.0,]:
+        Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000, jax.random.PRNGKey(0), Xs_constrained=mle_position)
+        print("\t", f" MLE constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
+
+    # positions_unstacked = unstack_chains(result_positions) if collect_states else result_positions
 
     # for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
     #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked)), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked)
@@ -159,6 +168,8 @@ t1 = time()
 print(f"Total time: {t1-t0:.3f}s")
 comp_time = compilation_time_tracker.get_total_compilation_time_secs()
 print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
+
+exit()
 
 plot_histogram(combined_result, "start")
 

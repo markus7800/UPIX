@@ -4,11 +4,13 @@ from .types import Trace
 import jax
 from jax.core import full_lower
 import contextlib
+from typing import Sequence
 
 __all__ = [
     "setup_logging",
     "track_compilation_time",
     "CompilationTimeTracker",
+    "broadcast_trace",
 ]
 
 logger = logging.getLogger("dccxjax")
@@ -37,7 +39,8 @@ def to_shaped_array_trace(X: Trace):
 def to_shaped_arrays(tree):
     return jax.tree.map(lambda v: full_lower(v).aval, tree)
 
-
+def broadcast_trace(X: Trace, sizes: Sequence[int]):
+    return jax.tree.map(lambda v: jax.lax.broadcast(v, sizes), X)
 
 from jax._src.monitoring import EventDurationListenerWithMetadata, _unregister_event_duration_listener_by_callback
 from jax._src.dispatch import JAXPR_TRACE_EVENT, JAXPR_TO_MLIR_MODULE_EVENT, BACKEND_COMPILE_EVENT
