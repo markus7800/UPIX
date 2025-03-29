@@ -15,11 +15,18 @@ __all__ = [
 def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
     rng_keys = jax.random.split(rng_key, N)
     log_weights = jax.vmap(slp._gen_likelihood_weight)(rng_keys)
-    weights = jnp.exp(log_weights)
-    weights_sum = jnp.sum(weights)
-    ess = (weights_sum ** 2) / jnp.sum(weights ** 2)
+
+    # weights = jnp.exp(log_weights)
+    # weights_sum = jnp.sum(weights)
+    # ess = (weights_sum ** 2) / jnp.sum(weights ** 2)
+
+    log_weights_sum = jax.scipy.special.logsumexp(log_weights)
+    log_weights_squared_sum = jax.scipy.special.logsumexp(log_weights * 2)
+    log_ess = log_weights_sum * 2 - log_weights_squared_sum
+    # print(f"{ess=} {jnp.exp(log_ess)=}")
+
     frac_out_of_support = jnp.mean(jnp.isinf(log_weights))
-    return weights_sum / N, ess, frac_out_of_support
+    return jnp.exp(log_weights_sum) / N, jnp.exp(log_ess), frac_out_of_support
 
 def estimate_Z_for_SLP_from_mcmc(
     slp: SLP, scale: float, samples_per_trace: int, seed: PRNGKey, *,
@@ -36,6 +43,8 @@ def estimate_Z_for_SLP_from_mcmc(
 
 def estimate_Z_for_SLP_from_unconstrained_gaussian_mixture(slp: SLP, scale: float, samples_per_point: int, seed: PRNGKey, centers: Trace, unconstrained: bool = True):
     all_continuous = slp.all_continuous()
+    is_discrete = {addr: jnp.array(val) for addr, val in slp.get_is_discrete_map().items()}
+
     #@jax.jit
     def _log_IS_weight(rng_key: PRNGKey, X: Trace):
         if all_continuous:

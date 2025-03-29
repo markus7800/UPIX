@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from typing import Callable, Optional, Any, Set, Tuple, Dict
-from .samplecontext import LogprobCtx, GenerateCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
+from .samplecontext import LogprobCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
 from ..types import Trace, PRNGKey
 from ..utils import maybe_jit_warning, to_shaped_arrays, to_shaped_array_trace
 from .branching_tracer import BranchingDecisions, trace_branching, retrace_branching
@@ -54,8 +54,11 @@ def _make_slp_path_indicator(slp: "SLP",  model: Model, branching_decisions: Bra
     @jax.jit
     def _path_indicator(X: Trace):
         maybe_jit_warning(slp, "_jitted_path_indicator", "_path_indicator", slp.short_repr(), to_shaped_array_trace(X))
-        slp_model_logprob = retrace_branching(model.log_prob, branching_decisions)
-        lp, path_condition = slp_model_logprob(X)
+        def _replay(_X: Trace):
+            with ReplayCtx(_X):
+                model()
+        slp_model_logprob = retrace_branching(_replay, branching_decisions)
+        _, path_condition = slp_model_logprob(X)
         return path_condition
 
 
@@ -202,6 +205,9 @@ class SLP:
         if self.decision_representative.keys() != X.keys():
             return False
         else:
+            for addr, value in self.decision_representative.items():
+                if X[addr].shape != value.shape:
+                    return False
             return self._path_indicator(X)
 
     def log_prob(self, X: Trace):

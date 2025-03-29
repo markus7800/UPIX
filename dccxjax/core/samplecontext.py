@@ -44,7 +44,7 @@ class GenerateCtx(SampleContext):
         self.rng_key, key = jax.random.split(self.rng_key)
         value = distribution.sample(key)
         self.X[address] = value
-        self.log_prior += distribution.log_prob(value)
+        self.log_prior += distribution.log_prob(value).sum()
         return value
     
 
@@ -59,10 +59,20 @@ class LogprobCtx(SampleContext):
             return observed
         assert distribution._validate_args
         value = self.X[address]
-        self.log_prob += distribution.log_prob(value)
+        self.log_prob += distribution.log_prob(value).sum()
         return value
     
 
+class ReplayCtx(SampleContext):
+    def __init__(self, X: Trace) -> None:
+        super().__init__()
+        self.X = X
+    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+        if observed is not None:
+            return observed
+        value = self.X[address]
+        return value
+    
 class CollectDistributionTypesCtx(SampleContext):
     def __init__(self, X: Trace) -> None:
         super().__init__()
@@ -102,7 +112,7 @@ class UnconstrainedLogprobCtx(SampleContext):
 
             unconstrained_distribution = dist.TransformedDistribution(distribution, transform.inv)
             
-            self.log_prob += unconstrained_distribution.log_prob(unconstrained_value)
+            self.log_prob += unconstrained_distribution.log_prob(unconstrained_value).sum()
 
         return constrained_value
     
