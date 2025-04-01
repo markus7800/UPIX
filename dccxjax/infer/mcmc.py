@@ -27,6 +27,7 @@ __all__ = [
 class InferenceState(object):
     iteration: jax.Array
     position: Trace
+    log_prob: jax.Array | float
     
     
 Kernel = Callable[[PRNGKey,InferenceState],InferenceState]
@@ -62,7 +63,6 @@ class Gibbs(InferenceRegime):
 
 MCMCKernel = Callable[[InferenceState,PRNGKey],Tuple[InferenceState,Optional[Trace]]]
 
-# TODO: track compile time + progressbar
 def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool, return_map: Callable[[Trace],Trace] = lambda x: x) -> MCMCKernel:
     kernels: List[Kernel] = []
     for step_number, inference_step in enumerate(regime):
@@ -76,7 +76,6 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_
             rng_key, kernel_key = jax.random.split(rng_key)
             kernel_keys = jax.random.split(kernel_key, n_chains)
             state = jax.vmap(kernel)(kernel_keys, state)
-        state = InferenceState(state.iteration + 1, state.position)
         return state, return_map(state.position) if collect_states else None
     
     return one_step
@@ -159,7 +158,7 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel) -> Tup
 def get_initial_inference_state(slp: SLP, n_chains: int):
     # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
     # and X[i,m,n,...] = X[j,m,n,...] for all i, j
-    return jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), InferenceState(jnp.array(0), slp.decision_representative))
+    return jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), InferenceState(jnp.array(0), slp.decision_representative, slp.log_prob(slp.decision_representative)))
 
     result, lp = coordinate_ascent(slp, 0.1, 1000, n_chains, jax.random.PRNGKey(0))
     assert not jnp.isinf(lp).any()

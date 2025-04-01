@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 from typing import List
 from time import time
 
+from dccxjax.infer.mcmc import InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
+from dccxjax.infer.dcc import DCC_Result
+
 import logging
 setup_logging(logging.WARNING)
 
@@ -18,14 +21,22 @@ jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
 
 t0 = time()
 
+lam = 3
+delta = 5.0
+xi = 0.0
+kappa = 0.01
+alpha = 2.0
+beta = 10.0
+
 def gmm(ys: jax.Array):
+
     N = ys.shape[0]
-    K = 4# sample("K", dist.Poisson(3)) + 1
-    w = sample("w", dist.Dirichlet(jnp.full((K,), 5.0)))
-    mus = sample("mus", dist.Normal(jnp.full((K,), 0.0), jnp.full((K,), 1/0.1)))
-    vars = sample("vars", dist.InverseGamma(jnp.full((K,), 2.), jnp.full((K,), 10.0)))
+    K = 4# sample("K", dist.Poisson(lam)) + 1
+    w = sample("w", dist.Dirichlet(jnp.full((K,), delta)))
+    mus = sample("mus", dist.Normal(jnp.full((K,), xi), jnp.full((K,), 1/jax.lax.sqrt(kappa))))
+    vars = sample("vars", dist.InverseGamma(jnp.full((K,), alpha), jnp.full((K,), beta)))
     zs = sample("zs", dist.Categorical(jax.lax.broadcast(w, (N,))))
-    sample("ys", dist.Normal(mus[zs], vars[zs]), observed=ys)
+    sample("ys", dist.Normal(mus[zs], jax.lax.sqrt(vars[zs])), observed=ys)
 
 
 ys = jnp.array([
@@ -82,6 +93,145 @@ m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_K)
 
 rng_key = jax.random.PRNGKey(0)
+
+class WProposal(TraceProposal):
+    def __init__(self, delta: float) -> None:
+        self.delta = delta
+
+    def get_dirichlet(self, current: Trace):
+        K = 4 # current["K"] + 1
+        zs = current["zs"]
+        counts = jnp.sum(zs.reshape(-1,1) == jnp.arange(0,K).reshape(1,-1), axis=0)
+        d = dist.Dirichlet(counts + self.delta)
+        return d
+
+    def propose(self, rng_key: PRNGKey, current: Trace) -> Tuple[Trace,jax.Array]:
+        d = self.get_dirichlet(current)
+        proposed = d.sample(rng_key)
+        lp = d.log_prob(proposed)
+        return {"w": proposed}, lp
+    
+    def assess(self, current: Trace, proposed: Trace) -> jax.Array:
+        d = self.get_dirichlet(current)
+        return d.log_prob(proposed["w"])
+    
+class MusProposal(TraceProposal):
+    def __init__(self, ys: jax.Array, kappa: float, xi: float) -> None:
+        self.ys = ys
+        self.kappa = kappa
+        self.xi = xi
+
+    def get_gaussian(self, current: Trace):
+        K = 4 # current["K"] + 1
+        mus = current["mus"]
+        vars = current["vars"]
+        zs = current["zs"]
+        cluster_alloc_mat = zs.reshape(-1,1) == jnp.arange(0,K).reshape(1,-1)
+        cluster_counts = jnp.sum(cluster_alloc_mat, axis=0)
+        cluster_y_sum = jnp.sum(self.ys.reshape(-1,1) * cluster_alloc_mat, axis=0)
+        
+        return dist.Normal(
+            jnp.where(cluster_counts > 0, (cluster_y_sum / vars + self.kappa * self.xi) / (cluster_counts/vars + self.kappa), self.xi),
+            jnp.where(cluster_counts > 0, jnp.sqrt(1 / (cluster_counts / vars + self.kappa)), 1 / jnp.sqrt(self.kappa))
+        )
+        
+    def propose(self, rng_key: PRNGKey, current: Trace) -> Tuple[Trace,jax.Array]:
+        d = self.get_gaussian(current)
+        proposed = d.sample(rng_key)
+        lp = d.log_prob(proposed).sum()
+        return {"mus": proposed}, lp
+    
+    def assess(self, current: Trace, proposed: Trace) -> jax.Array:
+        d = self.get_gaussian(current)
+        return d.log_prob(proposed["mus"]).sum()
+
+class VarsProposal(TraceProposal):
+    def __init__(self, ys: jax.Array, alpha: float, beta: float) -> None:
+        self.ys = ys
+        self.alpha = alpha
+        self.beta = beta
+
+    def get_invgamma(self, current: Trace):
+        K = 4 # current["K"] + 1
+        mus = current["mus"]
+        vars = current["vars"]
+        zs = current["zs"]
+        cluster_alloc_mat = zs.reshape(-1,1) == jnp.arange(0,K).reshape(1,-1)
+        cluster_counts = jnp.sum(cluster_alloc_mat, axis=0)
+        cluster_y_devs = jnp.sum(((self.ys.reshape(-1,1) - mus.reshape(1,-1)) ** 2) * cluster_alloc_mat, axis=0)
+        
+        return dist.InverseGamma(
+            jnp.where(cluster_counts > 0, self.alpha + cluster_counts / 2, self.alpha),
+            jnp.where(cluster_counts > 0, self.beta + cluster_y_devs / 2, self.beta)
+        )
+        
+    def propose(self, rng_key: PRNGKey, current: Trace) -> Tuple[Trace,jax.Array]:
+        d = self.get_invgamma(current)
+        proposed = d.sample(rng_key)
+        lp = d.log_prob(proposed).sum()
+        return {"vars": proposed}, lp
+    
+    def assess(self, current: Trace, proposed: Trace) -> jax.Array:
+        d = self.get_invgamma(current)
+        return d.log_prob(proposed["vars"]).sum()
+    
+class ZsProposal(TraceProposal):
+    def __init__(self, ys: jax.Array) -> None:
+        self.ys = ys
+
+    def get_categorical(self, current: Trace) -> dist.CategoricalProbs:
+        K = 4 # current["K"] + 1
+        mus = current["mus"]
+        vars = current["vars"]
+        w = current["w"]
+        
+        # jax.debug.print("mus={mus} vars={vars} w={w}", mus=mus, vars=vars, w=w)
+        def get_cat(y):
+            p = jnp.exp(dist.Normal(mus, jnp.sqrt(vars)).log_prob(y)) * w
+            return dist.Categorical(p / p.sum())
+        
+        cat = jax.vmap(get_cat)(self.ys)
+        # jax.debug.print("cat={p}", p=cat.probs)
+        return cat
+        
+        
+    def propose(self, rng_key: PRNGKey, current: Trace) -> Tuple[Trace,jax.Array]:
+        d = self.get_categorical(current)
+        proposed = d.sample(rng_key)
+        lp = d.log_prob(proposed).sum()
+        # jax.debug.print("{z} {lp}", z=proposed, lp=lp)
+        return {"zs": proposed}, lp
+    
+    def assess(self, current: Trace, proposed: Trace) -> jax.Array:
+        d = self.get_categorical(current)
+        lp = d.log_prob(proposed["zs"])
+        # jax.debug.print("cat={p} lp={lp} {s} z={z}", p=d.probs, lp=lp, s=lp.sum(), z=proposed["zs"])
+        return lp.sum()
+
+
+regime = Gibbs(
+    InferenceStep(SingleVariable("w"), MH(WProposal(delta))),
+    InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi))),
+    InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta))),
+    InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+)
+
+slp = convert_branchless_model_to_SLP(m)
+n_chains = 4
+collect_states = True
+n_samples_per_chain = 100
+mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_states)
+# progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
+
+init = broadcast_jaxtree(InferenceState(0, slp.decision_representative, slp.log_prob(slp.decision_representative)), (n_chains,))
+# progressbar_mng.start_progress(n_samples_per_chain)
+keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
+last_state.iteration.block_until_ready()
+last_positions = last_state.position
+# print(all_positions)
+exit()
+
 active_slps: List[SLP] = []
 for _ in tqdm(range(100)):
     rng_key, key = jax.random.split(rng_key)
