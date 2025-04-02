@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from typing import List
 from time import time
 
-from dccxjax.infer.mcmc import InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
+from dccxjax.infer.mcmc import InferenceState, InferenceCarry, InferenceInfos, get_inference_regime_mcmc_step_for_slp, add_progress_bar
 from dccxjax.infer.dcc import DCC_Result
 
 import logging
@@ -219,17 +219,24 @@ regime = Gibbs(
 slp = convert_branchless_model_to_SLP(m)
 n_chains = 4
 collect_states = True
+collect_infos = False
 n_samples_per_chain = 100
-mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_states)
+return_map = lambda x: x.state.position if collect_states else None
+
+mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_infos, return_map)
 # progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
 
-init = broadcast_jaxtree(InferenceState(0, slp.decision_representative, slp.log_prob(slp.decision_representative)), (n_chains,))
+init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []
+init = broadcast_jaxtree(InferenceCarry(0, InferenceState(slp.decision_representative, slp.log_prob(slp.decision_representative)), init_info), (n_chains,))
+
+
 # progressbar_mng.start_progress(n_samples_per_chain)
 keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
 last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
 last_state.iteration.block_until_ready()
-last_positions = last_state.position
-# print(all_positions)
+last_positions = last_state.state.position
+print(all_positions)
+print(last_state.infos)
 exit()
 
 active_slps: List[SLP] = []

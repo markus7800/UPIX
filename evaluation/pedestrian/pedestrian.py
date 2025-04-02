@@ -78,16 +78,18 @@ def distance_position(X: Trace):
             distance += jax.lax.abs(value)
     return distance, position
 
-from dccxjax.infer.mcmc import InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
+from dccxjax.infer.mcmc import InferenceCarry, InferenceInfos, InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
 from dccxjax.infer.dcc import DCC_Result
 
 active_slps = sorted(active_slps, key=m.slp_sort_key)
 active_slps = active_slps[:10]
 
 collect_states = True
+collect_infos = True
 combined_result = DCC_Result(collect_states)
 n_chains = 10
 n_samples_per_chain = 1_000
+return_map = lambda x: x.state.position if collect_states else None
 
 for i, slp in enumerate(active_slps):
     print(slp.short_repr(), slp.formatted())
@@ -101,6 +103,7 @@ for i, slp in enumerate(active_slps):
     print("\t", distance_position(mle_position))
     # position = broadcast_trace(mle_position, (n_chains,))
     position = jax.tree.map(lambda v: jax.lax.broadcast_in_dim(v, (n_chains,)+v.shape[1:], range(len(v.shape))), mle_position)
+    log_prob = jax.lax.broadcast_in_dim(log_prob, (n_chains,), [0])
     log_prob.block_until_ready()
     
     rng_key, key = jax.random.split(rng_key)
@@ -111,15 +114,19 @@ for i, slp in enumerate(active_slps):
         InferenceStep(PrefixSelector("step_"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
         InferenceStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
     )
-    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_states)#, return_map = lambda trace: {"start": trace["start"]})
+    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_infos, return_map)
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
 
-    init = InferenceState(jax.lax.broadcast(0, (n_chains,)), position)
+    init_info: InferenceInfos = broadcast_jaxtree([step.algo.init_info() for step in regime] if collect_infos else [], (n_chains,))
+
+    init = InferenceCarry(jax.lax.broadcast(0, (n_chains,)), InferenceState(position, log_prob), init_info)
+
     progressbar_mng.start_progress(n_samples_per_chain)
     last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
     last_state.iteration.block_until_ready()
-    last_positions = last_state.position
-
+    last_positions = last_state.state.position
+    acceptance_rates = jax.tree_map(lambda v: jnp.mean(v) / n_samples_per_chain, last_state.infos)
+    print(acceptance_rates)
 
 
     # rng_key, key = jax.random.split(rng_key)

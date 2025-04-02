@@ -2,13 +2,13 @@ import jax.experimental
 from ..types import Trace, PRNGKey
 import jax
 import jax.numpy as jnp
-from typing import Callable, Generator, Any, Tuple, Optional, List
+from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar
 from .gibbs_model import GibbsModel
 from .variable_selector import VariableSelector
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from dccxjax.core import SLP
-from ..utils import maybe_jit_warning, to_shaped_arrays
+from ..utils import maybe_jit_warning, to_shaped_arrays, broadcast_jaxtree
 from time import time
 
 from tqdm.auto import tqdm as tqdm_auto
@@ -22,19 +22,30 @@ __all__ = [
     "mcmc",
 ]
 
+InferenceInfo = NamedTuple
+InferenceInfos = List[InferenceInfo]
+
 @jax.tree_util.register_dataclass
 @dataclass
 class InferenceState(object):
-    iteration: jax.Array
     position: Trace
     log_prob: jax.Array | float
     
-    
-Kernel = Callable[[PRNGKey,InferenceState],InferenceState]
+
+class InferenceCarry(NamedTuple):
+    iteration: jax.Array
+    state: InferenceState
+    infos: InferenceInfos
+
+Kernel = Callable[[PRNGKey,InferenceCarry],InferenceCarry]
 
 class InferenceAlgorithm(ABC):
     @abstractmethod
-    def make_kernel(self, gibbs_model: GibbsModel, step_number: int) -> Kernel:
+    def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
+        raise NotImplementedError
+    
+    @abstractmethod
+    def init_info(self) -> InferenceInfo:
         raise NotImplementedError
     
 
@@ -61,22 +72,26 @@ class Gibbs(InferenceRegime):
                 assert isinstance(subregime, Gibbs)
                 yield from subregime
 
-MCMCKernel = Callable[[InferenceState,PRNGKey],Tuple[InferenceState,Optional[Trace]]]
 
-def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_states: bool, return_map: Callable[[Trace],Trace] = lambda x: x) -> MCMCKernel:
+MCMC_COLLECT_TYPE = TypeVar("MCMC_COLLECT_TYPE")
+MCMCKernel = Callable[[InferenceCarry,PRNGKey],Tuple[InferenceCarry,MCMC_COLLECT_TYPE]]
+
+def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_inference_info: bool = False,
+    return_map: Callable[[InferenceCarry], MCMC_COLLECT_TYPE] = lambda _: None) -> MCMCKernel[MCMC_COLLECT_TYPE]:
+    
     kernels: List[Kernel] = []
     for step_number, inference_step in enumerate(regime):
         gibbs_model = GibbsModel(slp, inference_step.variable_selector)
-        kernels.append(inference_step.algo.make_kernel(gibbs_model, step_number))
+        kernels.append(inference_step.algo.make_kernel(gibbs_model, step_number, collect_inference_info))
 
     @jax.jit
-    def one_step(state: InferenceState, rng_key: PRNGKey) -> Tuple[InferenceState,Optional[Trace]]:
-        maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(state))
+    def one_step(carry: InferenceCarry, rng_key: PRNGKey) -> Tuple[InferenceCarry,MCMC_COLLECT_TYPE]:
+        maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(carry.state))
         for kernel in kernels:
             rng_key, kernel_key = jax.random.split(rng_key)
             kernel_keys = jax.random.split(kernel_key, n_chains)
-            state = jax.vmap(kernel)(kernel_keys, state)
-        return state, return_map(state.position) if collect_states else None
+            carry = jax.vmap(kernel)(kernel_keys, carry)
+        return InferenceCarry(carry.iteration + 1, carry.state, carry.infos), return_map(carry)
     
     return one_step
 
@@ -107,7 +122,7 @@ class ProgressbarManager:
             self.tqdm_bar = None
 
 # adapted form numpyro/util.py
-def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel) -> Tuple[ProgressbarManager,MCMCKernel]:
+def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> Tuple[ProgressbarManager,MCMCKernel[MCMC_COLLECT_TYPE]]:
 
     if num_samples > 100:
         print_rate = int(num_samples / 100)
@@ -126,7 +141,7 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel) -> Tup
         # nonlocal t0
         # t0 = time()
         
-        iter_num = iter_num[0] + 1 # all chains are at the same iteration
+        iter_num = iter_num[0] + 1 # all chains are at the same iteration, init iteration=0
         _ = jax.lax.cond(
             iter_num == 1,
             lambda _: jax.experimental.io_callback(progressbar_mngr._init_tqdm, None),
@@ -146,19 +161,21 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel) -> Tup
             operand=None,
         )
     
-    def wrapped_kernel(state: InferenceState, rng_key: PRNGKey) -> Tuple[InferenceState,Optional[Trace]]:
-        _update_progress_bar(state.iteration) # NOTE: we don't have to return something for this to work?
-        return kernel(state, rng_key)
+    def wrapped_kernel(carry: InferenceCarry, rng_key: PRNGKey):
+        _update_progress_bar(carry.iteration) # NOTE: we don't have to return something for this to work?
+        return kernel(carry, rng_key)
     
     return progressbar_mngr, wrapped_kernel
 
 
 
 
-def get_initial_inference_state(slp: SLP, n_chains: int):
+def get_initial_inference_state(slp: SLP, regime: InferenceRegime, n_chains: int, collect_inference_info: bool):
+    inference_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_inference_info else []
+
     # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
     # and X[i,m,n,...] = X[j,m,n,...] for all i, j
-    return jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), InferenceState(jnp.array(0), slp.decision_representative, slp.log_prob(slp.decision_representative)))
+    return broadcast_jaxtree(InferenceCarry(jnp.array(0), InferenceState(slp.decision_representative, slp.log_prob(slp.decision_representative)), inference_info), (n_chains,))
 
     result, lp = coordinate_ascent(slp, 0.1, 1000, n_chains, jax.random.PRNGKey(0))
     assert not jnp.isinf(lp).any()
@@ -166,19 +183,19 @@ def get_initial_inference_state(slp: SLP, n_chains: int):
     return InferenceState(result)
 
 
-def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey, collect_states: bool = True):
+def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey, collect_states: bool = True, collect_inference_info: bool = False):
     
     keys = jax.random.split(rng_key, n_samples)
 
-    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_states)
+    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_inference_info, return_map=lambda x: x.state.position if collect_states else None)
 
     # mcmc_step = add_progress_bar(n_samples, mcmc_step)
 
-    init = get_initial_inference_state(slp, n_chains)
+    init = get_initial_inference_state(slp, regime, n_chains, collect_inference_info)
 
     last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
  
-    return all_positions if collect_states else last_state.position
+    return all_positions if collect_states else last_state.state.position # TODO
 
 
 def _unstack_chains(values: jax.Array):
