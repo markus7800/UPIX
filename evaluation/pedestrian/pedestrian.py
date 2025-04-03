@@ -89,7 +89,9 @@ collect_infos = True
 combined_result = DCC_Result(collect_states)
 n_chains = 10
 n_samples_per_chain = 1_000
-return_map = lambda x: x.state.position if collect_states else None
+
+def return_map(x: InferenceCarry):
+    return x.state.position if collect_states else None
 
 for i, slp in enumerate(active_slps):
     print(slp.short_repr(), slp.formatted())

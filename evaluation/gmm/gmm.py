@@ -221,7 +221,9 @@ n_chains = 4
 collect_states = True
 collect_infos = False
 n_samples_per_chain = 100
-return_map = lambda x: x.state.position if collect_states else None
+
+def return_map(x: InferenceCarry):
+    return x.state.position if collect_states else None
 
 mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_infos, return_map)
 # progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
