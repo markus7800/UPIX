@@ -245,10 +245,10 @@ active_slps: List[SLP] = []
 for _ in tqdm(range(100)):
     rng_key, key = jax.random.split(rng_key)
     X = sample_from_prior(m, key)
-    slp = slp_from_decision_representative(m, X)
     # print(slp.formatted(), slp.branching_decisions.to_human_readable())
 
     if all(slp.path_indicator(X) == 0 for slp in active_slps):
+        slp = slp_from_decision_representative(m, X)
         active_slps.append(slp)
 
         # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)

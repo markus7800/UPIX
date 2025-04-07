@@ -142,18 +142,15 @@ class SLP:
     model: Model
     decision_representative: Trace
     branching_decisions: BranchingDecisions
-    branching_variables: Set[str]
 
     def __init__(self,
                  model: Model,
                  decision_representative: Trace,
-                 branching_decisions: BranchingDecisions,
-                 branching_variables: Set[str]) -> None:
+                 branching_decisions: BranchingDecisions) -> None:
         
         self.model = model
         self.decision_representative = decision_representative
         self.branching_decisions = branching_decisions
-        self.branching_variables = branching_variables
 
         self._jitted_path_indicator = False
         self._path_indicator = _make_slp_path_indicator(self, model, branching_decisions)

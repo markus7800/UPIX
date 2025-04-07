@@ -48,16 +48,59 @@ m.set_slp_sort_key(find_t_max)
 
 rng_key = jax.random.PRNGKey(0)
 active_slps: List[SLP] = []
-for _ in tqdm(range(1_000)):
-    rng_key, key = jax.random.split(rng_key)
-    X = sample_from_prior(m, key)
-    slp = slp_from_decision_representative(m, X)
 
-    if all(slp.path_indicator(X) == 0 for slp in active_slps):
+active_slps_tree = {}
+def maybe_add_new_slp(active_slps_tree, slp: SLP):
+    decisions = slp.branching_decisions.decisions
+    for i, b in enumerate(decisions):
+        assert isinstance(active_slps_tree, dict)
+        assert b.shape == () and isinstance(b.item(), (bool, int))
+        b = b.item()
+        if i == len(decisions) - 1:
+            if b in active_slps_tree:
+                assert isinstance(active_slps_tree[b], SLP)
+                return False
+            else:
+                active_slps_tree[b] = slp
+                active_slps.append(slp)
+                return True
+        else:
+            if b in active_slps_tree:
+                active_slps_tree = active_slps_tree[b]
+            else:
+                active_slps_tree[b] = {}
+                active_slps_tree = active_slps_tree[b]
+            
+    raise Exception
+
+
+def maybe_add_new_slp_2(active_slps_tree: dict, slp: SLP):
+    decisions = slp.branching_decisions.decisions
+    t = tuple(x.item() for x in decisions)
+    if t not in active_slps_tree:
+        active_slps_tree[t] = slp
         active_slps.append(slp)
 
-        # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
+    
+for _ in tqdm(range(10_000)):
+    rng_key, key = jax.random.split(rng_key)
+    X, decisions = sample_from_prior_with_decisions(m, key)
+    maybe_add_new_slp_2(active_slps_tree, SLP(m, X, decisions))
 
+# from pprint import pprint
+# pprint(active_slps_tree)
+
+# for _ in tqdm(range(10_000)):
+#     rng_key, key = jax.random.split(rng_key)
+#     X = sample_from_prior(m, key)
+
+#     if all(slp.path_indicator(X) == 0 for slp in active_slps):
+#         slp = slp_from_decision_representative(m, X)
+#         active_slps.append(slp)
+
+print(f"{len(active_slps)=}")
+
+exit()
 # slp = active_slps[4]
 # print(slp.get_is_discrete_map())
 # X_unconstrained = slp.transform_to_unconstrained(slp.decision_representative)
