@@ -16,9 +16,6 @@ from tqdm.auto import tqdm as tqdm_auto
 __all__ = [
     "InferenceStep",
     "Gibbs",
-    "unstack_chains",
-    "n_samples_for_stacked_chains",
-    "n_samples_for_unstacked_chains",
     "mcmc",
 ]
 
@@ -175,7 +172,7 @@ def get_initial_inference_state(slp: SLP, regime: InferenceRegime, n_chains: int
 
     # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
     # and X[i,m,n,...] = X[j,m,n,...] for all i, j
-    return broadcast_jaxtree(InferenceCarry(jnp.array(0), InferenceState(slp.decision_representative, slp.log_prob(slp.decision_representative)), inference_info), (n_chains,))
+    return broadcast_jaxtree(InferenceCarry(jnp.array(0), InferenceState(slp.decision_representative.data, slp.log_prob(slp.decision_representative)), inference_info), (n_chains,))
 
     result, lp = coordinate_ascent(slp, 0.1, 1000, n_chains, jax.random.PRNGKey(0))
     assert not jnp.isinf(lp).any()
@@ -197,22 +194,3 @@ def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_k
  
     return all_positions if collect_states else last_state.state.position # TODO
 
-
-def _unstack_chains(values: jax.Array):
-    shape = values.shape
-    assert len(shape) >= 2
-    var_dim = () if len(shape) < 3 else (shape[2],)
-    n_samples = shape[0]
-    n_chains = shape[1]
-    return jax.lax.reshape(values, (n_samples * n_chains, *var_dim))
-
-def unstack_chains(Xs: Trace) -> Trace:
-    return jax.tree_map(_unstack_chains, Xs)
-
-def n_samples_for_stacked_chains(Xs: Trace):
-    _, some_entry = next(iter(Xs.items()))
-    return some_entry.shape[0] * some_entry.shape[1]
-
-def n_samples_for_unstacked_chains(Xs: Trace):
-    _, some_entry = next(iter(Xs.items()))
-    return some_entry.shape[0]

@@ -2,8 +2,8 @@ import jax
 import jax.numpy as jnp
 from typing import Callable, Optional, Any, Set, Tuple, Dict
 from .samplecontext import LogprobCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
-from ..types import Trace, PRNGKey
-from ..utils import maybe_jit_warning, to_shaped_arrays, to_shaped_array_trace
+from ..types import Trace, PRNGKey, to_shaped_array_trace
+from ..utils import maybe_jit_warning, to_shaped_arrays
 from .branching_tracer import BranchingDecisions, trace_branching, retrace_branching
 
 __all__ = [

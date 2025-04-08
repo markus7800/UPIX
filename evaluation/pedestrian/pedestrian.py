@@ -82,25 +82,26 @@ def maybe_add_new_slp_2(active_slps_tree: dict, slp: SLP):
         active_slps.append(slp)
 
     
-for _ in tqdm(range(10_000)):
-    rng_key, key = jax.random.split(rng_key)
-    X, decisions = sample_from_prior_with_decisions(m, key)
-    maybe_add_new_slp_2(active_slps_tree, SLP(m, X, decisions))
+# for _ in tqdm(range(10_000)):
+#     rng_key, key = jax.random.split(rng_key)
+#     X, decisions = sample_from_prior_with_decisions(m, key)
+#     maybe_add_new_slp_2(active_slps_tree, SLP(m, X, decisions))
 
 # from pprint import pprint
 # pprint(active_slps_tree)
 
-# for _ in tqdm(range(10_000)):
-#     rng_key, key = jax.random.split(rng_key)
-#     X = sample_from_prior(m, key)
+for _ in tqdm(range(10_000)):
+    rng_key, key = jax.random.split(rng_key)
+    X = sample_from_prior(m, key)
 
-#     if all(slp.path_indicator(X) == 0 for slp in active_slps):
-#         slp = slp_from_decision_representative(m, X)
-#         active_slps.append(slp)
+    if all(slp.path_indicator(X) == 0 for slp in active_slps):
+        slp = slp_from_decision_representative(m, X)
+        active_slps.append(slp)
 
 print(f"{len(active_slps)=}")
-
 exit()
+
+# exit()
 # slp = active_slps[4]
 # print(slp.get_is_discrete_map())
 # X_unconstrained = slp.transform_to_unconstrained(slp.decision_representative)
@@ -192,21 +193,21 @@ for i, slp in enumerate(active_slps):
         Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000, jax.random.PRNGKey(0), Xs_constrained=mle_position)
         print("\t", f" MLE constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
 
-    # positions_unstacked = unstack_chains(result_positions) if collect_states else result_positions
+    positions_unstacked = StackedTraces(result_positions, n_samples_per_chain, n_chains).unstack() if collect_states else Traces(result_positions, n_samples_per_chain)
 
-    # for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
-    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked)), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked)
-    #     if ESS > ESS_final:
-    #         Z_final, ESS_final = Z, ESS
+    for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
+        Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked.data)
+        if ESS > ESS_final:
+            Z_final, ESS_final = Z, ESS
 
-    #     print("\t", f" MCMC constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
+        print("\t", f" MCMC constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
 
-    # positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked)
-    # for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
-    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked_unconstrained)), jax.random.PRNGKey(0), Xs_unconstrained=positions_unstacked_unconstrained)
-    #     if ESS > ESS_final:
-    #         Z_final, ESS_final = Z, ESS
-    #     print("\t", f" MCMC unconstrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
+    positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked.data)
+    for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
+        Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), Xs_unconstrained=positions_unstacked_unconstrained)
+        if ESS > ESS_final:
+            Z_final, ESS_final = Z, ESS
+        print("\t", f" MCMC unconstrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
 
     combined_result.add_samples(slp, result_positions, Z_final)
 #     plt.figure()

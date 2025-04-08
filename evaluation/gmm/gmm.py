@@ -31,7 +31,7 @@ beta = 10.0
 def gmm(ys: jax.Array):
 
     N = ys.shape[0]
-    K = 4# sample("K", dist.Poisson(lam)) + 1
+    K = sample("K", dist.Poisson(lam)) + 1
     w = sample("w", dist.Dirichlet(jnp.full((K,), delta)))
     mus = sample("mus", dist.Normal(jnp.full((K,), xi), jnp.full((K,), 1/jax.lax.sqrt(kappa))))
     vars = sample("vars", dist.InverseGamma(jnp.full((K,), alpha), jnp.full((K,), beta)))
@@ -68,7 +68,7 @@ ys = jnp.array([
     -18.978055134755582, 13.441194891615718, 7.983890038551439, 7.759003567480592
 ])
 
-ys = ys[:10]
+# ys = ys[:10]
 
 from dccxjax.core.samplecontext import GenerateCtx, LogprobCtx
 with GenerateCtx(jax.random.PRNGKey(0)) as ctx1:
@@ -85,7 +85,7 @@ with GenerateCtx(jax.random.PRNGKey(0)) as ctx1:
 m: Model = model(gmm)(ys)
 
 def find_K(slp: SLP):
-    return 3#slp.decision_representative["K"].item()
+    return slp.decision_representative["K"].item()
 def formatter(slp: SLP):
     K = find_K(slp) + 1
     return f"#clusters={K}"
@@ -95,11 +95,12 @@ m.set_slp_sort_key(find_K)
 rng_key = jax.random.PRNGKey(0)
 
 class WProposal(TraceProposal):
-    def __init__(self, delta: float) -> None:
+    def __init__(self, delta: float, K: int) -> None:
         self.delta = delta
+        self.K = K
 
     def get_dirichlet(self, current: Trace):
-        K = 4 # current["K"] + 1
+        K = self.K + 1
         zs = current["zs"]
         counts = jnp.sum(zs.reshape(-1,1) == jnp.arange(0,K).reshape(1,-1), axis=0)
         d = dist.Dirichlet(counts + self.delta)
@@ -116,14 +117,14 @@ class WProposal(TraceProposal):
         return d.log_prob(proposed["w"])
     
 class MusProposal(TraceProposal):
-    def __init__(self, ys: jax.Array, kappa: float, xi: float) -> None:
+    def __init__(self, ys: jax.Array, kappa: float, xi: float, K: int) -> None:
         self.ys = ys
         self.kappa = kappa
         self.xi = xi
+        self.K = K
 
     def get_gaussian(self, current: Trace):
-        K = 4 # current["K"] + 1
-        mus = current["mus"]
+        K = self.K + 1
         vars = current["vars"]
         zs = current["zs"]
         cluster_alloc_mat = zs.reshape(-1,1) == jnp.arange(0,K).reshape(1,-1)
@@ -146,15 +147,15 @@ class MusProposal(TraceProposal):
         return d.log_prob(proposed["mus"]).sum()
 
 class VarsProposal(TraceProposal):
-    def __init__(self, ys: jax.Array, alpha: float, beta: float) -> None:
+    def __init__(self, ys: jax.Array, alpha: float, beta: float, K: int) -> None:
         self.ys = ys
         self.alpha = alpha
         self.beta = beta
+        self.K = K
 
     def get_invgamma(self, current: Trace):
-        K = 4 # current["K"] + 1
+        K = self.K + 1
         mus = current["mus"]
-        vars = current["vars"]
         zs = current["zs"]
         cluster_alloc_mat = zs.reshape(-1,1) == jnp.arange(0,K).reshape(1,-1)
         cluster_counts = jnp.sum(cluster_alloc_mat, axis=0)
@@ -180,7 +181,6 @@ class ZsProposal(TraceProposal):
         self.ys = ys
 
     def get_categorical(self, current: Trace) -> dist.CategoricalProbs:
-        K = 4 # current["K"] + 1
         mus = current["mus"]
         vars = current["vars"]
         w = current["w"]
@@ -208,41 +208,8 @@ class ZsProposal(TraceProposal):
         # jax.debug.print("cat={p} lp={lp} {s} z={z}", p=d.probs, lp=lp, s=lp.sum(), z=proposed["zs"])
         return lp.sum()
 
-
-regime = Gibbs(
-    InferenceStep(SingleVariable("w"), MH(WProposal(delta))),
-    InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi))),
-    InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta))),
-    InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
-)
-
-slp = convert_branchless_model_to_SLP(m)
-n_chains = 4
-collect_states = True
-collect_infos = False
-n_samples_per_chain = 100
-
-def return_map(x: InferenceCarry):
-    return x.state.position if collect_states else None
-
-mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_infos, return_map)
-# progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
-
-init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []
-init = broadcast_jaxtree(InferenceCarry(0, InferenceState(slp.decision_representative, slp.log_prob(slp.decision_representative)), init_info), (n_chains,))
-
-
-# progressbar_mng.start_progress(n_samples_per_chain)
-keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
-last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
-last_state.iteration.block_until_ready()
-last_positions = last_state.state.position
-print(all_positions)
-print(last_state.infos)
-exit()
-
 active_slps: List[SLP] = []
-for _ in tqdm(range(100)):
+for i in tqdm(range(100)):
     rng_key, key = jax.random.split(rng_key)
     X = sample_from_prior(m, key)
     # print(slp.formatted(), slp.branching_decisions.to_human_readable())
@@ -250,29 +217,87 @@ for _ in tqdm(range(100)):
     if all(slp.path_indicator(X) == 0 for slp in active_slps):
         slp = slp_from_decision_representative(m, X)
         active_slps.append(slp)
+        # print(i, slp.formatted())
 
+        # print(slp.branching_decisions.decisions)
         # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
-
 
 active_slps = sorted(active_slps, key=m.slp_sort_key)
 active_slps = active_slps[:10]
 
+# from dccxjax.infer.estimate_Z import _log_IS_weight_gaussian_mixture
+# slp = active_slps[0]
+# print(slp.short_repr())
+# print(slp.decision_representative)
+# X = StackedTrace(broadcast_jaxtree(slp.decision_representative, (4,)), 4)
+# _log_IS_weight_gaussian_mixture(slp, jax.random.PRNGKey(0), unstack_trace(X), 1.)
+
+
+# exit()
+# for i, slp in enumerate(active_slps):
+#     print(slp.short_repr(), slp.formatted())
+
+
+n_chains = 10
+collect_states = True
+collect_infos = True
+n_samples_per_chain = 50_000
+
+def return_map(x: InferenceCarry):
+    return x.state if collect_states else None
+
+
+Zs = []
 for i, slp in enumerate(active_slps):
     print(slp.short_repr(), slp.formatted())
 
     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 100_000, jax.random.PRNGKey(0))
     print("\t", f" prior Z={Z.item()}, ESS={ESS.item()}, {frac_out_of_support=}")
 
-    p = min(1., 2. / len(slp.decision_representative))
-    mle_position, log_prob, result = sparse_coordinate_ascent2(slp, 0.1, p, 1_000, 1, jax.random.PRNGKey(0))
-    plt.plot(result)
-    plt.show()
-    print("\t", f"{slp.decision_representative=} log_prob={slp.log_prob(slp.decision_representative)}")
-    print("\t", f"MLE {mle_position=} log_prob={log_prob} result={result}")
 
-    for s in [0.01, 0.05, 0.1, 0.5, 1.0,1.5,2.0,]:
-        Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000, jax.random.PRNGKey(0), Xs_constrained=mle_position)
-        print("\t", f" MLE constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
+    regime = Gibbs(
+        InferenceStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
+        InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, slp.decision_representative["K"].item()))),
+        InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, slp.decision_representative["K"].item()))),
+        InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+    )
+    init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []
+    init = broadcast_jaxtree(InferenceCarry(0, InferenceState(slp.decision_representative, slp.log_prob(slp.decision_representative)), init_info), (n_chains,))
+
+    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_infos, return_map)
+    progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
+    progressbar_mng.start_progress(n_samples_per_chain)
+    keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+    last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
+    last_state.iteration.block_until_ready()
+    # print("\t", last_state.infos)
+
+    result_positions: Trace = all_states.position if all_states is not None else last_state.state.position
+    # positions_unstacked = unstack_chains(result_positions) if collect_states else result_positions
+    
+    assert all_states is not None
+    Zs.append(jax.scipy.special.logsumexp(all_states.log_prob))
+
+    # for s in [0.01, 0.05, 0.1, 0.5, 1.0,1.5,2.0,]:
+    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // n_samples_for_unstacked_chains(positions_unstacked), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked)
+    #     print("\t", f" MLE constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
+
+Zs = jnp.array(Zs)
+Zs = Zs - jax.scipy.special.logsumexp(Zs)
+Zs = jnp.exp(Zs)
+print(Zs, Zs.sum())
+for i in range(len(Zs)):
+    print(f"{Zs[i]:.4f}")
+# 0.0008
+# 0.00038
+# 0.00104
+# 0.33794
+# 0.43936
+# 0.17692
+# 0.03692
+# 0.00624
+# 0.0004
+# 0.0
 
 t1 = time()
 

@@ -1,6 +1,5 @@
 
 import logging
-from .types import Trace
 import jax
 from jax.core import full_lower
 import contextlib
@@ -32,9 +31,6 @@ def maybe_jit_warning(obj, attr, fname, short_repr, input):
     else:
         logger.debug(msg)
 
-
-def to_shaped_array_trace(X: Trace):
-    return {address: value.aval for address, value in X.items()}
 
 def to_shaped_arrays(tree):
     return jax.tree.map(lambda v: full_lower(v).aval, tree)
