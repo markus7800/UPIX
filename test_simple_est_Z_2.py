@@ -74,6 +74,7 @@ def step(carry, rng_key):
     col = jax.random.randint(c_key, (), 0, N)
     row = jax.random.randint(r_key, (), 0, 2)
 
+    # this is wrong (1)
     # lp = jax.lax.select(row == 0, lp1[col], lp2[col]) # wrong, gives ratios [mean_p_1, mean_p_2] / (mean_p_1 + mean_p_2)
     # lp = jax.lax.select(row == 0, X.log_prob(X1_sample[col]), X.log_prob(X2_sample[col])) # equivalent
     # accept = jax.lax.log(jax.random.uniform(a_key)) < (lp - current_lp)
@@ -81,9 +82,17 @@ def step(carry, rng_key):
     # this is correct:
     x = jax.lax.select(row == 0, X1_sample[col], X2_sample[col])
     # x = jax.lax.select(row == 0, X1.sample(c_key), X2.sample(c_key)) # equivalent
+    # lp = X.log_prob(x)
+    # q = jnp.log(0.5 * jnp.exp(X1.log_prob(current_x)) + 0.5 * jnp.exp(X2.log_prob(current_x))) - jnp.log(0.5 * jnp.exp(X1.log_prob(x)) + 0.5 * jnp.exp(X2.log_prob(x)))
+    # accept = jax.lax.log(jax.random.uniform(a_key)) < (lp - current_lp + q)
+
+    # this is also correct
+    x = jax.lax.select(row == 0, X1_sample[col], X2_sample[col])
     lp = X.log_prob(x)
-    q = jnp.log(0.5 * jnp.exp(X1.log_prob(current_x)) + 0.5 * jnp.exp(X2.log_prob(current_x))) - jnp.log(0.5 * jnp.exp(X1.log_prob(x)) + 0.5 * jnp.exp(X2.log_prob(x)))
+    # to compute q we have to know Z1 / Z2, this is not accounted for in (1)
+    q = jax.lax.select(current_row == 0, X1.log_prob(current_x), X2.log_prob(current_x)) -  jax.lax.select(row == 0, X1.log_prob(x), X2.log_prob(x))
     accept = jax.lax.log(jax.random.uniform(a_key)) < (lp - current_lp + q)
+
     
     next_col, next_row, next_x, next_lp = jax.lax.cond(accept, lambda _: (col, row, x, lp), lambda _: (current_col, current_row, current_x, current_lp), None)
     return (next_col, next_row, next_x, next_lp), next_row
