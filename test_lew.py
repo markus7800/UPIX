@@ -43,6 +43,7 @@ plt.show()
 
 # %%
 # mh kernel satisfies detailed balance (it is its own time reversal), leaves p in variant
+# general reversal k(x,x') = k(x',x) p(x') / p(x) (annealed importance sampling paper)
 mh_kernel = jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), mixture_log_P))
 
 #%%
