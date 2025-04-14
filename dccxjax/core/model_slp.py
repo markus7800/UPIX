@@ -120,7 +120,7 @@ def _make_slp_unconstrained_log_prob(slp: "SLP", model: Model, branching_decisio
     
 #     return _transform_unconstrained_to_support
 
-def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], float]:
+def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], Tuple[float,bool]]:
     @jax.jit
     def _gen_likelihood_weight(key: PRNGKey):
         maybe_jit_warning(slp, "_jitted_gen_likelihood_weight", "slp_gen_likelihood_weight", slp.short_repr(), to_shaped_arrays(key))
@@ -134,7 +134,7 @@ def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decision
         gen_log_likelihood_and_X_from_prior = retrace_branching(_gen_log_likelihood_and_X_from_prior, branching_decisions)
         log_likelihood, path_condition = gen_log_likelihood_and_X_from_prior(key)
         
-        return jax.lax.select(path_condition, log_likelihood, -jnp.inf)
+        return jax.lax.select(path_condition, log_likelihood, -jnp.inf), path_condition
 
     return _gen_likelihood_weight
 

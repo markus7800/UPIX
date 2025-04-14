@@ -13,6 +13,8 @@ from time import time
 from dccxjax.infer.mcmc import InferenceState, InferenceCarry, InferenceInfos, get_inference_regime_mcmc_step_for_slp, add_progress_bar
 from dccxjax.infer.dcc import DCC_Result
 
+from dccxjax.infer.estimate_Z import estimate_Z_for_SLP_from_sparse_mixture
+
 import logging
 setup_logging(logging.WARNING)
 
@@ -223,7 +225,7 @@ for i in tqdm(range(100)):
         # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
 
 active_slps = sorted(active_slps, key=m.slp_sort_key)
-active_slps = active_slps[:10]
+active_slps = active_slps[:6]
 
 # from dccxjax.infer.estimate_Z import _log_IS_weight_gaussian_mixture
 # slp = active_slps[0]
@@ -241,13 +243,12 @@ active_slps = active_slps[:10]
 n_chains = 10
 collect_states = True
 collect_infos = True
-n_samples_per_chain = 50_000
+n_samples_per_chain = 10_000
 
 def return_map(x: InferenceCarry):
     return x.state if collect_states else None
 
 
-Zs = []
 for i, slp in enumerate(active_slps):
     print(slp.short_repr(), slp.formatted())
 
@@ -270,24 +271,37 @@ for i, slp in enumerate(active_slps):
     keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
     last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
     last_state.iteration.block_until_ready()
-    # print("\t", last_state.infos)
+    print("\t", last_state.infos)
 
-    result_positions: Trace = all_states.position if all_states is not None else last_state.state.position
-    # positions_unstacked = unstack_chains(result_positions) if collect_states else result_positions
+    result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains) if all_states is not None else StackedTrace(last_state.state.position, n_chains)
+    result_lps: jax.Array | float = all_states.log_prob if all_states is not None else last_state.state.log_prob
+
+    amax = jnp.unravel_index(jnp.argmax(result_lps), result_lps.shape)
+    map = result_positions.get(*amax)
+    print("\t", map)
+    y_range = jnp.linspace(ys.min()-2, ys.max()+2, 1000)
+    p = jnp.sum(map["w"].reshape(1,-1) * jnp.exp(dist.Normal(map["mus"].reshape(1,-1), jnp.sqrt(map["vars"]).reshape(1,-1)).log_prob(y_range.reshape(-1,1))), axis=1)
+    plt.plot(y_range, p, c="gray")
+    # plt.scatter(ys, jnp.full_like(ys, 0.))
+    K = map["w"].size
+    cmap = plt.get_cmap('tab10')
+    for k in range(K):
+        cluster_ys = ys[map["zs"] == k]
+        y_range = jnp.linspace(cluster_ys.min()-2, cluster_ys.max()+2, 1000)
+        p = map["w"][k] * jnp.exp(dist.Normal(map["mus"][k], jnp.sqrt(map["vars"])[k]).log_prob(y_range))
+        plt.plot(y_range, p, c=cmap(k))
+        plt.scatter(cluster_ys, jnp.full_like(cluster_ys, 0.), c=cmap(k))
+    plt.show()
+
+    # positions_unstacked = StackedTraces(result_positions, n_samples_per_chain, n_chains).unstack() if collect_states else Traces(result_positions, n_samples_per_chain)
+    # positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked.data)
+
+    # for s in [0.01, 0.1, 1.0,]:
+    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, 1.0, 0.0, 1, jax.random.PRNGKey(0), positions_unstacked_unconstrained, True)
+
+    #     print("\t", f" MCMC constrained {s=} Z={Z.item()}, ESS={ESS.item():,.0f}, frac_out_of_support={frac_out_of_support.item()}")
+
     
-    assert all_states is not None
-    Zs.append(jax.scipy.special.logsumexp(all_states.log_prob))
-
-    # for s in [0.01, 0.05, 0.1, 0.5, 1.0,1.5,2.0,]:
-    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // n_samples_for_unstacked_chains(positions_unstacked), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked)
-    #     print("\t", f" MLE constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
-
-Zs = jnp.array(Zs)
-Zs = Zs - jax.scipy.special.logsumexp(Zs)
-Zs = jnp.exp(Zs)
-print(Zs, Zs.sum())
-for i in range(len(Zs)):
-    print(f"{Zs[i]:.4f}")
 # 0.0008
 # 0.00038
 # 0.00104

@@ -90,7 +90,7 @@ def maybe_add_new_slp_2(active_slps_tree: dict, slp: SLP):
 # from pprint import pprint
 # pprint(active_slps_tree)
 
-for _ in tqdm(range(10_000)):
+for _ in tqdm(range(1_000)):
     rng_key, key = jax.random.split(rng_key)
     X = sample_from_prior(m, key)
 
@@ -99,7 +99,7 @@ for _ in tqdm(range(10_000)):
         active_slps.append(slp)
 
 print(f"{len(active_slps)=}")
-exit()
+
 
 # exit()
 # slp = active_slps[4]
@@ -124,6 +124,7 @@ def distance_position(X: Trace):
 
 from dccxjax.infer.mcmc import InferenceCarry, InferenceInfos, InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
 from dccxjax.infer.dcc import DCC_Result
+from dccxjax.infer.estimate_Z import estimate_Z_for_SLP_from_sparse_mixture
 
 active_slps = sorted(active_slps, key=m.slp_sort_key)
 active_slps = active_slps[:10]
@@ -182,38 +183,38 @@ for i, slp in enumerate(active_slps):
     # last_state.iteration.block_until_ready()
 
     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.PRNGKey(0))
-    print("\t", f" prior Z={Z.item()}, ESS={ESS.item()}, {frac_out_of_support=}")
+    print("\t", f" prior Z={Z.item()}, ESS={ESS.item():,.0f}, {1-frac_out_of_support=}")
 
     Z_final, ESS_final = Z, ESS
 
     result_positions: Trace =  all_positions if all_positions is not None else last_positions
 
-
-    for s in [0.01, 0.05, 0.1, 0.5, 1.0,1.5,2.0,]:
-        Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000, jax.random.PRNGKey(0), Xs_constrained=mle_position)
-        print("\t", f" MLE constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
-
     positions_unstacked = StackedTraces(result_positions, n_samples_per_chain, n_chains).unstack() if collect_states else Traces(result_positions, n_samples_per_chain)
 
-    for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
-        Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked.data)
-        if ESS > ESS_final:
-            Z_final, ESS_final = Z, ESS
+    # p = 2. / len(slp.decision_representative)
+    # p = 1.0
+    # for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
+    #     # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked.data)
+    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, p, 1.0, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), positions_unstacked.data, False)
+    #     if ESS > ESS_final:
+    #         Z_final, ESS_final = Z, ESS
 
-        print("\t", f" MCMC constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
+    #     print("\t", f" MCMC constrained {s=} Z={Z.item()}, ESS={ESS.item():,.0f}, frac_out_of_support={frac_out_of_support.item()}")
 
-    positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked.data)
-    for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
-        Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), Xs_unconstrained=positions_unstacked_unconstrained)
-        if ESS > ESS_final:
-            Z_final, ESS_final = Z, ESS
-        print("\t", f" MCMC unconstrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
+    # positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked.data)
+    # for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
+    #     # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), Xs_unconstrained=positions_unstacked_unconstrained)
+    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, p, 1.0, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), positions_unstacked_unconstrained, True)
+    #     if ESS > ESS_final:
+    #         Z_final, ESS_final = Z, ESS
+    #     print("\t", f" MCMC unconstrained {s=} Z={Z.item()}, ESS={ESS.item():,.0f}, frac_out_of_support={frac_out_of_support.item()}")
 
     combined_result.add_samples(slp, result_positions, Z_final)
 #     plt.figure()
 #     # plt.plot(all_positions["start"], alpha=0.5)
 #     plt.hist(all_positions["start"].reshape(-1), alpha=0.5)
 #     plt.title(slp.formatted())
+
 # plt.show()
 
 t1 = time()
