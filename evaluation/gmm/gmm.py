@@ -7,10 +7,10 @@ import jax.numpy as jnp
 import dccxjax.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
-from typing import List
+from typing import List, NamedTuple
 from time import time
 
-from dccxjax.infer.mcmc import InferenceState, InferenceCarry, InferenceInfos, get_inference_regime_mcmc_step_for_slp, add_progress_bar
+from dccxjax.infer.mcmc import MCMCState, InferenceInfos, get_inference_regime_mcmc_step_for_slp, add_progress_bar
 from dccxjax.infer.dcc import DCC_Result
 
 from dccxjax.infer.estimate_Z import estimate_Z_for_SLP_from_sparse_mixture
@@ -245,8 +245,11 @@ collect_states = True
 collect_infos = True
 n_samples_per_chain = 10_000
 
-def return_map(x: InferenceCarry):
-    return x.state if collect_states else None
+class CollectType(NamedTuple):
+    position: Trace
+    log_prob: float
+def return_map(x: MCMCState):
+    return CollectType(x.position, x.log_prob) if collect_states else None
 
 
 for i, slp in enumerate(active_slps):
@@ -263,9 +266,9 @@ for i, slp in enumerate(active_slps):
         InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
     )
     init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []
-    init = broadcast_jaxtree(InferenceCarry(0, InferenceState(slp.decision_representative, slp.log_prob(slp.decision_representative)), init_info), (n_chains,))
+    init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
 
-    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_infos, return_map)
+    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=collect_infos, return_map=return_map)
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
     progressbar_mng.start_progress(n_samples_per_chain)
     keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
@@ -273,8 +276,8 @@ for i, slp in enumerate(active_slps):
     last_state.iteration.block_until_ready()
     print("\t", last_state.infos)
 
-    result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains) if all_states is not None else StackedTrace(last_state.state.position, n_chains)
-    result_lps: jax.Array | float = all_states.log_prob if all_states is not None else last_state.state.log_prob
+    result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains) if all_states is not None else StackedTrace(last_state.position, n_chains)
+    result_lps: jax.Array | float = all_states.log_prob if all_states is not None else last_state.log_prob
 
     amax = jnp.unravel_index(jnp.argmax(result_lps), result_lps.shape)
     map = result_positions.get(*amax)

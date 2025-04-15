@@ -178,7 +178,7 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel[MCMC_CO
         # nonlocal t0
         # t0 = time()
         
-        iter_num = iter_num[0] + 1 # all chains are at the same iteration, init iteration=0
+        iter_num = iter_num + 1 # all chains are at the same iteration, init iteration=0
         _ = jax.lax.cond(
             iter_num == 1,
             lambda _: jax.experimental.io_callback(progressbar_mngr._init_tqdm, None),

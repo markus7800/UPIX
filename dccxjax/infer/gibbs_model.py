@@ -5,12 +5,12 @@ import jax
 from ..types import Trace, FloatArray, BoolArray
 import jax.numpy as jnp
 
-def make_gibbs_log_prior_likeli_pathcond(slp: SLP, conditional_variables: Set[str]) -> Callable[[Trace,Trace], Tuple[FloatArray,FloatArray,BoolArray]]:
-    def _gibbs_log_prior_likeli_pathcond(X: Trace, Y: Trace):
-        for address in conditional_variables:
-            X[address] = Y[address]
-        return slp._log_prior_likeli_pathcond(X)
-    return _gibbs_log_prior_likeli_pathcond
+# def make_gibbs_log_prior_likeli_pathcond(slp: SLP, conditional_variables: Set[str]) -> Callable[[Trace,Trace], Tuple[FloatArray,FloatArray,BoolArray]]:
+#     def _gibbs_log_prior_likeli_pathcond(X: Trace, Y: Trace):
+#         for address in conditional_variables:
+#             X[address] = Y[address]
+#         return slp._log_prior_likeli_pathcond(X)
+#     return _gibbs_log_prior_likeli_pathcond
 
 class GibbsModel:
     def __init__(self, slp: SLP, variable_selector: VariableSelector, Y: Optional[Trace] = None) -> None:
@@ -23,7 +23,7 @@ class GibbsModel:
             else:
                 self.conditional_variables.add(address)
         # TODO: check if jit is slower or faster compilation here
-        self._gibbs_log_prior_likeli_pathcond = make_gibbs_log_prior_likeli_pathcond(slp, self.conditional_variables)
+        # self._gibbs_log_prior_likeli_pathcond = make_gibbs_log_prior_likeli_pathcond(slp, self.conditional_variables)
         if Y is not None:
             assert Y.keys() == self.conditional_variables
             self.Y = Y
@@ -46,7 +46,7 @@ class GibbsModel:
 
     def log_prior_likeli_pathcond(self, X: Trace) -> Tuple[FloatArray,FloatArray,BoolArray]:
         assert X.keys() == self.variables
-        return self._gibbs_log_prior_likeli_pathcond(X, self.Y)
+        return self.slp._log_prior_likeli_pathcond(X | self.Y)
     
     def tempered_log_prob(self, temperature: FloatArray) -> Callable[[Trace], FloatArray]:
         def _log_prob(X: Trace) -> FloatArray:
