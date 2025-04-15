@@ -31,9 +31,8 @@ class KernelState(NamedTuple):
 Kernel = Callable[[PRNGKey,FloatArray,KernelState],KernelState]
 
 class MCMCState(NamedTuple):
-    iteration: IntArray
-    # rng_key: PRNGKey
-    temperature: FloatArray # 0 ... prior, 1 ... joint
+    iteration: IntArray # scalar
+    temperature: FloatArray # scalar 0 ... prior, 1 ... joint
     position: Trace
     log_prob: FloatArray
     infos: InferenceInfos
@@ -101,9 +100,11 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, *,
             kernel_state = KernelState(position, log_prob, infos[i] if collect_inference_info else None)
 
             if vectorised:
-                t = state.iteration.shape[0]
+                # for some reason this is significantly faster
+                # re-compilation time for different number of chains should be okay since sub-kernels are always cached
+                t = state.log_prob.shape[0]
                 kernel_keys = jax.random.split(kernel_key, t)
-                new_kernel_state = jax.vmap(kernel)(kernel_keys, state.temperature, kernel_state) # (1)
+                new_kernel_state = jax.vmap(kernel, in_axes=(0,None,0))(kernel_keys, state.temperature, kernel_state) # (1)
             else:
                 new_kernel_state = kernel(kernel_key, state.temperature, kernel_state) # (2)
 
@@ -121,11 +122,14 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, *,
 # kernel had to be created with vectorised=False
 def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCKernel[MCMC_COLLECT_TYPE]:
     jit_tracker = JitVariationTracker(f"vectorise <Kernel {hex(id(kernel))}>")
+    @jax.jit
     def _vectorised_kernel(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
-        n_chains = state.iteration.shape[0]
-        maybe_jit_warning(jit_tracker, f"n_chains={n_chains} {to_shaped_arrays(state)}")
+        n_chains = state.log_prob.shape[0]
+        maybe_jit_warning(jit_tracker, f"n_chains={n_chains}")
         chain_keys = jax.random.split(rng_key, n_chains)
-        return jax.vmap(kernel)(state, chain_keys)
+        axes = (MCMCState(None,None,0,0,0),0) # type: ignore
+        # can use the same for in and out, but once refers to rng_keys and once to mcmc collect object
+        return jax.vmap(kernel, in_axes=axes, out_axes=axes)(state, chain_keys)
     return _vectorised_kernel
 
 class ProgressbarManager:
