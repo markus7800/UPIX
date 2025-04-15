@@ -2,10 +2,10 @@ from dccxjax.core import SLP
 from .variable_selector import VariableSelector
 from typing import Set, Optional, Tuple, Callable
 import jax
-from ..types import Trace
+from ..types import Trace, FloatArray, BoolArray
+import jax.numpy as jnp
 
-
-def make_gibbs_log_prior_likeli_pathcond(slp: SLP, conditional_variables: Set[str]) -> Callable[[Trace,Trace], Tuple[float,float,bool]]:
+def make_gibbs_log_prior_likeli_pathcond(slp: SLP, conditional_variables: Set[str]) -> Callable[[Trace,Trace], Tuple[FloatArray,FloatArray,BoolArray]]:
     def _gibbs_log_prior_likeli_pathcond(X: Trace, Y: Trace):
         for address in conditional_variables:
             X[address] = Y[address]
@@ -44,8 +44,15 @@ class GibbsModel:
         assert Y.keys() == self.conditional_variables
         self.Y = Y
 
-    def log_prior_likeli_pathcond(self, X: Trace) -> Tuple[float,float,bool]:
+    def log_prior_likeli_pathcond(self, X: Trace) -> Tuple[FloatArray,FloatArray,BoolArray]:
         assert X.keys() == self.variables
         return self._gibbs_log_prior_likeli_pathcond(X, self.Y)
+    
+    def tempered_log_prob(self, temperature: FloatArray) -> Callable[[Trace], FloatArray]:
+        def _log_prob(X: Trace) -> FloatArray:
+            assert X.keys() == self.variables
+            log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X)
+            return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
+        return _log_prob
 
     

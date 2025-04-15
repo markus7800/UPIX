@@ -16,6 +16,9 @@ __all__ = [
     "BoolArrayLike",
     "IntArrayLike",
     "FloatArrayLike",
+    "BoolArray",
+    "IntArray",
+    "FloatArray",
 ]
 
 # StaticScalar = Union[
@@ -28,6 +31,11 @@ __all__ = [
 #   np.ndarray,  # NumPy array type
 #   StaticScalar,  # valid scalars
 # ]
+
+# just for annotation
+BoolArray = Array
+IntArray = Array
+FloatArray = Array
 
 BoolArrayLike = bool | Array
 IntArrayLike = int | Array

@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import Callable, Optional, Any, Set, Tuple, Dict
 from .samplecontext import LogprobCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
-from ..types import Trace, PRNGKey, to_shaped_array_trace, FloatArrayLike
+from ..types import Trace, PRNGKey, to_shaped_array_trace, FloatArray, BoolArray
 from ..utils import maybe_jit_warning, to_shaped_arrays
 from .branching_tracer import BranchingDecisions, trace_branching, retrace_branching
 
@@ -64,7 +64,7 @@ def _make_slp_path_indicator(slp: "SLP",  model: Model, branching_decisions: Bra
 
     return _path_indicator
 
-def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Tuple[float,float,bool]]:
+def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Tuple[FloatArray,FloatArray,BoolArray]]:
     @jax.jit
     def _log_prob(X: Trace):
         maybe_jit_warning(slp, "_jitted_log_prob", "_slp_log_prob", slp.short_repr(), to_shaped_array_trace(X))
@@ -210,9 +210,8 @@ class SLP:
                     return False
             return self._path_indicator(X)
 
-    def log_prob(self, X: Trace) -> FloatArrayLike:
-        if self.decision_representative.keys() != X.keys():
-            return -jnp.inf
+    def log_prob(self, X: Trace) -> FloatArray:
+        assert self.decision_representative.keys() == X.keys()
         log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X)
         lp = log_prior + log_likelihood
 

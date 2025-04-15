@@ -1,8 +1,9 @@
 import jax
+import jax.numpy as jnp
 from typing import Callable, Dict, Optional, Tuple, NamedTuple
-from ..types import PRNGKey, Trace
+from ..types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
 import dccxjax.distributions as dist
-from .mcmc import InferenceCarry, InferenceInfo, InferenceState, InferenceAlgorithm, Kernel
+from .mcmc import MCMCState, InferenceInfo, KernelState, InferenceAlgorithm, Kernel
 from dataclasses import dataclass
 import math
 from jax.flatten_util import ravel_pytree
@@ -27,37 +28,39 @@ def gaussian_random_walk(scale: float):
 
 def rw_kernel(
     rng_key: PRNGKey,
-    current_state: InferenceState,
-    log_prob_fn: Callable[[Trace], float],
+    current_position: Trace,
+    current_log_prob: FloatArray,
+    log_prob_fn: Callable[[Trace], FloatArray],
     proposer: Callable[[jax.Array], dist.Distribution]
-) -> Tuple[InferenceState, jax.Array]:
+) -> Tuple[Trace, FloatArray, BoolArray]:
     
-    current_value_flat, unravel_fn = ravel_pytree(current_state.position)
+    current_value_flat, unravel_fn = ravel_pytree(current_position)
     proposal_dist = proposer(current_value_flat)
     proposal_key, accept_key = jax.random.split(rng_key)
     proposed_value_flat = proposal_dist.sample(proposal_key)
-    proposed_value = unravel_fn(proposed_value_flat)
-    proposed_log_prob = log_prob_fn(proposed_value)
+    proposed_position = unravel_fn(proposed_value_flat)
+    proposed_log_prob = log_prob_fn(proposed_position)
     
     backward_dist = proposer(proposed_value_flat)
     Q = backward_dist.log_prob(current_value_flat).sum() - proposal_dist.log_prob(proposed_value_flat).sum()
-    P = proposed_log_prob - current_state.log_prob
+    P = proposed_log_prob - current_log_prob
 
     accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
-    new_state = jax.lax.cond(accept, lambda _: InferenceState(proposed_value, proposed_log_prob), lambda _: current_state, operand=None)
-    return new_state, accept
+    new_position, new_log_prob = jax.lax.cond(accept, lambda _: (proposed_position, proposed_log_prob), lambda _: (current_position, current_log_prob), operand=None)
+    return new_position, new_log_prob, accept
 
 def rw_kernel_sparse(   
     rng_key: PRNGKey,
-    current_state: InferenceState,
-    log_prob_fn: Callable[[Trace], float],
+    current_position: Trace,
+    current_log_prob: FloatArray,
+    log_prob_fn: Callable[[Trace], FloatArray],
     proposer: Callable[[jax.Array], dist.Distribution],
     p: float # static
-) -> Tuple[InferenceState, jax.Array]:
+) -> Tuple[Trace, FloatArray, IntArray]:
     
-    current_value_flat, unravel_fn = ravel_pytree(current_state.position)
+    current_value_flat, unravel_fn = ravel_pytree(current_position)
 
-    def step(current_value_flat: jax.Array, current_log_prob: jax.Array, n_accepted: jax.Array, step_key: PRNGKey):
+    def step(current_value_flat: FloatArray, current_log_prob: FloatArray, n_accepted: IntArray, step_key: PRNGKey) -> Tuple[Tuple[FloatArray,FloatArray,IntArray],None]:
         proposal_dist = proposer(current_value_flat)
         proposal_key, mask_key, accept_key = jax.random.split(step_key,3)
         proposed_value_flat = proposal_dist.sample(proposal_key)
@@ -65,8 +68,8 @@ def rw_kernel_sparse(
         mask = jax.random.bernoulli(mask_key, p, proposed_value_flat.shape)
         proposed_value_flat = jax.lax.select(mask, proposed_value_flat, current_value_flat)
 
-        proposed_value = unravel_fn(proposed_value_flat)
-        proposed_log_prob = log_prob_fn(proposed_value)
+        proposed_position = unravel_fn(proposed_value_flat)
+        proposed_log_prob = log_prob_fn(proposed_position)
 
         backward_dist = proposer(proposed_value_flat)
         Q = backward_dist.log_prob(current_value_flat).sum() - proposal_dist.log_prob(proposed_value_flat).sum()
@@ -79,29 +82,30 @@ def rw_kernel_sparse(
         return (new_value_flat, new_log_prob, n_accepted + accept), None
     
     scan_keys = jax.random.split(rng_key, int(math.ceil(1./p)))
-    (last_position_flat, last_log_prob, n_accepted), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_value_flat, current_state.log_prob, 0), scan_keys) # type: ignore TODO
+    (last_position_flat, last_log_prob, n_accepted), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_value_flat, current_log_prob, jnp.array(0,int)), scan_keys)
 
 
-    return InferenceState(unravel_fn(last_position_flat), last_log_prob), n_accepted
+    return unravel_fn(last_position_flat), last_log_prob, n_accepted
     
 
 def rw_kernel_elementwise(
     rng_key: PRNGKey,
-    current_state: InferenceState,
-    log_prob_fn: Callable[[Trace], float],
+    current_position: Trace,
+    current_log_prob: FloatArray,
+    log_prob_fn: Callable[[Trace], FloatArray],
     proposer: Callable[[jax.Array], dist.Distribution],
     N: int
-) -> Tuple[InferenceState, jax.Array]:
+) -> Tuple[Trace, FloatArray, IntArray]:
     
-    def _body(i: int, current_position: Trace, current_log_prob: float, n_accept: int, body_rng_key: PRNGKey):
+    def _body(i: int, current_position: Trace, current_log_prob: FloatArray, n_accept: IntArray, body_rng_key: PRNGKey) -> Tuple[FloatArray,FloatArray,IntArray]:
         current_value_flat, unravel_fn = ravel_pytree(current_position)
         sub_current_value_flat = current_value_flat[i]
         proposal_dist = proposer(sub_current_value_flat)
         body_rng_key, proposal_key = jax.random.split(body_rng_key)
         sub_proposed_value_flat = proposal_dist.sample(proposal_key)
         proposed_value_flat = current_value_flat.at[i].set(sub_proposed_value_flat)
-        proposed_value = unravel_fn(proposed_value_flat)
-        proposed_log_prob = log_prob_fn(proposed_value)
+        proposed_position = unravel_fn(proposed_value_flat)
+        proposed_log_prob = log_prob_fn(proposed_position)
 
         backward_dist = proposer(sub_proposed_value_flat)
         Q = backward_dist.log_prob(sub_current_value_flat).sum() - proposal_dist.log_prob(sub_proposed_value_flat).sum()
@@ -110,12 +114,12 @@ def rw_kernel_elementwise(
         body_rng_key, accept_key = jax.random.split(body_rng_key)
         accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
 
-        return jax.lax.cond(accept, lambda _: (proposed_value, proposed_log_prob, n_accept + 1, body_rng_key), lambda _: (current_position, current_log_prob, n_accept, body_rng_key), operand=None)
+        return jax.lax.cond(accept, lambda _: (proposed_position, proposed_log_prob, n_accept + 1, body_rng_key), lambda _: (current_position, current_log_prob, n_accept, body_rng_key), operand=None)
 
 
-    new_position, new_log_prob, n_accepted, _ = jax.lax.fori_loop(0, N, lambda i, a: _body(i, *a), (current_state.position, current_state.log_prob, 0, rng_key))
+    new_position, new_log_prob, n_accepted, _ = jax.lax.fori_loop(0, N, lambda i, a: _body(i, *a), (current_position, current_log_prob, jnp.array(0,int), rng_key))
     
-    return InferenceState(new_position, new_log_prob), n_accepted
+    return new_position, new_log_prob, n_accepted
     
 class MHInfo(NamedTuple):
     accepted: int | jax.Array
@@ -153,34 +157,29 @@ class RandomWalk(InferenceAlgorithm):
                 sparse_p = self.sparse_numvar / len(gibbs_model.slp.decision_representative)   
 
         @jax.jit
-        def _rw_kernel(rng_key: PRNGKey, carry: InferenceCarry) -> InferenceCarry:
-            maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays(carry))
-            X, Y = gibbs_model.split_trace(carry.state.position)
+        def _rw_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
+            maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays((temperature, state)))
+            X, Y = gibbs_model.split_trace(state.position)
             gibbs_model.set_Y(Y)
-
-            def _tempered_log_prob_fn(X: Trace) -> float:
-                log_prior, log_likelihood, _ = gibbs_model.log_prior_likeli_pathcond(X)
-                return log_prior + carry.tempering * log_likelihood
         
-            current_mh_state = InferenceState(X, carry.state.log_prob)
+            _tempered_log_prob_fn = gibbs_model.tempered_log_prob(temperature)
             if self.block_update:
                 if sparse:
-                    next_mh_state, n_accepted = rw_kernel_sparse(rng_key, current_mh_state, _tempered_log_prob_fn, self.proposer, sparse_p)
+                    next_X, next_log_prob, n_accepted = rw_kernel_sparse(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer, sparse_p)
                     accepted = n_accepted > 0
                 else:
-                    next_mh_state, accepted = rw_kernel(rng_key, current_mh_state, _tempered_log_prob_fn, self.proposer)
+                    next_X, next_log_prob, accepted = rw_kernel(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer)
             else:
-                next_mh_state, n_accepted = rw_kernel_elementwise(rng_key, current_mh_state, _tempered_log_prob_fn, self.proposer, len(gibbs_model.variables))
+                next_X, next_log_prob, n_accepted = rw_kernel_elementwise(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer, len(gibbs_model.variables))
                 accepted = n_accepted > 0
 
 
+            mh_info = state.info
             if collect_inferenence_info:
-                mh_info = carry.infos[step_number]
                 assert isinstance(mh_info, MHInfo)
-                carry.infos[step_number] = MHInfo(mh_info.accepted + accepted)
+                mh_info = MHInfo(mh_info.accepted + accepted)
 
-            next_mh_state = InferenceState(gibbs_model.combine_to_trace(next_mh_state.position, Y), next_mh_state.log_prob)
-            return InferenceCarry(carry.iteration, carry.tempering, next_mh_state, carry.infos)
+            return KernelState(gibbs_model.combine_to_trace(next_X, Y), next_log_prob, mh_info)
         
         return _rw_kernel
     
@@ -198,24 +197,25 @@ class TraceProposal(ABC):
 
 def mh_kernel(
     rng_key: PRNGKey,
-    current_state: InferenceState,
-    log_prob_fn: Callable[[Trace], float],
+    current_position: Trace,
+    current_log_prob: FloatArray,
+    log_prob_fn: Callable[[Trace], FloatArray],
     proposal: TraceProposal,
     Y: Trace
-) -> Tuple[InferenceState,jax.Array]:
+) -> Tuple[Trace, FloatArray, BoolArray]:
 
     rng_key, proposal_key = jax.random.split(rng_key)
-    proposed_position, foward_lp = proposal.propose(proposal_key, current_state.position | Y)
-    backward_lp = proposal.assess(proposed_position | Y, current_state.position)
+    proposed_position, foward_lp = proposal.propose(proposal_key, current_position | Y)
+    backward_lp = proposal.assess(proposed_position | Y, current_position)
     Q = backward_lp - foward_lp
     
     proposed_log_prob = log_prob_fn(proposed_position)
-    P = proposed_log_prob - current_state.log_prob
+    P = proposed_log_prob - current_log_prob
 
     rng_key, accept_key = jax.random.split(rng_key)
     accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
-    new_state = jax.lax.cond(accept, lambda _: InferenceState(proposed_position, proposed_log_prob), lambda _: current_state, operand=None)
-    return new_state, accept
+    new_position, new_log_prob = jax.lax.cond(accept, lambda _: (proposed_position, proposed_log_prob), lambda _: (current_position, current_log_prob), operand=None)
+    return new_position, new_log_prob, accept
 
 class MetropolisHastings(InferenceAlgorithm):
     def __init__(self, proposal: TraceProposal) -> None:
@@ -227,30 +227,21 @@ class MetropolisHastings(InferenceAlgorithm):
     
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
         @jax.jit
-        def _mh_kernel(rng_key: PRNGKey, carry: InferenceCarry) -> InferenceCarry:
-            maybe_jit_warning(self, "jitted_kernel", "_mh_kernel", f"Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>", to_shaped_arrays(carry.state.position))
-            X, Y = gibbs_model.split_trace(carry.state.position)
+        def _mh_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
+            maybe_jit_warning(self, "jitted_kernel", "_mh_kernel", f"Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>", to_shaped_arrays((temperature, state)))
+            X, Y = gibbs_model.split_trace(state.position)
             gibbs_model.set_Y(Y)
-            current_mh_state = InferenceState(X, carry.state.log_prob)
-
-            def _tempered_log_prob_fn(X: Trace) -> float:
-                log_prior, log_likelihood, _ = gibbs_model.log_prior_likeli_pathcond(X)
-                return log_prior + carry.tempering * log_likelihood
+            # current_mh_state = InferenceState(X, carry.state.log_prob)
             
-            next_mh_state, accepted = mh_kernel(rng_key, current_mh_state, _tempered_log_prob_fn, self.proposal, gibbs_model.Y)
+            next_X, next_log_prob, accepted = mh_kernel(rng_key, X, state.log_prob, gibbs_model.tempered_log_prob(temperature), self.proposal, gibbs_model.Y)
 
+            mh_info = state.info
             if collect_inferenence_info:
-                mh_info = carry.infos[step_number]
                 assert isinstance(mh_info, MHInfo)
-                carry.infos[step_number] = MHInfo(mh_info.accepted + accepted)
+                mh_info = MHInfo(mh_info.accepted + accepted)
 
-            next_state = InferenceState(gibbs_model.combine_to_trace(next_mh_state.position, Y), next_mh_state.log_prob)
-            return InferenceCarry(carry.iteration, carry.tempering, next_state, carry.infos)
+            return KernelState(gibbs_model.combine_to_trace(next_X, Y), next_log_prob, mh_info)
         
-            # current_mh_state = InferenceState(state.iteration, state.position, state.log_prob)
-            # next_mh_state = mh_kernel(rng_key, current_mh_state, gibbs_model.slp.log_prob, self.proposal)
-            # return next_mh_state
-         
         return _mh_kernel
     
 

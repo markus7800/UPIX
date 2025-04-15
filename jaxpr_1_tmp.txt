@@ -1,0 +1,369 @@
+{ lambda ; a:f32[1000000]. let
+    b:f32[1000000] = pjit[
+      name=_ais
+      jaxpr={ lambda c:f32[1] d:f32[1] e:f32[1000] f:f32[1]; g:f32[1000000]. let
+          h:f32[1000000] = broadcast_in_dim[
+            broadcast_dimensions=()
+            shape=(1000000,)
+            sharding=None
+          ] 0.0
+          i:key<fry>[] = random_seed[impl=fry] 0
+          j:u32[2] = random_unwrap i
+          k:f32[1000000] l:f32[1000000] _:u32[2] = scan[
+            _split_transpose=False
+            jaxpr={ lambda ; m:f32[1] n:f32[1] o:f32[1000000] p:f32[1000000] q:u32[2]
+                r:f32[]. let
+                s:key<fry>[] = random_wrap[impl=fry] q
+                t:key<fry>[2] = random_split[shape=(2,)] s
+                u:u32[2,2] = random_unwrap t
+                v:u32[1,2] = slice[
+                  limit_indices=(1, 2)
+                  start_indices=(0, 0)
+                  strides=(1, 1)
+                ] u
+                w:u32[2] = squeeze[dimensions=(0,)] v
+                x:u32[1,2] = slice[
+                  limit_indices=(2, 2)
+                  start_indices=(1, 0)
+                  strides=(1, 1)
+                ] u
+                y:u32[2] = squeeze[dimensions=(0,)] x
+                z:key<fry>[] = random_wrap[impl=fry] y
+                ba:key<fry>[1] = random_split[shape=(1,)] z
+                bb:u32[1,2] = random_unwrap ba
+                bc:f32[1000000] = scan[
+                  _split_transpose=False
+                  jaxpr={ lambda ; bd:f32[] be:f32[1000000] bf:u32[2]. let
+                      bg:key<fry>[] = random_wrap[impl=fry] bf
+                      bh:key<fry>[1000000] = random_split[shape=(1000000,)] bg
+                      bi:u32[1000000,2] = random_unwrap bh
+                      bj:f32[1000000] = pjit[
+                        name=mh_kernel
+                        jaxpr={ lambda ; bk:f32[] bl:f32[1000000] bm:u32[1000000,2]. let
+                            bn:key<fry>[1000000] = random_wrap[impl=fry] bm
+                            bo:key<fry>[1000000,2] = random_split[shape=(2,)] bn
+                            bp:u32[1000000,2,2] = random_unwrap bo
+                            bq:u32[1000000,1,2] = slice[
+                              limit_indices=(1000000, 1, 2)
+                              start_indices=(0, 0, 0)
+                              strides=(1, 1, 1)
+                            ] bp
+                            br:u32[1000000,2] = squeeze[dimensions=(1,)] bq
+                            bs:u32[1000000,1,2] = slice[
+                              limit_indices=(1000000, 2, 2)
+                              start_indices=(0, 1, 0)
+                              strides=(1, 1, 1)
+                            ] bp
+                            bt:u32[1000000,2] = squeeze[dimensions=(1,)] bs
+                            bu:key<fry>[1000000] = random_wrap[impl=fry] br
+                            bv:f32[1000000] = pjit[
+                              name=_normal
+                              jaxpr={ lambda ; bw:key<fry>[1000000]. let
+                                  bx:f32[1000000] = pjit[
+                                    name=_normal_real
+                                    jaxpr={ lambda ; by:key<fry>[1000000]. let
+                                        bz:f32[1000000] = pjit[
+                                          name=_uniform
+                                          jaxpr={ lambda ; ca:key<fry>[1000000] cb:f32[]
+                                              cc:f32[]. let
+                                              cd:u32[1000000] = random_bits[
+                                                bit_width=32
+                                                shape=()
+                                              ] ca
+                                              ce:u32[1000000] = shift_right_logical cd
+                                                9
+                                              cf:u32[1000000] = or ce 1065353216
+                                              cg:f32[1000000] = bitcast_convert_type[
+                                                new_dtype=float32
+                                              ] cf
+                                              ch:f32[1000000] = sub cg 1.0
+                                              ci:f32[] = sub cc cb
+                                              cj:f32[1000000] = mul ch ci
+                                              ck:f32[1000000] = add cj cb
+                                              cl:f32[1000000] = max cb ck
+                                            in (cl,) }
+                                        ] by -0.9999999403953552 1.0
+                                        cm:f32[1000000] = erf_inv bz
+                                        cn:f32[1000000] = mul 1.4142135381698608
+                                          cm
+                                      in (cn,) }
+                                  ] bw
+                                in (bx,) }
+                            ] bu
+                            co:f32[1000000] = mul bv 1.0
+                            cp:f32[1000000] = add bl co
+                            cq:f32[] = sqrt 6.283185307179586
+                            cr:f32[] = mul cq 1.0
+                            cs:f32[] = log cr
+                            ct:f32[1000000] = sub cp 0.0
+                            cu:f32[1000000] = div ct 1.0
+                            cv:f32[1000000] = integer_pow[y=2] cu
+                            cw:f32[1000000] = mul -0.5 cv
+                            cx:f32[] = convert_element_type[
+                              new_dtype=float32
+                              weak_type=False
+                            ] cs
+                            cy:f32[1000000] = sub cw cx
+                            cz:f32[] = sqrt 6.283185307179586
+                            da:f32[] = mul cz 0.1
+                            db:f32[] = log da
+                            dc:f32[1000000] = sub 4.0 cp
+                            dd:f32[1000000] = div dc 0.10000000149011612
+                            de:f32[1000000] = integer_pow[y=2] dd
+                            df:f32[1000000] = mul -0.5 de
+                            dg:f32[] = convert_element_type[
+                              new_dtype=float32
+                              weak_type=False
+                            ] db
+                            dh:f32[1000000] = sub df dg
+                            di:f32[1000000] = add cy dh
+                            dj:f32[1000000] = mul bk di
+                            dk:f32[] = sub 1.0 bk
+                            dl:f32[] = sqrt 6.283185307179586
+                            dm:f32[] = mul dl 1.0
+                            dn:f32[] = log dm
+                            do:f32[1000000] = sub cp 0.0
+                            dp:f32[1000000] = div do 1.0
+                            dq:f32[1000000] = integer_pow[y=2] dp
+                            dr:f32[1000000] = mul -0.5 dq
+                            ds:f32[] = convert_element_type[
+                              new_dtype=float32
+                              weak_type=False
+                            ] dn
+                            dt:f32[1000000] = sub dr ds
+                            du:f32[1000000] = mul dk dt
+                            dv:f32[1000000] = add dj du
+                            dw:f32[] = sqrt 6.283185307179586
+                            dx:f32[] = mul dw 1.0
+                            dy:f32[] = log dx
+                            dz:f32[1000000] = sub bl 0.0
+                            ea:f32[1000000] = div dz 1.0
+                            eb:f32[1000000] = integer_pow[y=2] ea
+                            ec:f32[1000000] = mul -0.5 eb
+                            ed:f32[] = convert_element_type[
+                              new_dtype=float32
+                              weak_type=False
+                            ] dy
+                            ee:f32[1000000] = sub ec ed
+                            ef:f32[] = sqrt 6.283185307179586
+                            eg:f32[] = mul ef 0.1
+                            eh:f32[] = log eg
+                            ei:f32[1000000] = sub 4.0 bl
+                            ej:f32[1000000] = div ei 0.10000000149011612
+                            ek:f32[1000000] = integer_pow[y=2] ej
+                            el:f32[1000000] = mul -0.5 ek
+                            em:f32[] = convert_element_type[
+                              new_dtype=float32
+                              weak_type=False
+                            ] eh
+                            en:f32[1000000] = sub el em
+                            eo:f32[1000000] = add ee en
+                            ep:f32[1000000] = mul bk eo
+                            eq:f32[] = sub 1.0 bk
+                            er:f32[] = sqrt 6.283185307179586
+                            es:f32[] = mul er 1.0
+                            et:f32[] = log es
+                            eu:f32[1000000] = sub bl 0.0
+                            ev:f32[1000000] = div eu 1.0
+                            ew:f32[1000000] = integer_pow[y=2] ev
+                            ex:f32[1000000] = mul -0.5 ew
+                            ey:f32[] = convert_element_type[
+                              new_dtype=float32
+                              weak_type=False
+                            ] et
+                            ez:f32[1000000] = sub ex ey
+                            fa:f32[1000000] = mul eq ez
+                            fb:f32[1000000] = add ep fa
+                            fc:f32[1000000] = sub dv fb
+                            fd:f32[] = sqrt 6.283185307179586
+                            fe:f32[] = mul fd 1.0
+                            ff:f32[] = log fe
+                            fg:f32[1000000] = sub bl cp
+                            fh:f32[1000000] = div fg 1.0
+                            fi:f32[1000000] = integer_pow[y=2] fh
+                            fj:f32[1000000] = mul -0.5 fi
+                            fk:f32[] = convert_element_type[
+                              new_dtype=float32
+                              weak_type=False
+                            ] ff
+                            fl:f32[1000000] = sub fj fk
+                            fm:f32[1000000] = add fc fl
+                            fn:f32[] = sqrt 6.283185307179586
+                            fo:f32[] = mul fn 1.0
+                            fp:f32[] = log fo
+                            fq:f32[1000000] = sub cp bl
+                            fr:f32[1000000] = div fq 1.0
+                            fs:f32[1000000] = integer_pow[y=2] fr
+                            ft:f32[1000000] = mul -0.5 fs
+                            fu:f32[] = convert_element_type[
+                              new_dtype=float32
+                              weak_type=False
+                            ] fp
+                            fv:f32[1000000] = sub ft fu
+                            fw:f32[1000000] = sub fm fv
+                            fx:key<fry>[1000000] = random_wrap[impl=fry] bt
+                            fy:f32[1000000] = pjit[
+                              name=_uniform
+                              jaxpr={ lambda ; fz:key<fry>[1000000] ga:f32[] gb:f32[]. let
+                                  gc:f32[] = convert_element_type[
+                                    new_dtype=float32
+                                    weak_type=False
+                                  ] ga
+                                  gd:f32[] = convert_element_type[
+                                    new_dtype=float32
+                                    weak_type=False
+                                  ] gb
+                                  ge:u32[1000000] = random_bits[
+                                    bit_width=32
+                                    shape=()
+                                  ] fz
+                                  gf:u32[1000000] = shift_right_logical ge 9
+                                  gg:u32[1000000] = or gf 1065353216
+                                  gh:f32[1000000] = bitcast_convert_type[
+                                    new_dtype=float32
+                                  ] gg
+                                  gi:f32[1000000] = sub gh 1.0
+                                  gj:f32[] = sub gd gc
+                                  gk:f32[1000000] = mul gi gj
+                                  gl:f32[1000000] = add gk gc
+                                  gm:f32[1000000] = max gc gl
+                                in (gm,) }
+                            ] fx 0.0 1.0
+                            gn:f32[1000000] = log fy
+                            go:bool[1000000] = lt gn fw
+                            gp:f32[1000000] = select_n go bl cp
+                          in (gp,) }
+                      ] bd be bi
+                    in (bj,) }
+                  length=1
+                  linear=(False, False, False)
+                  num_carry=1
+                  num_consts=1
+                  reverse=False
+                  unroll=1
+                ] r o bb
+                gq:f32[] = sqrt 6.283185307179586
+                gr:f32[] = mul gq 1.0
+                gs:f32[] = log gr
+                gt:f32[1000000] = sub o 0.0
+                gu:f32[1000000] = div gt 1.0
+                gv:f32[1000000] = integer_pow[y=2] gu
+                gw:f32[1000000] = mul -0.5 gv
+                gx:f32[] = convert_element_type[
+                  new_dtype=float32
+                  weak_type=False
+                ] gs
+                gy:f32[1000000] = sub gw gx
+                gz:f32[] = sqrt 6.283185307179586
+                ha:f32[] = convert_element_type[
+                  new_dtype=float32
+                  weak_type=False
+                ] gz
+                hb:f32[1] = mul ha m
+                hc:f32[1] = log hb
+                hd:f32[1000000] = sub 4.0 o
+                he:f32[1000000] = div hd m
+                hf:f32[1000000] = integer_pow[y=2] he
+                hg:f32[1000000] = mul -0.5 hf
+                hh:f32[1000000] = sub hg hc
+                hi:f32[1000000] = add gy hh
+                hj:f32[1000000] = mul r hi
+                hk:f32[] = sub 1.0 r
+                hl:f32[] = sqrt 6.283185307179586
+                hm:f32[] = mul hl 1.0
+                hn:f32[] = log hm
+                ho:f32[1000000] = sub o 0.0
+                hp:f32[1000000] = div ho 1.0
+                hq:f32[1000000] = integer_pow[y=2] hp
+                hr:f32[1000000] = mul -0.5 hq
+                hs:f32[] = convert_element_type[
+                  new_dtype=float32
+                  weak_type=False
+                ] hn
+                ht:f32[1000000] = sub hr hs
+                hu:f32[1000000] = mul hk ht
+                hv:f32[1000000] = add hj hu
+                hw:f32[1000000] = add p hv
+                hx:f32[] = sqrt 6.283185307179586
+                hy:f32[] = mul hx 1.0
+                hz:f32[] = log hy
+                ia:f32[1000000] = sub bc 0.0
+                ib:f32[1000000] = div ia 1.0
+                ic:f32[1000000] = integer_pow[y=2] ib
+                id:f32[1000000] = mul -0.5 ic
+                ie:f32[] = convert_element_type[
+                  new_dtype=float32
+                  weak_type=False
+                ] hz
+                if:f32[1000000] = sub id ie
+                ig:f32[] = sqrt 6.283185307179586
+                ih:f32[] = convert_element_type[
+                  new_dtype=float32
+                  weak_type=False
+                ] ig
+                ii:f32[1] = mul ih n
+                ij:f32[1] = log ii
+                ik:f32[1000000] = sub 4.0 bc
+                il:f32[1000000] = div ik n
+                im:f32[1000000] = integer_pow[y=2] il
+                in:f32[1000000] = mul -0.5 im
+                io:f32[1000000] = sub in ij
+                ip:f32[1000000] = add if io
+                iq:f32[1000000] = mul r ip
+                ir:f32[] = sub 1.0 r
+                is:f32[] = sqrt 6.283185307179586
+                it:f32[] = mul is 1.0
+                iu:f32[] = log it
+                iv:f32[1000000] = sub bc 0.0
+                iw:f32[1000000] = div iv 1.0
+                ix:f32[1000000] = integer_pow[y=2] iw
+                iy:f32[1000000] = mul -0.5 ix
+                iz:f32[] = convert_element_type[
+                  new_dtype=float32
+                  weak_type=False
+                ] iu
+                ja:f32[1000000] = sub iy iz
+                jb:f32[1000000] = mul ir ja
+                jc:f32[1000000] = add iq jb
+                jd:f32[1000000] = sub hw jc
+              in (bc, jd, w) }
+            length=1000
+            linear=(False, False, False, False, False, False)
+            num_carry=3
+            num_consts=2
+            reverse=False
+            unroll=1
+          ] c d g h j e
+          je:f32[] = sqrt 6.283185307179586
+          jf:f32[] = mul je 1.0
+          jg:f32[] = log jf
+          jh:f32[1000000] = sub k 0.0
+          ji:f32[1000000] = div jh 1.0
+          jj:f32[1000000] = integer_pow[y=2] ji
+          jk:f32[1000000] = mul -0.5 jj
+          jl:f32[] = convert_element_type[new_dtype=float32 weak_type=False] jg
+          jm:f32[1000000] = sub jk jl
+          jn:f32[] = sqrt 6.283185307179586
+          jo:f32[] = convert_element_type[new_dtype=float32 weak_type=False] jn
+          jp:f32[1] = mul jo f
+          jq:f32[1] = log jp
+          jr:f32[1000000] = sub 4.0 k
+          js:f32[1000000] = div jr f
+          jt:f32[1000000] = integer_pow[y=2] js
+          ju:f32[1000000] = mul -0.5 jt
+          jv:f32[1000000] = sub ju jq
+          jw:f32[1000000] = add jm jv
+          jx:f32[1000000] = add l jw
+          jy:f32[] = sqrt 6.283185307179586
+          jz:f32[] = mul jy 1.0
+          ka:f32[] = log jz
+          kb:f32[1000000] = sub g 0.0
+          kc:f32[1000000] = div kb 1.0
+          kd:f32[1000000] = integer_pow[y=2] kc
+          ke:f32[1000000] = mul -0.5 kd
+          kf:f32[] = convert_element_type[new_dtype=float32 weak_type=False] ka
+          kg:f32[1000000] = sub ke kf
+          kh:f32[1000000] = sub jx kg
+        in (kh,) }
+    ] a
+  in (b,) }

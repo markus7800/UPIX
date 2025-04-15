@@ -1,5 +1,5 @@
 import jax.experimental
-from ..types import Trace, PRNGKey, FloatArrayLike, IntArrayLike
+from ..types import Trace, PRNGKey, FloatArray, IntArray
 import jax
 import jax.numpy as jnp
 from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar
@@ -22,20 +22,21 @@ __all__ = [
 InferenceInfo = NamedTuple
 InferenceInfos = List[InferenceInfo]
 
-@jax.tree_util.register_dataclass
-@dataclass
-class InferenceState(object):
+class KernelState(NamedTuple):
     position: Trace
-    log_prob: FloatArrayLike
+    log_prob: FloatArray
+    info: Optional[InferenceInfo]
     
+Kernel = Callable[[PRNGKey,FloatArray,KernelState],KernelState]
 
-class InferenceCarry(NamedTuple):
-    iteration: IntArrayLike
-    tempering: FloatArrayLike # 0 ... prior, 1 ... joint
-    state: InferenceState
+class MCMCState(NamedTuple):
+    iteration: IntArray
+    # rng_key: PRNGKey
+    temperature: FloatArray # 0 ... prior, 1 ... joint
+    position: Trace
+    log_prob: FloatArray
     infos: InferenceInfos
 
-Kernel = Callable[[PRNGKey,InferenceCarry],InferenceCarry]
 
 class InferenceAlgorithm(ABC):
     @abstractmethod
@@ -72,10 +73,10 @@ class Gibbs(InferenceRegime):
 
 
 MCMC_COLLECT_TYPE = TypeVar("MCMC_COLLECT_TYPE")
-MCMCKernel = Callable[[InferenceCarry,PRNGKey],Tuple[InferenceCarry,MCMC_COLLECT_TYPE]]
+MCMCKernel = Callable[[MCMCState,PRNGKey],Tuple[MCMCState,MCMC_COLLECT_TYPE]]
 
-def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_chains: int, collect_inference_info: bool = False,
-    return_map: Callable[[InferenceCarry], MCMC_COLLECT_TYPE] = lambda _: None) -> MCMCKernel[MCMC_COLLECT_TYPE]:
+def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, collect_inference_info: bool = False,
+    return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> MCMCKernel[MCMC_COLLECT_TYPE]:
     
     kernels: List[Kernel] = []
     for step_number, inference_step in enumerate(regime):
@@ -83,15 +84,29 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_
         kernels.append(inference_step.algo.make_kernel(gibbs_model, step_number, collect_inference_info))
 
     @jax.jit
-    def one_step(carry: InferenceCarry, rng_key: PRNGKey) -> Tuple[InferenceCarry,MCMC_COLLECT_TYPE]:
-        maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(carry))
-        for kernel in kernels:
-            rng_key, kernel_key = jax.random.split(rng_key)
-            kernel_keys = jax.random.split(kernel_key, carry.iteration.shape[0])
-            carry = jax.vmap(kernel)(kernel_keys, carry)
-        return InferenceCarry(carry.iteration + 1, carry.tempering, carry.state, carry.infos), return_map(carry)
+    def one_step(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
+        maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(state)) # TODO: store true if jitted
+        
+        # rng_key = state.rng_key
+        position = state.position
+        log_prob = state.log_prob
+        infos = state.infos
 
-    # TODO: maybe pull vmap out of jit
+        for i, kernel in enumerate(kernels):
+            rng_key, kernel_key = jax.random.split(rng_key)
+            t = state.iteration.shape[0]
+            kernel_keys = jax.random.split(kernel_key, t)
+
+            kernel_state = KernelState(position, log_prob, infos[i] if collect_inference_info else None)
+            new_kernel_state = jax.vmap(kernel)(kernel_keys, state.temperature, kernel_state)
+
+            position = new_kernel_state.position
+            log_prob = new_kernel_state.log_prob
+            if collect_inference_info:
+                assert infos is not None and new_kernel_state.info is not None
+                infos[i] = new_kernel_state.info
+
+        return MCMCState(state.iteration + 1, state.temperature, position, log_prob, infos), return_map(state)
 
     return one_step
 
@@ -161,10 +176,9 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel[MCMC_CO
             operand=None,
         )
     
-    def wrapped_kernel(carry: InferenceCarry, rng_key: PRNGKey):
-        assert isinstance(carry.iteration, jax.Array)
-        _update_progress_bar(carry.iteration) # NOTE: we don't have to return something for this to work?
-        return kernel(carry, rng_key)
+    def wrapped_kernel(state: MCMCState, rng_key: PRNGKey):
+        _update_progress_bar(state.iteration) # NOTE: we don't have to return something for this to work?
+        return kernel(state, rng_key)
     
     return progressbar_mngr, wrapped_kernel
 

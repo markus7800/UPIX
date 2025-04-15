@@ -25,9 +25,9 @@ def apply_mh_kernel_n(sample: jax.Array, rng_key: jax.Array, n: int, mh_kernel) 
         jax.random.split(rng_key, n)
         )[0]
 
-def sample_prior(rng_key: jax.Array, N: int):
-    return dist.Normal(0., 1.).sample(rng_key, (N,))
-def log_prior(xs: jax.Array):
+def sample_prior(rng_key: jax.Array, N: int) -> jax.Array:
+    return dist.Normal(0., 1.).sample(rng_key, (N,)) # type: ignore
+def log_prior(xs: jax.Array) -> jax.Array:
     return dist.Normal(0., 1.).log_prob(xs)
 
 
@@ -41,7 +41,7 @@ obs_sigma = 0.1
 obs = 4.
 xlims = (3.,5.)
 
-def log_joint(xs: jax.Array):
+def log_joint(xs: jax.Array) -> jax.Array:
     return log_prior(xs) + dist.Normal(xs, obs_sigma).log_prob(obs)
 
 def get_posterior():
@@ -49,11 +49,11 @@ def get_posterior():
     mu = sigma**2 * obs / obs_sigma**2
     return dist.Normal(mu, sigma)
 
-def log_posterior(xs: jax.Array):
+def log_posterior(xs: jax.Array) -> jax.Array:
     return get_posterior().log_prob(xs)
 
-def sample_posterior(rng_key: jax.Array, N: int):
-    return get_posterior().sample(rng_key, (N,))
+def sample_posterior(rng_key: jax.Array, N: int) -> jax.Array:
+    return get_posterior().sample(rng_key, (N,)) # type:ignore
 
 x_range = jnp.linspace(*xlims, 1000)
 bins = jnp.linspace(*xlims, 100)
@@ -217,9 +217,16 @@ def AIS(xn, log_fn, log_f0, betas, M, plot=False):
         log_weights = carry.log_weights + log_f(carry.xs) - log_f(xs)
         return AISCarry(xs, log_weights, rng_key), None
 
-    last_state, _ = jax.lax.scan(step, AISCarry(xn, jax.lax.zeros_like_array(xn), jax.random.PRNGKey(0)), betas)
-    x0 = last_state.xs
-    log_weights = last_state.log_weights + log_f0(x0) - log_fn(xn)
+    @jax.jit
+    def _ais(xn):
+        last_state, _ = jax.lax.scan(step, AISCarry(xn, jax.lax.zeros_like_array(xn), jax.random.PRNGKey(0)), betas)
+        x0 = last_state.xs
+        log_weights = last_state.log_weights + log_f0(x0) - log_fn(xn)
+        return log_weights
+    
+    # jaxpr = jax.make_jaxpr(_ais)(xn)
+    # print(jaxpr)
+    log_weights = _ais(xn)
     Z, ESS = get_Z_ESS(log_weights)
     print(f"{log_weights=}")
 
@@ -322,7 +329,7 @@ def sigmoid(z):
 
 from dccxjax import *
 from dccxjax.infer.ais import *
-from dccxjax.infer.mcmc import get_inference_regime_mcmc_step_for_slp, InferenceCarry, InferenceState
+from dccxjax.infer.mcmc import get_inference_regime_mcmc_step_for_slp, MCMCState
 import dccxjax.distributions as dist
 
 import logging
@@ -341,19 +348,23 @@ tempering_schedule = sigmoid(jnp.linspace(-25,25,1000))
 tempering_schedule = tempering_schedule.at[0].set(0.)
 tempering_schedule = tempering_schedule.at[-1].set(1.)
 
-kernel = get_inference_regime_mcmc_step_for_slp(slp, InferenceStep(SingleVariable("x"), RW(gaussian_random_walk(1.))), N)
+kernel = get_inference_regime_mcmc_step_for_slp(slp, InferenceStep(SingleVariable("x"), RW(gaussian_random_walk(1.))))
 
 tempering_schedule.block_until_ready()
 
-# # beta = 0.0 # prior
-# # beta = 0.5
+# beta = 0.0 # prior
+# beta = 0.5
 # beta = 1.0 # posterior
+# mcmc_keys = jax.random.split(jax.random.PRNGKey(0), 1_000)
 # log_f = lambda x: beta*log_joint(x) + (1-beta)*log_prior(x)
-# init = InferenceCarry(0, beta, InferenceState({"x": 0.}, -jnp.inf), [])
-# init = broadcast_jaxtree(init, (N,))
+# init = MCMCState(0, beta, {"x": jnp.array(0.,float)}, -jnp.inf, [None])
 # t0 = time()
-# last_state, _ = jax.lax.scan(kernel, init, jax.random.split(jax.random.PRNGKey(0), 1_000))
-# x0 = last_state.state.position["x"]
+# def _f():
+#     last_state, _ = jax.lax.scan(kernel,  broadcast_jaxtree(init, (N,)), mcmc_keys)
+#     return last_state
+# print(jax.make_jaxpr(_f)())
+# last_state = _f()
+# x0 = last_state.position["x"]
 # x0.block_until_ready()
 # t1 = time()
 # print(f"Finished posterior in {t1-t0:.3f}s")
@@ -368,6 +379,12 @@ N = 1_000_000
 config = AISConfig(kernel, 1_000, kernel, tempering_schedule)
 xs = broadcast_jaxtree({"x": jnp.array(0, float)}, (N,))
 lp = jnp.full((N,), -jnp.inf, float)
-log_weights = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+lp.block_until_ready()
+t0 = time()
+log_weights = run_ais_2(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+log_weights.block_until_ready()
+t1 = time()
 print(log_weights)
 print(get_Z_ESS(log_weights))
+print(f"Finished AIS in {t1-t0:.3f}s")
+
