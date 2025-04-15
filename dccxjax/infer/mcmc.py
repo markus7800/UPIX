@@ -1,5 +1,5 @@
 import jax.experimental
-from ..types import Trace, PRNGKey
+from ..types import Trace, PRNGKey, FloatArrayLike, IntArrayLike
 import jax
 import jax.numpy as jnp
 from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar
@@ -26,11 +26,12 @@ InferenceInfos = List[InferenceInfo]
 @dataclass
 class InferenceState(object):
     position: Trace
-    log_prob: jax.Array | float
+    log_prob: FloatArrayLike
     
 
 class InferenceCarry(NamedTuple):
-    iteration: jax.Array
+    iteration: IntArrayLike
+    tempering: FloatArrayLike # 0 ... prior, 1 ... joint
     state: InferenceState
     infos: InferenceInfos
 
@@ -83,13 +84,15 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, n_
 
     @jax.jit
     def one_step(carry: InferenceCarry, rng_key: PRNGKey) -> Tuple[InferenceCarry,MCMC_COLLECT_TYPE]:
-        maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(carry.state))
+        maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(carry))
         for kernel in kernels:
             rng_key, kernel_key = jax.random.split(rng_key)
-            kernel_keys = jax.random.split(kernel_key, n_chains)
+            kernel_keys = jax.random.split(kernel_key, carry.iteration.shape[0])
             carry = jax.vmap(kernel)(kernel_keys, carry)
-        return InferenceCarry(carry.iteration + 1, carry.state, carry.infos), return_map(carry)
-    
+        return InferenceCarry(carry.iteration + 1, carry.tempering, carry.state, carry.infos), return_map(carry)
+
+    # TODO: maybe pull vmap out of jit
+
     return one_step
 
 class ProgressbarManager:
@@ -159,6 +162,7 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel[MCMC_CO
         )
     
     def wrapped_kernel(carry: InferenceCarry, rng_key: PRNGKey):
+        assert isinstance(carry.iteration, jax.Array)
         _update_progress_bar(carry.iteration) # NOTE: we don't have to return something for this to work?
         return kernel(carry, rng_key)
     
@@ -172,7 +176,7 @@ def get_initial_inference_state(slp: SLP, regime: InferenceRegime, n_chains: int
 
     # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
     # and X[i,m,n,...] = X[j,m,n,...] for all i, j
-    return broadcast_jaxtree(InferenceCarry(jnp.array(0), InferenceState(slp.decision_representative.data, slp.log_prob(slp.decision_representative)), inference_info), (n_chains,))
+    return broadcast_jaxtree(InferenceCarry(0, 1., InferenceState(slp.decision_representative, slp.log_prob(slp.decision_representative)), inference_info), (n_chains,))
 
     result, lp = coordinate_ascent(slp, 0.1, 1000, n_chains, jax.random.PRNGKey(0))
     assert not jnp.isinf(lp).any()

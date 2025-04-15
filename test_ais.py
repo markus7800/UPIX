@@ -1,10 +1,10 @@
-# lew 2023 Prop 5.1
 #%%
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpyro.distributions as dist
 from typing import Callable
+from time import time
 
 def make_mh_kernel(k:Callable[[jax.Array],dist.Distribution], log_p:Callable[[jax.Array], jax.Array]):
     @jax.jit
@@ -76,6 +76,7 @@ def get_Z_ESS(log_weights):
     ESS = jnp.exp(jax.scipy.special.logsumexp(log_weights)*2 - jax.scipy.special.logsumexp(log_weights*2))
     return Z, ESS
 
+#%%
 
 # likelihood weighting
 def likelihood_weighting():
@@ -220,7 +221,7 @@ def AIS(xn, log_fn, log_f0, betas, M, plot=False):
     x0 = last_state.xs
     log_weights = last_state.log_weights + log_f0(x0) - log_fn(xn)
     Z, ESS = get_Z_ESS(log_weights)
-    # print(f"{log_weights=} {x0=}")
+    print(f"{log_weights=}")
 
 
     print(f"Scan: Z={Z.item()} ESS={ESS.item()}")
@@ -295,16 +296,78 @@ def sigmoid(z):
 # x0 = sample_posterior(jax.random.PRNGKey(0), N)
 # xn = apply_mh_kernel_n(x0, jax.random.PRNGKey(0), 1_000, jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_prior)))
 
-# target prior from "decision representative"
-x0 = jnp.zeros((N,))
-xn = apply_mh_kernel_n(x0, jax.random.PRNGKey(0), 1_000, jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_prior)))
+# # target prior from "decision representative"
+# x0 = jnp.zeros((N,))
+# x0.block_until_ready()
+# print("Begin sampling prior")
+# t0 = time()
+# xn = apply_mh_kernel_n(x0, jax.random.PRNGKey(0), 1_000, jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_prior)))
+# xn.block_until_ready()
+# t1 = time()
+# print(f"Finished sampling prior in {t1-t0:.3f}s")
 
-# plt.hist(xn, density=True, bins=100)
-# xn_range = jnp.linspace(xn.min(), xn.max(), 1000)
-# plt.plot(xn_range, jnp.exp(log_prior(xn_range)))
+# # plt.hist(xn, density=True, bins=100)
+# # xn_range = jnp.linspace(xn.min(), xn.max(), 1000)
+# # plt.plot(xn_range, jnp.exp(log_prior(xn_range)))
+# # plt.show()
+
+# # AIS from xn prior estimate
+# a = 25
+# t0 = time()
+# Z_est = AIS(xn, log_prior, log_joint, sigmoid(jnp.linspace(-a,a,1000)), 1, False)
+# Z_est.block_until_ready()
+# t1 = time()
+# print(f"Finished AIS in {t1-t0:.3f}s")
+
+
+from dccxjax import *
+from dccxjax.infer.ais import *
+from dccxjax.infer.mcmc import get_inference_regime_mcmc_step_for_slp, InferenceCarry, InferenceState
+import dccxjax.distributions as dist
+
+import logging
+setup_logging(logging.DEBUG)
+
+
+def normal():
+    x = sample("x", dist.Normal(0, 1))
+    sample("y", dist.Normal(x, obs_sigma), observed=obs)
+
+m: Model = model(normal)()
+slp = convert_branchless_model_to_SLP(m)
+
+# tempering_schedule = jnp.array([0.,0.5,1.], float)
+tempering_schedule = sigmoid(jnp.linspace(-25,25,1000))
+tempering_schedule = tempering_schedule.at[0].set(0.)
+tempering_schedule = tempering_schedule.at[-1].set(1.)
+
+kernel = get_inference_regime_mcmc_step_for_slp(slp, InferenceStep(SingleVariable("x"), RW(gaussian_random_walk(1.))), N)
+
+tempering_schedule.block_until_ready()
+
+# # beta = 0.0 # prior
+# # beta = 0.5
+# beta = 1.0 # posterior
+# log_f = lambda x: beta*log_joint(x) + (1-beta)*log_prior(x)
+# init = InferenceCarry(0, beta, InferenceState({"x": 0.}, -jnp.inf), [])
+# init = broadcast_jaxtree(init, (N,))
+# t0 = time()
+# last_state, _ = jax.lax.scan(kernel, init, jax.random.split(jax.random.PRNGKey(0), 1_000))
+# x0 = last_state.state.position["x"]
+# x0.block_until_ready()
+# t1 = time()
+# print(f"Finished posterior in {t1-t0:.3f}s")
+# plt.hist(x0, density=True, bins=100)
+# x_range = jnp.linspace(x0.min(), x0.max(), 1000)
+# ps = jnp.exp(log_f(x_range))
+# ps = ps / jnp.trapezoid(ps, x_range)
+# plt.plot(x_range, ps)
 # plt.show()
 
-# AIS from xn prior estimate
-a = 25
-AIS(xn, log_prior, log_joint, sigmoid(jnp.linspace(-a,a,1000)), 1, True)
-
+N = 1_000_000
+config = AISConfig(kernel, 1_000, kernel, tempering_schedule)
+xs = broadcast_jaxtree({"x": jnp.array(0, float)}, (N,))
+lp = jnp.full((N,), -jnp.inf, float)
+log_weights = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+print(log_weights)
+print(get_Z_ESS(log_weights))

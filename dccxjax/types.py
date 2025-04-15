@@ -2,6 +2,8 @@ import jax
 from typing import Dict, Union, NamedTuple
 from dataclasses import dataclass
 from .utils import broadcast_jaxtree
+from jax import Array
+from jax.typing import ArrayLike
 
 __all__ = [
     "PRNGKey",
@@ -10,7 +12,27 @@ __all__ = [
     "StackedTrace",
     "StackedTraces",
     "to_traces",
+    "ArrayLike",
+    "BoolArrayLike",
+    "IntArrayLike",
+    "FloatArrayLike",
 ]
+
+# StaticScalar = Union[
+#   np.bool_, np.number,  # NumPy scalar types
+#   bool, int, float, complex,  # Python scalar types
+# ]
+
+# ArrayLike = Union[
+#   Array,  # JAX array type
+#   np.ndarray,  # NumPy array type
+#   StaticScalar,  # valid scalars
+# ]
+
+BoolArrayLike = bool | Array
+IntArrayLike = int | Array
+FloatArrayLike = float | Array
+
 
 
 PRNGKey = jax.Array

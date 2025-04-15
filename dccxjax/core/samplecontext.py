@@ -52,14 +52,15 @@ class LogprobCtx(SampleContext):
     def __init__(self, X: Trace) -> None:
         super().__init__()
         self.X = X
-        self.log_prob = 0.
+        self.log_likelihood = 0.
+        self.log_prior = 0.
     def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
         if observed is not None:
-            self.log_prob += distribution.log_prob(observed).sum()
+            self.log_likelihood += distribution.log_prob(observed).sum()
             return observed
         assert distribution._validate_args
         value = self.X[address]
-        self.log_prob += distribution.log_prob(value).sum()
+        self.log_prior += distribution.log_prob(value).sum()
         return value
     
 

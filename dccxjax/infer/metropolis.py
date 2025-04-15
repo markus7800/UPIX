@@ -150,22 +150,27 @@ class RandomWalk(InferenceAlgorithm):
             if self.sparse_frac is not None:
                 sparse_p = self.sparse_frac
             if self.sparse_numvar is not None:
-                sparse_p = self.sparse_numvar / len(gibbs_model.slp.decision_representative)            
+                sparse_p = self.sparse_numvar / len(gibbs_model.slp.decision_representative)   
 
         @jax.jit
         def _rw_kernel(rng_key: PRNGKey, carry: InferenceCarry) -> InferenceCarry:
-            maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays(carry.state.position))
+            maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays(carry))
             X, Y = gibbs_model.split_trace(carry.state.position)
             gibbs_model.set_Y(Y)
+
+            def _tempered_log_prob_fn(X: Trace) -> float:
+                log_prior, log_likelihood, _ = gibbs_model.log_prior_likeli_pathcond(X)
+                return log_prior + carry.tempering * log_likelihood
+        
             current_mh_state = InferenceState(X, carry.state.log_prob)
             if self.block_update:
                 if sparse:
-                    next_mh_state, n_accepted = rw_kernel_sparse(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer, sparse_p)
+                    next_mh_state, n_accepted = rw_kernel_sparse(rng_key, current_mh_state, _tempered_log_prob_fn, self.proposer, sparse_p)
                     accepted = n_accepted > 0
                 else:
-                    next_mh_state, accepted = rw_kernel(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer)
+                    next_mh_state, accepted = rw_kernel(rng_key, current_mh_state, _tempered_log_prob_fn, self.proposer)
             else:
-                next_mh_state, n_accepted = rw_kernel_elementwise(rng_key, current_mh_state, gibbs_model.log_prob, self.proposer, len(gibbs_model.variables))
+                next_mh_state, n_accepted = rw_kernel_elementwise(rng_key, current_mh_state, _tempered_log_prob_fn, self.proposer, len(gibbs_model.variables))
                 accepted = n_accepted > 0
 
 
@@ -175,7 +180,7 @@ class RandomWalk(InferenceAlgorithm):
                 carry.infos[step_number] = MHInfo(mh_info.accepted + accepted)
 
             next_mh_state = InferenceState(gibbs_model.combine_to_trace(next_mh_state.position, Y), next_mh_state.log_prob)
-            return InferenceCarry(carry.iteration, next_mh_state, carry.infos)
+            return InferenceCarry(carry.iteration, carry.tempering, next_mh_state, carry.infos)
         
         return _rw_kernel
     
@@ -194,7 +199,7 @@ class TraceProposal(ABC):
 def mh_kernel(
     rng_key: PRNGKey,
     current_state: InferenceState,
-    log_prob_fn: Callable[[Trace], jax.Array],
+    log_prob_fn: Callable[[Trace], float],
     proposal: TraceProposal,
     Y: Trace
 ) -> Tuple[InferenceState,jax.Array]:
@@ -227,7 +232,12 @@ class MetropolisHastings(InferenceAlgorithm):
             X, Y = gibbs_model.split_trace(carry.state.position)
             gibbs_model.set_Y(Y)
             current_mh_state = InferenceState(X, carry.state.log_prob)
-            next_mh_state, accepted = mh_kernel(rng_key, current_mh_state, gibbs_model.log_prob, self.proposal, gibbs_model.Y)
+
+            def _tempered_log_prob_fn(X: Trace) -> float:
+                log_prior, log_likelihood, _ = gibbs_model.log_prior_likeli_pathcond(X)
+                return log_prior + carry.tempering * log_likelihood
+            
+            next_mh_state, accepted = mh_kernel(rng_key, current_mh_state, _tempered_log_prob_fn, self.proposal, gibbs_model.Y)
 
             if collect_inferenence_info:
                 mh_info = carry.infos[step_number]
@@ -235,7 +245,7 @@ class MetropolisHastings(InferenceAlgorithm):
                 carry.infos[step_number] = MHInfo(mh_info.accepted + accepted)
 
             next_state = InferenceState(gibbs_model.combine_to_trace(next_mh_state.position, Y), next_mh_state.log_prob)
-            return InferenceCarry(carry.iteration, next_state, carry.infos)
+            return InferenceCarry(carry.iteration, carry.tempering, next_state, carry.infos)
         
             # current_mh_state = InferenceState(state.iteration, state.position, state.log_prob)
             # next_mh_state = mh_kernel(rng_key, current_mh_state, gibbs_model.slp.log_prob, self.proposal)

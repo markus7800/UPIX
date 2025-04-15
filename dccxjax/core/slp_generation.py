@@ -18,7 +18,7 @@ def slp_from_decision_representative(model: Model, decision_representative: Trac
     def f(X: Trace):
         with LogprobCtx(X) as ctx:
             model()
-            return ctx.log_prob
+            return ctx.log_prior + ctx.log_likelihood
 
     _, branching_decisions = trace_branching(f, decision_representative)
 

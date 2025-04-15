@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import Callable, Optional, Any, Set, Tuple, Dict
 from .samplecontext import LogprobCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
-from ..types import Trace, PRNGKey, to_shaped_array_trace
+from ..types import Trace, PRNGKey, to_shaped_array_trace, FloatArrayLike
 from ..utils import maybe_jit_warning, to_shaped_arrays
 from .branching_tracer import BranchingDecisions, trace_branching, retrace_branching
 
@@ -31,7 +31,7 @@ class Model:
     def log_prob(self, X: Trace) -> float:
         with LogprobCtx(X) as ctx:
             self.f(*self.args, **self.kwargs)
-            return ctx.log_prob
+            return ctx.log_likelihood + ctx.log_prior
 
     def __repr__(self) -> str:
         return f"Model({self.f.__name__}, {self.args}, {self.kwargs})"
@@ -64,26 +64,29 @@ def _make_slp_path_indicator(slp: "SLP",  model: Model, branching_decisions: Bra
 
     return _path_indicator
 
-def _make_slp_log_prob(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], float]:
+def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Tuple[float,float,bool]]:
     @jax.jit
     def _log_prob(X: Trace):
         maybe_jit_warning(slp, "_jitted_log_prob", "_slp_log_prob", slp.short_repr(), to_shaped_array_trace(X))
-                        
-        slp_model_logprob = retrace_branching(model.log_prob, branching_decisions)
-        # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
-        # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
-        lp, path_condition = slp_model_logprob(X)
-        return jax.lax.select(path_condition, lp, jax.lax.full_like(lp, -jnp.inf))
+        
+        def _logprob(_X: Trace):
+            with LogprobCtx(_X) as ctx:
+                model()
+                return ctx.log_prior, ctx.log_likelihood
+            
+        slp_model_logprob = retrace_branching(_logprob, branching_decisions)
+        (log_prior, log_likelihood), path_condition = slp_model_logprob(X)
+        return log_prior, log_likelihood, path_condition
 
     return _log_prob
 
 
-def _make_slp_log_prob_and_grad(slp: "SLP") -> Callable[[Trace], Tuple[float,Trace]]:
-    @jax.jit
-    def _grad_log_prob(X: Trace):
-        maybe_jit_warning(slp, "_jitted_grad_log_prob", "_slp_grad_log_prob", slp.short_repr(), to_shaped_array_trace(X))
-        return jax.value_and_grad(slp._log_prob)(X)
-    return _grad_log_prob
+# def _make_slp_log_prob_and_grad(slp: "SLP") -> Callable[[Trace], Tuple[float,Trace]]:
+#     @jax.jit
+#     def _grad_log_prob(X: Trace):
+#         maybe_jit_warning(slp, "_jitted_grad_log_prob", "_slp_grad_log_prob", slp.short_repr(), to_shaped_array_trace(X))
+#         return jax.value_and_grad(slp._log_prob)(X)
+#     return _grad_log_prob
 
 def _make_slp_unconstrained_log_prob(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Tuple[float, Trace]]:
     @jax.jit
@@ -156,10 +159,10 @@ class SLP:
         self._path_indicator = _make_slp_path_indicator(self, model, branching_decisions)
 
         self._jitted_log_prob = False
-        self._log_prob = _make_slp_log_prob(self, model, branching_decisions)
+        self._log_prior_likeli_pathcond = _make_slp_log_prior_likeli_pathcond(self, model, branching_decisions)
 
-        self._jitted_grad_log_prob = False
-        self._grad_log_prob = _make_slp_log_prob_and_grad(self)
+        # self._jitted_grad_log_prob = False
+        # self._grad_log_prob = _make_slp_log_prob_and_grad(self)
 
         self._jitted_gen_likelihood_weight = False
         self._gen_likelihood_weight = _make_slp_gen_likelihood_weight(self, model, branching_decisions)
@@ -207,10 +210,15 @@ class SLP:
                     return False
             return self._path_indicator(X)
 
-    def log_prob(self, X: Trace):
+    def log_prob(self, X: Trace) -> FloatArrayLike:
         if self.decision_representative.keys() != X.keys():
             return -jnp.inf
-        return self._log_prob(X)
+        log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X)
+        lp = log_prior + log_likelihood
+
+        # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
+        # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
+        return jax.lax.select(path_condition, lp, jax.lax.full_like(lp, -jnp.inf))
     
     def unconstrained_log_prob(self, X_unconstrained: Trace) -> Tuple[float, Trace]:
         if self.decision_representative.keys() != X_unconstrained.keys():
