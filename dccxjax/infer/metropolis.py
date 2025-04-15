@@ -7,7 +7,7 @@ from .mcmc import MCMCState, InferenceInfo, KernelState, InferenceAlgorithm, Ker
 from dataclasses import dataclass
 import math
 from jax.flatten_util import ravel_pytree
-from ..utils import maybe_jit_warning, to_shaped_arrays
+from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays
 from .gibbs_model import GibbsModel
 from abc import ABC, abstractmethod
 
@@ -156,9 +156,10 @@ class RandomWalk(InferenceAlgorithm):
             if self.sparse_numvar is not None:
                 sparse_p = self.sparse_numvar / len(gibbs_model.slp.decision_representative)   
 
+        jit_tracker = JitVariationTracker(f"_rw_kernel for Inference step {step_number}: <RandomWalk at {hex(id(self))}>")
         @jax.jit
         def _rw_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
-            maybe_jit_warning(self, "jitted_kernel", "_rw_kernel", f"Inference step {step_number}: <RandomWalk at {hex(id(self))}>", to_shaped_arrays((temperature, state)))
+            maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
             X, Y = gibbs_model.split_trace(state.position)
             gibbs_model.set_Y(Y)
         
@@ -226,9 +227,10 @@ class MetropolisHastings(InferenceAlgorithm):
         return MHInfo(0)
     
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
+        jit_tracker = JitVariationTracker(f"_mh_kernel for Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>")
         @jax.jit
         def _mh_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
-            maybe_jit_warning(self, "jitted_kernel", "_mh_kernel", f"Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>", to_shaped_arrays((temperature, state)))
+            maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
             X, Y = gibbs_model.split_trace(state.position)
             gibbs_model.set_Y(Y)
             # current_mh_state = InferenceState(X, carry.state.log_prob)

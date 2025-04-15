@@ -8,7 +8,7 @@ from .variable_selector import VariableSelector
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from dccxjax.core import SLP
-from ..utils import maybe_jit_warning, to_shaped_arrays, broadcast_jaxtree
+from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays, broadcast_jaxtree
 from time import time
 
 from tqdm.auto import tqdm as tqdm_auto
@@ -82,10 +82,11 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, co
     for step_number, inference_step in enumerate(regime):
         gibbs_model = GibbsModel(slp, inference_step.variable_selector)
         kernels.append(inference_step.algo.make_kernel(gibbs_model, step_number, collect_inference_info))
-
+    
+    jit_tracker = JitVariationTracker(f"_mcmc_step for {slp.short_repr()}")
     @jax.jit
     def one_step(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
-        maybe_jit_warning(None, "", "_mcmc_step", slp.short_repr(), to_shaped_arrays(state)) # TODO: store true if jitted
+        maybe_jit_warning(jit_tracker, str(to_shaped_arrays(state)))
         
         # rng_key = state.rng_key
         position = state.position

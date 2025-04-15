@@ -3,7 +3,7 @@ import logging
 import jax
 from jax.core import full_lower
 import contextlib
-from typing import Sequence, TypeVar
+from typing import Sequence, TypeVar, List
 
 __all__ = [
     "setup_logging",
@@ -20,17 +20,24 @@ def setup_logging(level: int | str):
     handler.setFormatter(logging.Formatter('%(name)s - %(levelname)s: %(message)s'))
     logger.addHandler(handler)
 
-def maybe_jit_warning(obj, attr, fname, short_repr, input):
-    msg = f"Compile {fname} for {short_repr} and {input}"
-    if obj is not None:
-        if not getattr(obj, attr):
-            setattr(obj, attr, True)
-            logger.debug(msg)
-        else:
-            logger.warning("Re-" + msg)
+class JitVariationTracker:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.variations: List[str] = []
+    def add_variation(self, variation: str):
+        self.variations.append(variation)
+    def has_variation(self):
+        return len(self.variations) > 0
+
+def maybe_jit_warning(tracker: JitVariationTracker, input: str):
+    msg = f"Compile {tracker.name} and input {input}"
+    if tracker.has_variation():
+        if logger.level <= logging.DEBUG:
+            msg += "\n" + "\n\t".join([f"prev-input: {prev_input}" for prev_input in tracker.variations])
+        logger.warning("Re-" + msg)
     else:
         logger.debug(msg)
-
+    tracker.add_variation(input)
 
 def to_shaped_arrays(tree):
     return jax.tree.map(lambda v: full_lower(v).aval, tree)

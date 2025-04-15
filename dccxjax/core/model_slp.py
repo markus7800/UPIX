@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Callable, Optional, Any, Set, Tuple, Dict
 from .samplecontext import LogprobCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
 from ..types import Trace, PRNGKey, to_shaped_array_trace, FloatArray, BoolArray
-from ..utils import maybe_jit_warning, to_shaped_arrays
+from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays
 from .branching_tracer import BranchingDecisions, trace_branching, retrace_branching
 
 __all__ = [
@@ -51,9 +51,10 @@ def model(f:Callable):
     return _f
 
 def _make_slp_path_indicator(slp: "SLP",  model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], bool]:
+    jit_tracker = JitVariationTracker(f"_path_indicator for {slp.short_repr()}")
     @jax.jit
     def _path_indicator(X: Trace):
-        maybe_jit_warning(slp, "_jitted_path_indicator", "_path_indicator", slp.short_repr(), to_shaped_array_trace(X))
+        maybe_jit_warning(jit_tracker, str(to_shaped_array_trace(X)))
         def _replay(_X: Trace):
             with ReplayCtx(_X):
                 model()
@@ -65,9 +66,10 @@ def _make_slp_path_indicator(slp: "SLP",  model: Model, branching_decisions: Bra
     return _path_indicator
 
 def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Tuple[FloatArray,FloatArray,BoolArray]]:
+    jit_tracker = JitVariationTracker(f"_slp_log_prob for {slp.short_repr()}")
     @jax.jit
     def _log_prob(X: Trace):
-        maybe_jit_warning(slp, "_jitted_log_prob", "_slp_log_prob", slp.short_repr(), to_shaped_array_trace(X))
+        maybe_jit_warning(jit_tracker, str(to_shaped_array_trace(X)))
         
         def _logprob(_X: Trace):
             with LogprobCtx(_X) as ctx:
@@ -82,16 +84,18 @@ def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_deci
 
 
 # def _make_slp_log_prob_and_grad(slp: "SLP") -> Callable[[Trace], Tuple[float,Trace]]:
+#     jit_tracker = JitVariationTracker(f"_slp_grad_log_prob for {slp.short_repr()}")
 #     @jax.jit
 #     def _grad_log_prob(X: Trace):
-#         maybe_jit_warning(slp, "_jitted_grad_log_prob", "_slp_grad_log_prob", slp.short_repr(), to_shaped_array_trace(X))
+#         maybe_jit_warning(jit_tracker, str(to_shaped_array_trace(X)))
 #         return jax.value_and_grad(slp._log_prob)(X)
 #     return _grad_log_prob
 
 def _make_slp_unconstrained_log_prob(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Tuple[float, Trace]]:
+    jit_tracker = JitVariationTracker(f"_slp_unconstrained_log_prob for {slp.short_repr()}")
     @jax.jit
     def _unconstrained_log_prob(X_unconstrained: Trace):
-        maybe_jit_warning(slp, "_jitted_unconstrained_log_prob", "_slp_unconstrained_log_prob", slp.short_repr(), to_shaped_array_trace(X_unconstrained))
+        maybe_jit_warning(jit_tracker, str(to_shaped_array_trace(X_unconstrained)))
         
         def _unconstrained_log_prob_with_ctx(_X_unconstrained: Trace):
             with UnconstrainedLogprobCtx(_X_unconstrained) as ctx:
@@ -124,9 +128,10 @@ def _make_slp_unconstrained_log_prob(slp: "SLP", model: Model, branching_decisio
 #     return _transform_unconstrained_to_support
 
 def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], Tuple[float,bool]]:
+    jit_tracker = JitVariationTracker(f"slp_gen_likelihood_weight for {slp.short_repr()}")
     @jax.jit
     def _gen_likelihood_weight(key: PRNGKey):
-        maybe_jit_warning(slp, "_jitted_gen_likelihood_weight", "slp_gen_likelihood_weight", slp.short_repr(), to_shaped_arrays(key))
+        maybe_jit_warning(jit_tracker, str(to_shaped_arrays(key)))
 
         # cannot do @jax.jit here because model can do branching and has to be controlled by trace_branching transformation, before jitting
         def _gen_log_likelihood_and_X_from_prior(key: PRNGKey):
