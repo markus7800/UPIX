@@ -30,10 +30,11 @@ class JitVariationTracker:
         return len(self.variations) > 0
 
 def maybe_jit_warning(tracker: JitVariationTracker, input: str):
-    msg = f"Compile {tracker.name} and input {input}"
+    msg = f"Compile {tracker.name} and input: {input}"
     if tracker.has_variation():
         if logger.level <= logging.DEBUG:
-            msg += "\n" + "\n\t".join([f"prev-input: {prev_input}" for prev_input in tracker.variations])
+            tabs = " " * (len(msg) - len(input) + len("dccxjax - WARNING: ") - 9)
+            msg += "".join([f"\n{tabs}prev-input: {prev_input}" for prev_input in tracker.variations])
         logger.warning("Re-" + msg)
     else:
         logger.debug(msg)
