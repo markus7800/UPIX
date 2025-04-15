@@ -37,28 +37,28 @@ let _where = { lambda ; a:bool[1000000,1] b:f32[1000000,1] c:f32[]. let
       _split_transpose=False
       jaxpr={ lambda ; r:i32[1000000] s:f32[1000000] t:f32[1000000] u:f32[1000000]
           v:u32[2]. let
-          w:key<fry>[] = random_wrap[impl=fry] v
-          x:key<fry>[1000000] = random_split[shape=(1000000,)] w
-          y:u32[1000000,2] = random_unwrap x
-          z:i32[1000000] ba:f32[1000000] bb:f32[1000000] = pjit[
+          w:i32[1000000] x:f32[1000000] y:f32[1000000] = pjit[
             name=one_step
-            jaxpr={ lambda ; bc:i32[1000000] bd:f32[1000000] be:f32[1000000] bf:f32[1000000]
-                bg:u32[1000000,2]. let
-                bh:key<fry>[1000000] = random_wrap[impl=fry] bg
-                bi:key<fry>[1000000,2] = random_split[shape=(2,)] bh
-                bj:u32[1000000,2,2] = random_unwrap bi
-                bk:u32[1000000,1,2] = slice[
-                  limit_indices=(1000000, 1, 2)
-                  start_indices=(0, 0, 0)
-                  strides=(1, 1, 1)
-                ] bj
-                _:u32[1000000,2] = squeeze[dimensions=(1,)] bk
-                bl:u32[1000000,1,2] = slice[
-                  limit_indices=(1000000, 2, 2)
-                  start_indices=(0, 1, 0)
-                  strides=(1, 1, 1)
-                ] bj
-                bm:u32[1000000,2] = squeeze[dimensions=(1,)] bl
+            jaxpr={ lambda ; z:i32[1000000] ba:f32[1000000] bb:f32[1000000] bc:f32[1000000]
+                bd:u32[2]. let
+                be:key<fry>[] = random_wrap[impl=fry] bd
+                bf:key<fry>[2] = random_split[shape=(2,)] be
+                bg:u32[2,2] = random_unwrap bf
+                bh:u32[1,2] = slice[
+                  limit_indices=(1, 2)
+                  start_indices=(0, 0)
+                  strides=(1, 1)
+                ] bg
+                _:u32[2] = squeeze[dimensions=(0,)] bh
+                bi:u32[1,2] = slice[
+                  limit_indices=(2, 2)
+                  start_indices=(1, 0)
+                  strides=(1, 1)
+                ] bg
+                bj:u32[2] = squeeze[dimensions=(0,)] bi
+                bk:key<fry>[] = random_wrap[impl=fry] bj
+                bl:key<fry>[1000000] = random_split[shape=(1000000,)] bk
+                bm:u32[1000000,2] = random_unwrap bl
                 bn:f32[1000000] bo:f32[1000000] = pjit[
                   name=_rw_kernel
                   jaxpr={ lambda bp:f32[1] bq:f32[1]; br:u32[1000000,2] bs:f32[1000000]
@@ -367,11 +367,11 @@ let _where = { lambda ; a:bool[1000000,1] b:f32[1000000,1] c:f32[]. let
                       im:f32[1000000] = select_n hx ic ih
                       in:f32[1000000] = select_n hx ie ij
                     in (im, in) }
-                ] bm bd be bf
-                io:i32[1000000] = add bc 1
+                ] bm ba bb bc
+                io:i32[1000000] = add z 1
               in (io, bn, bo) }
-          ] r s t u y
-        in (z, s, ba, bb) }
+          ] r s t u v
+        in (w, s, x, y) }
       length=1000
       linear=(False, False, False, False, False)
       num_carry=4

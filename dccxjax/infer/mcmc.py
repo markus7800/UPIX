@@ -17,6 +17,7 @@ __all__ = [
     "InferenceStep",
     "Gibbs",
     "mcmc",
+    "vectorise_kernel_over_chains"
 ]
 
 InferenceInfo = NamedTuple
@@ -75,7 +76,9 @@ class Gibbs(InferenceRegime):
 MCMC_COLLECT_TYPE = TypeVar("MCMC_COLLECT_TYPE")
 MCMCKernel = Callable[[MCMCState,PRNGKey],Tuple[MCMCState,MCMC_COLLECT_TYPE]]
 
-def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, collect_inference_info: bool = False,
+def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, *,
+    collect_inference_info: bool = False,
+    vectorised: bool = True,
     return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> MCMCKernel[MCMC_COLLECT_TYPE]:
     
     kernels: List[Kernel] = []
@@ -95,11 +98,14 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, co
 
         for i, kernel in enumerate(kernels):
             rng_key, kernel_key = jax.random.split(rng_key)
-            t = state.iteration.shape[0]
-            kernel_keys = jax.random.split(kernel_key, t)
-
             kernel_state = KernelState(position, log_prob, infos[i] if collect_inference_info else None)
-            new_kernel_state = jax.vmap(kernel)(kernel_keys, state.temperature, kernel_state)
+
+            if vectorised:
+                t = state.iteration.shape[0]
+                kernel_keys = jax.random.split(kernel_key, t)
+                new_kernel_state = jax.vmap(kernel)(kernel_keys, state.temperature, kernel_state) # (1)
+            else:
+                new_kernel_state = kernel(kernel_key, state.temperature, kernel_state) # (2)
 
             position = new_kernel_state.position
             log_prob = new_kernel_state.log_prob
@@ -110,6 +116,17 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, co
         return MCMCState(state.iteration + 1, state.temperature, position, log_prob, infos), return_map(state)
 
     return one_step
+
+# this with (2) seems to be a lot slower than (1)
+# kernel had to be created with vectorised=False
+def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCKernel[MCMC_COLLECT_TYPE]:
+    jit_tracker = JitVariationTracker(f"vectorise <Kernel {hex(id(kernel))}>")
+    def _vectorised_kernel(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
+        n_chains = state.iteration.shape[0]
+        maybe_jit_warning(jit_tracker, f"n_chains={n_chains} {to_shaped_arrays(state)}")
+        chain_keys = jax.random.split(rng_key, n_chains)
+        return jax.vmap(kernel)(state, chain_keys)
+    return _vectorised_kernel
 
 class ProgressbarManager:
     def __init__(self) -> None:
