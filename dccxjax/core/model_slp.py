@@ -224,6 +224,12 @@ class SLP:
         # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
         return jax.lax.select(path_condition, lp, jax.lax.full_like(lp, -jnp.inf))
     
+    def log_prior(self, X: Trace) -> FloatArray:
+        assert self.decision_representative.keys() == X.keys()
+        log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X)
+        return jax.lax.select(path_condition, log_prior, jax.lax.full_like(log_prior, -jnp.inf))
+
+    
     def unconstrained_log_prob(self, X_unconstrained: Trace) -> Tuple[float, Trace]:
         if self.decision_representative.keys() != X_unconstrained.keys():
             return -jnp.inf, self.transform_to_constrained(X_unconstrained)

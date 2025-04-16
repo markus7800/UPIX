@@ -31,9 +31,9 @@ def sample(address: str, distribution: dist.Distribution, observed: Optional[jax
     
 
 class GenerateCtx(SampleContext):
-    def __init__(self, rng_key: PRNGKey) -> None:
+    def __init__(self, rng_key: PRNGKey, Y: Trace = dict()) -> None:
         super().__init__()
-        self.X: Trace = dict()
+        self.X: Trace = dict() | Y
         self.rng_key = rng_key
         self.log_likelihood = 0.
         self.log_prior = 0.
@@ -42,8 +42,11 @@ class GenerateCtx(SampleContext):
             self.log_likelihood += distribution.log_prob(observed).sum()
             return observed
         self.rng_key, key = jax.random.split(self.rng_key)
-        value = distribution.sample(key)
-        self.X[address] = value
+        if address not in self.X:
+            value = distribution.sample(key)
+            self.X[address] = value
+        else:
+            value = self.X[address]
         self.log_prior += distribution.log_prob(value).sum()
         return value
     

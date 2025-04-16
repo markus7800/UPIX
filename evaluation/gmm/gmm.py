@@ -12,11 +12,12 @@ from time import time
 
 from dccxjax.infer.mcmc import MCMCState, InferenceInfos, get_inference_regime_mcmc_step_for_slp, add_progress_bar
 from dccxjax.infer.dcc import DCC_Result
+from dccxjax.core.branching_tracer import retrace_branching
 
 from dccxjax.infer.estimate_Z import estimate_Z_for_SLP_from_sparse_mixture
 
 import logging
-setup_logging(logging.WARNING)
+setup_logging(logging.DEBUG)
 
 compilation_time_tracker = CompilationTimeTracker()
 jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
@@ -225,7 +226,7 @@ for i in tqdm(range(100)):
         # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
 
 active_slps = sorted(active_slps, key=m.slp_sort_key)
-active_slps = active_slps[:6]
+active_slps = active_slps[:3]
 
 # from dccxjax.infer.estimate_Z import _log_IS_weight_gaussian_mixture
 # slp = active_slps[0]
@@ -247,9 +248,109 @@ n_samples_per_chain = 10_000
 
 class CollectType(NamedTuple):
     position: Trace
-    log_prob: float
+    log_prob: FloatArray
 def return_map(x: MCMCState):
     return CollectType(x.position, x.log_prob) if collect_states else None
+
+
+from dccxjax.infer.ais import *
+def sigmoid(z):
+    return 1/(1 + jnp.exp(-z))
+def get_Z_ESS(log_weights):
+    log_Z = jax.scipy.special.logsumexp(log_weights) - jnp.log(log_weights.shape[0])
+    print(f"{log_Z=}")
+    Z = jnp.exp(log_Z)
+    ESS = jnp.exp(jax.scipy.special.logsumexp(log_weights)*2 - jax.scipy.special.logsumexp(log_weights*2))
+    return Z, ESS
+
+def try_estimate_Z_with_AIS():
+    for i, slp in enumerate(active_slps):
+        print(slp.short_repr(), slp.formatted())
+
+        gibbs_regime = Gibbs(
+            InferenceStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
+            InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, slp.decision_representative["K"].item()))),
+            InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, slp.decision_representative["K"].item()))),
+            InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+        )
+
+        def w_proposer(w: jax.Array) -> dist.Distribution:
+            T = dist.biject_to(dist.Dirichlet(jnp.ones(slp.decision_representative["K"].item())).support)
+            w_unconstrained = T.inv(w)
+            return dist.TransformedDistribution(dist.Normal(w_unconstrained, 0.5), T)
+
+        regime = Gibbs(
+            InferenceStep(SingleVariable("w"), RW(w_proposer)),
+            InferenceStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
+            InferenceStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
+            InferenceStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
+        )
+
+        mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, gibbs_regime, collect_inference_info=True, return_map=return_map)
+        progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
+        progressbar_mng.start_progress()
+        keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+
+        init_info: InferenceInfos = [step.algo.init_info() for step in gibbs_regime] if collect_infos else []
+        init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
+
+        last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
+        last_state.iteration.block_until_ready()
+        print("\t", last_state.infos)
+
+        assert all_states is not None
+        result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains)
+        result_positions = result_positions.unstack()
+
+        # harmonic mean of likelihood estimator
+        # def log_likelihood(X: Trace):
+        #     with LogprobCtx(X) as ctx:
+        #         m()
+        #         return ctx.log_likelihood
+        # log_likeli, _ =  jax.vmap(jax.jit(retrace_branching(log_likelihood, slp.branching_decisions)))(result_positions.data)
+        # log_Z = jnp.log(result_positions.n_samples()) - jax.scipy.special.logsumexp(-log_likeli)
+        # print(f"{log_Z=}")
+
+
+        # fig, axs = plt.subplots(1,2, figsize=(12,6))
+        # axs[0].hist(result_positions.data["mus"][:,0], bins=100, density=True, label="mu")
+        # axs[1].hist(jnp.sqrt(result_positions.data["vars"][:,0]), bins=100, density=True, label="var")
+        # plt.show()
+
+        N = 10_000
+        tempering_schedule = sigmoid(jnp.linspace(-25,25,1_000))
+        tempering_schedule = tempering_schedule.at[0].set(0.)
+        tempering_schedule = tempering_schedule.at[-1].set(1.)
+
+        def generate_from_prior_conditioned(rng_key: PRNGKey):
+            with GenerateCtx(rng_key, {"K": jnp.array(slp.decision_representative["K"].item(), int)}) as ctx:
+                m()
+                return ctx.X
+            
+        X, _ = jax.vmap(jax.jit(retrace_branching(generate_from_prior_conditioned, slp.branching_decisions)))(jax.random.split(jax.random.PRNGKey(0), N))
+        lp = jax.vmap(slp.log_prior)(X)
+
+        kernel = get_inference_regime_mcmc_step_for_slp(slp, regime)
+        progressbar_mng, kernel = add_progress_bar(tempering_schedule.size, kernel)
+        progressbar_mng.start_progress()
+
+        config = AISConfig(None, 0, kernel, tempering_schedule)
+
+        log_weights, position = run_ais(slp, config, jax.random.PRNGKey(0), X, lp, N)
+        print(f"{log_weights=}")
+        print(get_Z_ESS(log_weights))
+
+        # fig = plt.figure()
+        # plt.hist(log_weights, bins=100, density=True)
+        
+        result_positions = StackedTrace(position, N).unstack()
+
+        # fig, axs = plt.subplots(1,2, figsize=(12,6))
+        # axs[0].hist(result_positions.data["mus"][:,0], bins=100, density=True, label="mu")
+        # axs[1].hist(jnp.sqrt(result_positions.data["vars"][:,0]), bins=100, density=True, label="var")
+        # plt.show()
+try_estimate_Z_with_AIS()
+exit()
 
 
 for i, slp in enumerate(active_slps):
@@ -265,12 +366,25 @@ for i, slp in enumerate(active_slps):
         InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, slp.decision_representative["K"].item()))),
         InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
     )
+
+    def w_proposer(w: jax.Array) -> dist.Distribution:
+        T = dist.biject_to(dist.Dirichlet(jnp.ones(slp.decision_representative["K"].item())).support)
+        w_unconstrained = T.inv(w)
+        return dist.TransformedDistribution(dist.Normal(w_unconstrained, 0.25), T)
+    regime = Gibbs(
+        InferenceStep(SingleVariable("w"), RW(w_proposer)),
+        InferenceStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
+        InferenceStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
+        # InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+        InferenceStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
+    )
+
     init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []
     init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
 
     mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=collect_infos, return_map=return_map)
-    progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
-    progressbar_mng.start_progress(n_samples_per_chain)
+    progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
+    progressbar_mng.start_progress()
     keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
     last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
     last_state.iteration.block_until_ready()
@@ -284,7 +398,7 @@ for i, slp in enumerate(active_slps):
     print("\t", map)
     y_range = jnp.linspace(ys.min()-2, ys.max()+2, 1000)
     p = jnp.sum(map["w"].reshape(1,-1) * jnp.exp(dist.Normal(map["mus"].reshape(1,-1), jnp.sqrt(map["vars"]).reshape(1,-1)).log_prob(y_range.reshape(-1,1))), axis=1)
-    plt.plot(y_range, p, c="gray")
+    plt.plot(y_range, p, color="gray")
     # plt.scatter(ys, jnp.full_like(ys, 0.))
     K = map["w"].size
     cmap = plt.get_cmap('tab10')
@@ -293,7 +407,7 @@ for i, slp in enumerate(active_slps):
         y_range = jnp.linspace(cluster_ys.min()-2, cluster_ys.max()+2, 1000)
         p = map["w"][k] * jnp.exp(dist.Normal(map["mus"][k], jnp.sqrt(map["vars"])[k]).log_prob(y_range))
         plt.plot(y_range, p, c=cmap(k))
-        plt.scatter(cluster_ys, jnp.full_like(cluster_ys, 0.), c=cmap(k))
+        plt.scatter(cluster_ys, jnp.full_like(cluster_ys, 0.), color=cmap(k))
     plt.show()
 
     # positions_unstacked = StackedTraces(result_positions, n_samples_per_chain, n_chains).unstack() if collect_states else Traces(result_positions, n_samples_per_chain)

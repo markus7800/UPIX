@@ -21,10 +21,13 @@ def run_ais(slp: SLP, ais: AISConfig, seed: PRNGKey, xs: Trace, lp: jax.Array, N
     assert ais.tempering_schedule[-1] == 1. # log joint
 
     prior_key, tempering_key = jax.random.split(seed)
-    prior_kernel_init = MCMCState(jnp.array(0,int), jnp.array(0.,float), xs, lp, broadcast_jaxtree([],(N,)))
-    prior_keys = jax.random.split(prior_key, ais.n_prior_mcmc_steps)
-    last_prior_state, _ = jax.lax.scan(ais.prior_kernel, prior_kernel_init, prior_keys)
-
+    
+    if ais.n_prior_mcmc_steps > 0:
+        prior_kernel_init = MCMCState(jnp.array(0,int), jnp.array(0.,float), xs, lp, broadcast_jaxtree([],(N,)))
+        prior_keys = jax.random.split(prior_key, ais.n_prior_mcmc_steps)
+        last_prior_state, _ = jax.lax.scan(ais.prior_kernel, prior_kernel_init, prior_keys)
+    else:
+        last_prior_state = MCMCState(jnp.array(0,int), jnp.array(0.,float), xs, lp, broadcast_jaxtree([],(N,)))
 
     def tempering_step(carry: Tuple[MCMCState,FloatArray], tempering: Tuple[PRNGKey,FloatArray]) -> Tuple[Tuple[MCMCState,FloatArray], None]:
         inference_carry_from_prev_kernel, current_log_weight = carry
@@ -57,7 +60,7 @@ def run_ais(slp: SLP, ais: AISConfig, seed: PRNGKey, xs: Trace, lp: jax.Array, N
     log_prior = last_prior_state.log_prob
     log_joint = last_tempering_state.log_prob
 
-    return log_weight + log_joint - log_prior
+    return log_weight + log_joint - log_prior, last_tempering_state.position
 
 
     

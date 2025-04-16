@@ -358,31 +358,46 @@ tempering_schedule.block_until_ready()
 
 # beta = 0.0 # prior
 # beta = 0.5
-beta = 1.0 # posterior
-mcmc_keys = jax.random.split(jax.random.PRNGKey(0), 1_000)
-log_f = lambda x: beta*log_joint(x) + (1-beta)*log_prior(x)
-init = MCMCState(jnp.array(0,int), jnp.array(beta,float), broadcast_jaxtree({"x": jnp.array(0.,float)}, (N,)), broadcast_jaxtree(jnp.array(-jnp.inf,float), (N,)), broadcast_jaxtree([], (N,)))
-t0 = time()
-def _f():
-    last_state, _ = jax.lax.scan(kernel,  init, mcmc_keys)
-    return last_state
-# print(jax.make_jaxpr(_f)())
-last_state = _f()
-x0 = last_state.position["x"]
-x0.block_until_ready()
-t1 = time()
-print(f"Finished posterior in {t1-t0:.3f}s")
-plt.hist(x0, density=True, bins=100)
-x_range = jnp.linspace(x0.min(), x0.max(), 1000)
-ps = jnp.exp(log_f(x_range))
-ps = ps / jnp.trapezoid(ps, x_range)
-plt.plot(x_range, ps)
-plt.show()
+# beta = 1.0 # posterior
+# mcmc_keys = jax.random.split(jax.random.PRNGKey(0), 1_000)
+# log_f = lambda x: beta*log_joint(x) + (1-beta)*log_prior(x)
+# init = MCMCState(jnp.array(0,int), jnp.array(beta,float), broadcast_jaxtree({"x": jnp.array(0.,float)}, (N,)), broadcast_jaxtree(jnp.array(-jnp.inf,float), (N,)), broadcast_jaxtree([], (N,)))
+# t0 = time()
+# def _f():
+#     last_state, _ = jax.lax.scan(kernel,  init, mcmc_keys)
+#     return last_state
+# # print(jax.make_jaxpr(_f)())
+# last_state = _f()
+# x0 = last_state.position["x"]
+# x0.block_until_ready()
+# t1 = time()
+# print(f"Finished posterior in {t1-t0:.3f}s")
+# plt.hist(x0, density=True, bins=100)
+# x_range = jnp.linspace(x0.min(), x0.max(), 1000)
+# ps = jnp.exp(log_f(x_range))
+# ps = ps / jnp.trapezoid(ps, x_range)
+# plt.plot(x_range, ps)
+# plt.show()
+
+# N = 1_000_000
+# config = AISConfig(kernel, 1_000, kernel, tempering_schedule)
+# xs = broadcast_jaxtree({"x": jnp.array(0, float)}, (N,))
+# lp = jnp.full((N,), -jnp.inf, float)
+# lp.block_until_ready()
+# t0 = time()
+# log_weights = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+# log_weights.block_until_ready()
+# t1 = time()
+# print(log_weights)
+# print(get_Z_ESS(log_weights))
+# print(f"Finished AIS in {t1-t0:.3f}s")
+
+
 
 N = 1_000_000
-config = AISConfig(kernel, 1_000, kernel, tempering_schedule)
-xs = broadcast_jaxtree({"x": jnp.array(0, float)}, (N,))
-lp = jnp.full((N,), -jnp.inf, float)
+config = AISConfig(None, 0, kernel, tempering_schedule)
+xs = {"x": sample_prior(jax.random.PRNGKey(0), N)}
+lp = jax.vmap(slp.log_prior)(xs)
 lp.block_until_ready()
 t0 = time()
 log_weights = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
@@ -391,4 +406,3 @@ t1 = time()
 print(log_weights)
 print(get_Z_ESS(log_weights))
 print(f"Finished AIS in {t1-t0:.3f}s")
-

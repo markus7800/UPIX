@@ -133,11 +133,12 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
     return _vectorised_kernel
 
 class ProgressbarManager:
-    def __init__(self) -> None:
+    def __init__(self, num_samples: int) -> None:
         self.tqdm_bar: Optional[tqdm_auto] = None
+        self.num_samples = num_samples
 
-    def start_progress(self, num_samples: int):
-        self.tqdm_bar = tqdm_auto(range(num_samples), position=0)
+    def start_progress(self):
+        self.tqdm_bar = tqdm_auto(range(self.num_samples), position=0)
         self.tqdm_bar.set_description("Compiling... ", refresh=True)
 
     def _init_tqdm(self):
@@ -159,7 +160,7 @@ class ProgressbarManager:
             self.tqdm_bar = None
 
 # adapted form numpyro/util.py
-def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> Tuple[ProgressbarManager,MCMCKernel[MCMC_COLLECT_TYPE]]:
+def add_progress_bar(num_samples: int, kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> Tuple[ProgressbarManager,MCMCKernel[MCMC_COLLECT_TYPE]]:
 
     if num_samples > 100:
         print_rate = int(num_samples / 100)
@@ -170,7 +171,7 @@ def add_progress_bar(num_samples: int, n_chains: int, kernel: MCMCKernel[MCMC_CO
     remainder = num_samples % print_rate
 
 
-    progressbar_mngr = ProgressbarManager()
+    progressbar_mngr = ProgressbarManager(num_samples)
     # t0 = 0
 
     

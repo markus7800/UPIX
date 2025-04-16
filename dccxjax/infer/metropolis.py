@@ -55,10 +55,12 @@ def rw_kernel_sparse(
     current_log_prob: FloatArray,
     log_prob_fn: Callable[[Trace], FloatArray],
     proposer: Callable[[jax.Array], dist.Distribution],
-    p: float # static
+    p: float, # static
+    n_dim: int
 ) -> Tuple[Trace, FloatArray, IntArray]:
     
     current_value_flat, unravel_fn = ravel_pytree(current_position)
+    assert current_value_flat.shape == (n_dim,)
 
     def step(current_value_flat: FloatArray, current_log_prob: FloatArray, n_accepted: IntArray, step_key: PRNGKey) -> Tuple[Tuple[FloatArray,FloatArray,IntArray],None]:
         proposal_dist = proposer(current_value_flat)
@@ -94,11 +96,12 @@ def rw_kernel_elementwise(
     current_log_prob: FloatArray,
     log_prob_fn: Callable[[Trace], FloatArray],
     proposer: Callable[[jax.Array], dist.Distribution],
-    N: int
+    n_dim: int
 ) -> Tuple[Trace, FloatArray, IntArray]:
     
     def _body(i: int, current_position: Trace, current_log_prob: FloatArray, n_accept: IntArray, body_rng_key: PRNGKey) -> Tuple[FloatArray,FloatArray,IntArray]:
         current_value_flat, unravel_fn = ravel_pytree(current_position)
+        assert current_value_flat.shape == (n_dim,)
         sub_current_value_flat = current_value_flat[i]
         proposal_dist = proposer(sub_current_value_flat)
         body_rng_key, proposal_key = jax.random.split(body_rng_key)
@@ -117,44 +120,51 @@ def rw_kernel_elementwise(
         return jax.lax.cond(accept, lambda _: (proposed_position, proposed_log_prob, n_accept + 1, body_rng_key), lambda _: (current_position, current_log_prob, n_accept, body_rng_key), operand=None)
 
 
-    new_position, new_log_prob, n_accepted, _ = jax.lax.fori_loop(0, N, lambda i, a: _body(i, *a), (current_position, current_log_prob, jnp.array(0,int), rng_key))
+    new_position, new_log_prob, n_accepted, _ = jax.lax.fori_loop(0, n_dim, lambda i, a: _body(i, *a), (current_position, current_log_prob, jnp.array(0,int), rng_key))
     
     return new_position, new_log_prob, n_accepted
     
 class MHInfo(NamedTuple):
-    accepted: int | jax.Array
+    accepted: jax.Array
 
 class RandomWalk(InferenceAlgorithm):
     def __init__(self,
                  proposer: Callable[[jax.Array],dist.Distribution],
-                 block_update: bool = True,
+                 elementwise: bool = False,
                  sparse_frac: Optional[float] = None,
                  sparse_numvar: Optional[int] = None
                  ) -> None:
-        
+
         self.proposer = proposer
         self.jitted_kernel = False
-        self.block_update = block_update
+        self.elementwise = elementwise
         self.sparse_frac = sparse_frac
         self.sparse_numvar = sparse_numvar
+        self.sparse = self.sparse_frac is not None or self.sparse_numvar is not None
 
     def init_info(self) -> InferenceInfo:
-        return MHInfo(0)
+        if not self.elementwise:
+            if self.sparse:
+                return MHInfo(jnp.array(0,float))
+            else:
+                return MHInfo(jnp.array(0,int))
+        else:
+            return MHInfo(jnp.array(0,float))
     
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
-        if not self.block_update:
-            X, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
-            assert all(values.shape == () for _, values in X.items())
+        X_repr, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
+        n_dim = sum(values.size for _, values in X_repr.items())
+        is_discrete_map = gibbs_model.slp.get_is_discrete_map()
+        assert all(is_discrete_map[addr] for addr, _ in X_repr.items()) or all(not is_discrete_map[addr] for addr, _ in X_repr.items())
 
-        sparse = self.sparse_frac is not None or self.sparse_numvar is not None
         sparse_p = 0.
-        if sparse:
-            assert self.block_update
+        if self.sparse:
+            assert not self.elementwise
             assert (self.sparse_frac is None) ^ (self.sparse_numvar is None)
             if self.sparse_frac is not None:
                 sparse_p = self.sparse_frac
             if self.sparse_numvar is not None:
-                sparse_p = self.sparse_numvar / len(gibbs_model.slp.decision_representative)   
+                sparse_p = self.sparse_numvar / n_dim
 
         jit_tracker = JitVariationTracker(f"_rw_kernel for Inference step {step_number}: <RandomWalk at {hex(id(self))}>")
         @jax.jit
@@ -164,15 +174,15 @@ class RandomWalk(InferenceAlgorithm):
             gibbs_model.set_Y(Y)
         
             _tempered_log_prob_fn = gibbs_model.tempered_log_prob(temperature)
-            if self.block_update:
-                if sparse:
-                    next_X, next_log_prob, n_accepted = rw_kernel_sparse(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer, sparse_p)
-                    accepted = n_accepted > 0
+            if not self.elementwise:
+                if self.sparse:
+                    next_X, next_log_prob, n_accepted = rw_kernel_sparse(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer, sparse_p, n_dim)
+                    accepted = n_accepted.sum() / int(math.ceil(1./sparse_p))
                 else:
                     next_X, next_log_prob, accepted = rw_kernel(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer)
             else:
-                next_X, next_log_prob, n_accepted = rw_kernel_elementwise(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer, len(gibbs_model.variables))
-                accepted = n_accepted > 0
+                next_X, next_log_prob, n_accepted = rw_kernel_elementwise(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer, n_dim)
+                accepted = n_accepted.sum() / n_dim
 
 
             mh_info = state.info
@@ -224,7 +234,7 @@ class MetropolisHastings(InferenceAlgorithm):
         self.jitted_kernel = False
 
     def init_info(self) -> InferenceInfo:
-        return MHInfo(0)
+        return MHInfo(jnp.array(0,int))
     
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
         jit_tracker = JitVariationTracker(f"_mh_kernel for Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>")
