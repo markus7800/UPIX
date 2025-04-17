@@ -1,5 +1,12 @@
 import sys
 sys.path.insert(0, ".")
+import os
+# import multiprocessing
+
+# os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count={}".format(
+#     multiprocessing.cpu_count()
+# )
+# os.environ["JAX_PLATFORMS"] = "cpu"
 
 from dccxjax import *
 import jax
@@ -60,10 +67,9 @@ ys = jnp.array([
     -18.978055134755582, 13.441194891615718, 7.983890038551439, 7.759003567480592
 ])
 
-
-def lw(K: int, N: int):
+def get_lw_log_weight(K):
     @jax.jit
-    def log_weight(rng_key: PRNGKey):
+    def lw(rng_key: PRNGKey):
         w_key, mus_key, vars_key = jax.random.split(rng_key,3)
 
         w = dist.Dirichlet(jnp.full((K+1,), delta)).sample(w_key)
@@ -73,31 +79,57 @@ def lw(K: int, N: int):
         log_likelihoods = jnp.log(jnp.sum(w.reshape(1,-1) * jnp.exp(dist.Normal(mus.reshape(1,-1), jnp.sqrt(vars).reshape(1,-1)).log_prob(ys.reshape(-1,1))), axis=1))
 
         return log_likelihoods.sum()
+    return lw
 
-    keys =jax.random.split(jax.random.PRNGKey(0), N)
-    log_W = jax.lax.map(log_weight, keys, batch_size=min(N,10_000_000))
-    log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N)
+def IS(log_weight, K: int, N: int, batch_method: int = 1):
 
-    ESS = jnp.exp(jax.scipy.special.logsumexp(log_W)*2 - jax.scipy.special.logsumexp(log_W*2))
-    # print(f"{K}:", log_Z)
+    batch_size = 1_000_000
+    if N > batch_size and batch_method > 0:
+        if batch_method == 1:
+            assert N % batch_size == 0
+            N_batches = N // batch_size
+
+            def batch(rng_key: PRNGKey):
+                keys = jax.random.split(rng_key, batch_size)
+                log_Ws = jax.vmap(log_weight)(keys)
+                return (jax.scipy.special.logsumexp(log_Ws), jax.scipy.special.logsumexp(log_Ws * 2))
+
+            batch_keys = jax.random.split(jax.random.PRNGKey(0), N_batches)
+            log_W, log_W_squared = jax.lax.map(batch, batch_keys)
+            log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N)
+            ESS = jnp.exp(jax.scipy.special.logsumexp(log_W)*2 - jax.scipy.special.logsumexp(log_W_squared))
+        else:
+            keys = jax.random.split(jax.random.PRNGKey(0), N)
+            log_W = jax.lax.map(log_weight, keys, batch_size=batch_size)
+            log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N)
+            ESS = jnp.exp(jax.scipy.special.logsumexp(log_W)*2 - jax.scipy.special.logsumexp(log_W*2))
+    else:
+        keys = jax.random.split(jax.random.PRNGKey(0), N)
+        log_W = jax.vmap(log_weight)(keys)
+        log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N)
+        ESS = jnp.exp(jax.scipy.special.logsumexp(log_W)*2 - jax.scipy.special.logsumexp(log_W*2))
+        
     return log_Z, ESS
 
+def do_lw():
+    N = 1_000_000
+    Ks = range(0, 7)
+    result = [IS(get_lw_log_weight(K), K, N, batch_method=1) for K in tqdm(Ks)]
+    log_Z_path = jnp.array([r[0] for r in result])
+    ESS = jnp.array([r[1] for r in result])
+    print(f"{log_Z_path=}")
+    print(f"{ESS=}")
+    # print(f"{jnp.exp(log_Z_path - jax.scipy.special.logsumexp(log_Z_path))}")
 
-N = 10_000
-Ks = range(0, 7)
-result = [lw(K, N) for K in tqdm(Ks)]
-log_Z_path = jnp.array([r[0] for r in result])
-ESS = jnp.array([r[1] for r in result])
-print(f"{log_Z_path=}")
-print(f"{ESS=}")
-# print(f"{jnp.exp(log_Z_path - jax.scipy.special.logsumexp(log_Z_path))}")
+    log_Z_path_prior = dist.Poisson(lam).log_prob(jnp.array(list(Ks)))
+    log_Z = log_Z_path + log_Z_path_prior
+    path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
 
-log_Z_path_prior = dist.Poisson(lam).log_prob(jnp.array(list(Ks)))
-log_Z = log_Z_path + log_Z_path_prior
-path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
+    for i, k in enumerate(Ks):
+        print(k, path_weight[i])
 
-for i, k in enumerate(Ks):
-    print(k, path_weight[i])
+# do_lw()
+# exit()
 
 # log_Z=Array(-438.8526, dtype=float32)
 # log_Z=Array(-430.81674, dtype=float32)
@@ -106,16 +138,49 @@ for i, k in enumerate(Ks):
 
 from gibbs_proposals import *
 
-def get_posterior_estimates(K: int):
+class HistogramProposer():
+
+    # minweight from 0 to 1
+    def __init__(self, x, min_weigth, bins, kind="uniform"):
+        bin_weights, bin_edges = jnp.histogram(x, bins=bins)
+        min_weigth = bin_weights.max() * min_weigth
+        bin_weights = jax.lax.select(bin_weights < min_weigth, jax.lax.full_like(bin_weights,min_weigth), bin_weights)
+        self.bin_weights = bin_weights / bin_weights.sum()
+        self.bin_edges = bin_edges
+        self.kind = kind
+
+    def sample(self, rng_key: PRNGKey, shape = ()):
+        bin_key, unif_key = jax.random.split(rng_key)
+        bin = dist.CategoricalProbs(self.bin_weights).sample(bin_key, shape)
+        if self.kind == "uniform":
+            return dist.Uniform(self.bin_edges[bin], self.bin_edges[bin+1]).sample(unif_key)
+        if self.kind == "normal":
+            a, b = self.bin_edges[bin], self.bin_edges[bin+1]
+            return dist.Normal((a+b)/2, (b-a)/2).sample(unif_key)
+        raise Exception
+
+
+    def log_prob(self, x):
+        trailing_shape = tuple([1 for _ in range(len(x.shape))])
+        x = x.reshape((1,) + x.shape)
+        bin_weights = self.bin_weights.reshape((-1,) + trailing_shape)
+        a = self.bin_edges[0:-1].reshape((-1,) + trailing_shape)
+        b = self.bin_edges[1:].reshape((-1,) + trailing_shape)
+
+        if self.kind == "uniform":
+            return jnp.log(jnp.sum(bin_weights * jnp.exp(dist.Uniform(a, b).log_prob(x)), axis=0))
+        if self.kind == "normal":
+            return jnp.log(jnp.sum(bin_weights * jnp.exp(dist.Normal((a+b)/2, (b-a)/2).log_prob(x)), axis=0))
+        raise Exception
+
+
+def get_posterior_estimates(K: int, n_chains:int = 100, n_samples_per_chain: int = 10_000):
     gibbs_regime = Gibbs(
         InferenceStep(SingleVariable("w"), MH(WProposal(delta, K))),
         InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
         InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
         InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
     )
-
-    n_chains = 1
-    n_samples_per_chain = 100_000
 
     class CollectType(NamedTuple):
         position: Trace
@@ -147,19 +212,129 @@ def get_posterior_estimates(K: int):
     result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains)
     result_lps: FloatArray = all_states.log_prob
 
-    amax = jnp.unravel_index(jnp.argmax(result_lps), result_lps.shape)
-    map = result_positions.get(*amax)
-    print(map)
-
-    result_positions = result_positions.unstack()
-    mus = result_positions.data["mus"]
-    mus = jnp.sort(mus, axis=1)
-
-    fig, axs = plt.subplots(K, 2)
-    for k in range(K):
-        axs[k,0].hist(mus[:,k], bins=100, density=True)
-        # axs[k,1].hist(jnp.sqrt(result_positions.data["vars"][:,k]), bins=100, density=True)
-    plt.show()
+    # amax = jnp.unravel_index(jnp.argmax(result_lps), result_lps.shape)
+    # map_trace = result_positions.get(*amax)
+    # print(map_trace)
 
 
-get_posterior_estimates(4)
+    # result_positions = result_positions.unstack()
+
+    # mus = result_positions.data["mus"]
+    # plt.hist(mus.reshape(-1), bins=100, density=True)
+
+    # mu_range = jnp.linspace(mus.min(), mus.max(), 1000)
+    # p = jnp.sum(map_trace["w"].reshape(1,-1) * jnp.exp(dist.Normal(map_trace["mus"].reshape(1,-1), jnp.sqrt(map_trace["vars"]).reshape(1,-1)).log_prob(mu_range.reshape(-1,1))), axis=1)
+    # plt.plot(mu_range, p)
+
+    # plt.show()
+
+
+    # x = result_positions.data["vars"].reshape(-1)
+    # x = result_positions.data["mus"].reshape(-1)
+
+    # plt.hist(x, bins=100, density=True)
+
+
+    # hist_proposer = HistogramProposer(x, 0.01, jnp.linspace(x.min(), x.max(), 100), kind="normal")
+    # x_sample = hist_proposer.sample(jax.random.PRNGKey(0), (1_000_000,))
+    # #print(hist_proposer.log_prob(x_sample).sum())
+    # plt.hist(x_sample, bins=100, density=True)
+    # xrange = jnp.linspace(x.min(), x.max(), 1000)
+    # p = jnp.exp(hist_proposer.log_prob(xrange))
+    # plt.plot(xrange, p)
+    # plt.show()
+
+    x = result_positions.data["mus"].reshape(-1)
+    mu_proposer = HistogramProposer(x, 0.0, jnp.linspace(x.min(), x.max(), 100), kind="normal")
+
+    x = result_positions.data["vars"].reshape(-1)
+    var_proposer = HistogramProposer(x, 0.0, jnp.linspace(x.min(), x.max(), 100), kind="uniform")
+
+    return mu_proposer, var_proposer
+
+# get_posterior_estimates(1)
+
+def get_is_log_weight(K, mu_proposer, var_proposer):
+    @jax.jit
+    def log_weight(rng_key: PRNGKey):
+        log_w = 0.
+        w_key, mus_key, vars_key = jax.random.split(rng_key,3)
+
+        w = dist.Dirichlet(jnp.full((K+1,), delta)).sample(w_key)
+
+        mus = mu_proposer.sample(mus_key, (K+1,))
+        log_w += dist.Normal(jnp.full((K+1,), xi), jnp.full((K+1,), 1/jax.lax.sqrt(kappa))).log_prob(mus).sum() - mu_proposer.log_prob(mus).sum()
+        # jax.debug.print("1 {lp}", lp=log_w)
+        vars = var_proposer.sample(vars_key, (K+1,))
+        log_w += dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)).log_prob(vars).sum() - var_proposer.log_prob(vars).sum()
+        # jax.debug.print("2 {lp}", lp=log_w)
+        log_likelihoods = jnp.log(jnp.sum(w.reshape(1,-1) * jnp.exp(dist.Normal(mus.reshape(1,-1), jnp.sqrt(vars).reshape(1,-1)).log_prob(ys.reshape(-1,1))), axis=1))
+
+        return log_w + log_likelihoods.sum()
+    return log_weight
+
+def do_is():
+    N = 1_000_000_000
+    Ks = range(0, 7)
+    result = []
+    for K in Ks:
+        print(f"{K=}")
+        mu_proposer, var_proposer = get_posterior_estimates(K)
+        r = IS(get_is_log_weight(K, mu_proposer, var_proposer), K, N, batch_method=1)
+        result.append(r)
+        print(r)
+
+    log_Z_path = jnp.array([r[0] for r in result])
+    ESS = jnp.array([r[1] for r in result])
+    print(f"{log_Z_path=}")
+    print(f"{ESS=}")
+    # print(f"{jnp.exp(log_Z_path - jax.scipy.special.logsumexp(log_Z_path))}")
+
+    log_Z_path_prior = dist.Poisson(lam).log_prob(jnp.array(list(Ks)))
+    log_Z = log_Z_path + log_Z_path_prior
+    path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
+
+    for i, k in enumerate(Ks):
+        print(k, path_weight[i])
+
+do_is()
+
+# N = 1_000_000_000
+# log_Z_path=Array([-438.79636, -412.8164 , -377.91574, -372.9174 , -371.5283 ,
+#        -371.16064, -371.81546], dtype=float32)
+# ESS=Array([1.12462055e+05, 2.03178909e+02, 2.68628502e+00, 5.95687437e+00,
+#        7.15254593e+00, 1.88663120e+01, 3.07139349e+00], dtype=float32)
+# 0 7.458007e-31
+# 1 4.292286e-19
+# 2 0.000924604
+# 3 0.13699745
+# 4 0.41214377
+# 5 0.35715997
+# 6 0.09277919
+
+# N = 100_000_000 unbtached
+# log_Z_path=Array([-438.77432, -413.00266, -382.04813, -371.68024, -368.07654,
+#        -371.96835, -370.9016 ], dtype=float32)
+# ESS=Array([1.1418117e+04, 2.5350237e+01, 4.8096180e+00, 1.5949748e+00,
+#        1.7129345e+00, 5.1691084e+00, 1.4448144e+00], dtype=float32)
+# 0 5.49753e-32
+# 1 2.5690792e-20
+# 2 1.0696934e-06
+# 3 0.034038976
+# 4 0.9377804
+# 5 0.01148299
+# 6 0.016684216
+
+
+
+# log_Z_path=Array([-438.7951 , -412.87714, -378.07547, -372.03406, -371.0071 ,
+#        -371.09848, -371.74484], dtype=float32)
+# ESS=Array([9.8786797e+08, 1.5797326e+06, 1.3217342e+05, 1.7380820e+04,
+#        4.0514241e+03, 4.1891110e+02, 2.2887285e+02], dtype=float32)
+# 0 4.9588643e-31
+# 1 2.6824395e-19
+# 2 0.0005233622
+# 3 0.22006674
+# 4 0.46090347
+# 5 0.25239247
+# 6 0.06612039

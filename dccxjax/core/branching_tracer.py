@@ -113,6 +113,7 @@ def maybe_branching_tracer(trace: "BranchingTrace", val):
 
 class BranchingTrace(jax_core.Trace):
     def __init__(self, parent_trace, branching_decisions: BranchingDecisions, retrace: bool) -> None:
+        super().__init__()
         # print("parent_trace of", self, "is", parent_trace)
         self.parent_trace = parent_trace
         self.branching_decisions = branching_decisions
