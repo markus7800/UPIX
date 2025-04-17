@@ -6,7 +6,7 @@ import os
 # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count={}".format(
 #     multiprocessing.cpu_count()
 # )
-# os.environ["JAX_PLATFORMS"] = "cpu"
+os.environ["JAX_PLATFORMS"] = "cpu"
 
 from dccxjax import *
 import jax
@@ -266,6 +266,8 @@ def get_is_log_weight(K, mu_proposer, var_proposer):
         log_w += dist.Normal(jnp.full((K+1,), xi), jnp.full((K+1,), 1/jax.lax.sqrt(kappa))).log_prob(mus).sum() - mu_proposer.log_prob(mus).sum()
         # jax.debug.print("1 {lp}", lp=log_w)
         vars = var_proposer.sample(vars_key, (K+1,))
+        # vars = jnp.maximum(vars, 1e-5)
+
         log_w += dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)).log_prob(vars).sum() - var_proposer.log_prob(vars).sum()
         # jax.debug.print("2 {lp}", lp=log_w)
         log_likelihoods = jnp.log(jnp.sum(w.reshape(1,-1) * jnp.exp(dist.Normal(mus.reshape(1,-1), jnp.sqrt(vars).reshape(1,-1)).log_prob(ys.reshape(-1,1))), axis=1))
@@ -297,7 +299,7 @@ def do_is():
     for i, k in enumerate(Ks):
         print(k, path_weight[i])
 
-do_is()
+# do_is()
 
 # N = 1_000_000_000
 # log_Z_path=Array([-438.79636, -412.8164 , -377.91574, -372.9174 , -371.5283 ,
@@ -327,6 +329,7 @@ do_is()
 
 
 
+# N = 1_000_000_000
 # log_Z_path=Array([-438.7951 , -412.87714, -378.07547, -372.03406, -371.0071 ,
 #        -371.09848, -371.74484], dtype=float32)
 # ESS=Array([9.8786797e+08, 1.5797326e+06, 1.3217342e+05, 1.7380820e+04,
@@ -338,3 +341,113 @@ do_is()
 # 4 0.46090347
 # 5 0.25239247
 # 6 0.06612039
+
+
+def chibs(K: int, n_chains:int = 100, n_samples_per_chain: int = 10_000):
+    inference_steps = [
+        InferenceStep(SingleVariable("w"), MH(WProposal(delta, K))),
+        InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
+        InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
+        InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+    ]
+    gibbs_regime = Gibbs(*inference_steps)
+
+    class CollectType(NamedTuple):
+        position: Trace
+        log_prob: FloatArray
+    def return_map(x: MCMCState):
+        return CollectType(x.position, x.log_prob)
+
+    def gmm():
+        N = ys.shape[0]
+        w = sample("w", dist.Dirichlet(jnp.full((K+1,), delta)))
+        mus = sample("mus", dist.Normal(jnp.full((K+1,), xi), jnp.full((K+1,), 1/jax.lax.sqrt(kappa))))
+        vars = sample("vars", dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)))
+        zs = sample("zs", dist.Categorical(jax.lax.broadcast(w, (N,))))
+        sample("ys", dist.Normal(mus[zs], jax.lax.sqrt(vars[zs])), observed=ys)
+
+
+    slp = convert_branchless_model_to_SLP(model(gmm)())
+
+    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, gibbs_regime, collect_inference_info=False, return_map=return_map)
+    progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
+    progressbar_mng.start_progress()
+    keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+
+    init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), []), (n_chains,)))
+
+    last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
+    last_state.iteration.block_until_ready()
+    
+    result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains)
+    result_lps: FloatArray = all_states.log_prob
+
+    amax = jnp.unravel_index(jnp.argmax(result_lps), result_lps.shape)
+    map_trace = result_positions.get(*amax)
+    map_lp = result_lps[amax] # joint
+    # print(map_trace, map_lp)
+
+
+    # n_chains = 2
+    # n_samples_per_chain = 10
+    seed = jax.random.PRNGKey(0)
+
+    names = ["w", "mus", "vars", "zs"]
+    map_log_posterior_est = 0.
+    for i, name in enumerate(names):
+        condition_names = [names[j] for j in range(i)]
+        sample_names = [names[j] for j in range(i+1, len(names))]
+        s = ", ".join([n + "*" for n in condition_names] + sample_names)
+        print(f"{name}* | {s}")
+        # gibbs targets (sample_names + [name]) | condition_names 
+        # regime consists only of steps for sample_names and values of condition_names are initialised to map and keep their values
+        # name is also perturbed by regime but marginalised out in density estimation
+
+        regime = Gibbs(*inference_steps[i:])
+        mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=False, return_map=return_map)
+        progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
+        progressbar_mng.start_progress()
+
+        seed, mcmc_key = jax.random.split(seed)
+        keys = jax.random.split(mcmc_key, n_samples_per_chain)
+        init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((map_trace, map_lp, []), (n_chains,)))
+
+        last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
+        last_state.iteration.block_until_ready()
+        
+        result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains).unstack()
+        
+        proposal = inference_steps[i].algo.proposal
+        def gibbs_lp(X: Trace):
+            return proposal.assess(current=X, proposed=map_trace)
+        map_log_posterior_est += jax.scipy.special.logsumexp(jax.vmap(gibbs_lp)(result_positions.data)) - jnp.log(result_positions.n_samples())
+
+
+    log_Z_est = map_lp - map_log_posterior_est
+    print("log_Z =", log_Z_est)
+    return log_Z_est
+
+def do_chibs():
+    n_chains = 10
+    n_samples_per_chain = 10_000
+
+    Ks = range(0, 7)
+    result = []
+    for K in Ks:
+        print(f"{K=}")
+        r = chibs(K, n_chains, n_samples_per_chain)
+        result.append(r)
+        print(r)
+
+    log_Z_path = jnp.array(result)
+    print(f"{log_Z_path=}")
+    # print(f"{jnp.exp(log_Z_path - jax.scipy.special.logsumexp(log_Z_path))}")
+
+    log_Z_path_prior = dist.Poisson(lam).log_prob(jnp.array(list(Ks)))
+    log_Z = log_Z_path + log_Z_path_prior
+    path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
+
+    for i, k in enumerate(Ks):
+        print(k, path_weight[i])
+
+do_chibs()
