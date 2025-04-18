@@ -6,7 +6,7 @@ import os
 # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count={}".format(
 #     multiprocessing.cpu_count()
 # )
-# os.environ["JAX_PLATFORMS"] = "cpu"
+os.environ["JAX_PLATFORMS"] = "cpu"
 
 from dccxjax import *
 import jax
@@ -153,6 +153,7 @@ def do_lw():
 # log_Z=Array(-430.81674, dtype=float32)
 # log_Z=Array(-431.36102, dtype=float32)
 
+# obs = 5
 # log_Z_path=Array([-24.367477, -23.827473, -21.73211 , -21.072435, -20.742483,
 #        -20.544456, -20.412643], dtype=float32)
 # ESS=Array([ 9492778., 11764261.,  6564328., 13200248., 22122286., 32606310.,
@@ -171,7 +172,7 @@ class HistogramProposer():
 
     # minweight from 0 to 1
     def __init__(self, x, min_weigth, bins, kind="uniform"):
-        bin_weights, bin_edges = jnp.histogram(x, bins=bins)
+        bin_weights, bin_edges = jnp.histogram(x, bins=bins) # failed to parse int literal in cuda backend here
         min_weigth = bin_weights.max() * min_weigth
         bin_weights = jax.lax.select(bin_weights < min_weigth, jax.lax.full_like(bin_weights,min_weigth), bin_weights)
         self.bin_weights = bin_weights / bin_weights.sum()
@@ -346,14 +347,14 @@ def get_is_log_weight_2(K, mu_proposer, var_proposer):
     return log_weight
 
 def do_is():
-    N = 1_000_000_000
+    N = 100_000_000
     print(f"do_is {N=}")
     Ks = range(0, 7)
     result = []
     for K in Ks:
         print(f"{K=}")
         mu_proposer, var_proposer = get_posterior_estimates(K)
-        r = IS(get_is_log_weight(K, mu_proposer, var_proposer), K, N, batch_method=1)
+        r = IS(get_is_log_weight_2(K, mu_proposer, var_proposer), K, N, batch_method=1)
         result.append(r)
         print(r)
 
@@ -370,7 +371,8 @@ def do_is():
     for i, k in enumerate(Ks):
         print(k, path_weight[i])
 
-# do_is()
+do_is()
+exit()
 
 # N = 1_000_000_000
 # log_Z_path=Array([-438.7951 , -412.87714, -378.07547, -372.03406, -371.0071 ,
