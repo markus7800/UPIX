@@ -84,12 +84,12 @@ def _unstack(values: jax.Array):
     n_chains = shape[1]
     return jax.lax.reshape(values, (n_samples * n_chains, *var_dim))
 
-# data[address] has shape (T,N,D) where D is the dimensionality of the RV
+# data[address] has shape (N,T,D) where D is the dimensionality of the RV
 @dataclass
 class StackedTraces:
     data: Trace
-    N: int
-    T: int
+    N: int # n_samples_per_chain
+    T: int # n_chains
     def n_samples(self):
         return self.T * self.N
     def unstack(self) -> Traces:

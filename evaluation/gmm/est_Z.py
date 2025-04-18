@@ -6,7 +6,7 @@ import os
 # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count={}".format(
 #     multiprocessing.cpu_count()
 # )
-os.environ["JAX_PLATFORMS"] = "cpu"
+# os.environ["JAX_PLATFORMS"] = "cpu"
 
 from dccxjax import *
 import jax
@@ -66,6 +66,7 @@ ys = jnp.array([
     -0.9580412415863696, 14.180597007125487, 4.052110659466889,
     -18.978055134755582, 13.441194891615718, 7.983890038551439, 7.759003567480592
 ])
+ys = ys[:5]
 
 def get_lw_log_weight(K):
     @jax.jit
@@ -77,6 +78,22 @@ def get_lw_log_weight(K):
         vars = dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)).sample(vars_key)
 
         log_likelihoods = jnp.log(jnp.sum(w.reshape(1,-1) * jnp.exp(dist.Normal(mus.reshape(1,-1), jnp.sqrt(vars).reshape(1,-1)).log_prob(ys.reshape(-1,1))), axis=1))
+
+        return log_likelihoods.sum()
+    return lw
+
+def get_lw_log_weight_2(K):
+    @jax.jit
+    def lw(rng_key: PRNGKey):
+        w_key, mus_key, vars_key, zs_key = jax.random.split(rng_key,4)
+
+        w = dist.Dirichlet(jnp.full((K+1,), delta)).sample(w_key)
+        mus = dist.Normal(jnp.full((K+1,), xi), jnp.full((K+1,), 1/jax.lax.sqrt(kappa))).sample(mus_key)
+        vars = dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)).sample(vars_key)
+
+        zs = dist.CategoricalProbs(w).sample(zs_key, ys.shape)
+
+        log_likelihoods = dist.Normal(mus[zs], jnp.sqrt(vars[zs])).log_prob(ys)
 
         return log_likelihoods.sum()
     return lw
@@ -112,9 +129,11 @@ def IS(log_weight, K: int, N: int, batch_method: int = 1):
     return log_Z, ESS
 
 def do_lw():
-    N = 1_000_000
+    N = 1_000_000_000
+    batch_method=1
+    print(f"do_lw {N=} {batch_method=}")
     Ks = range(0, 7)
-    result = [IS(get_lw_log_weight(K), K, N, batch_method=1) for K in tqdm(Ks)]
+    result = [IS(get_lw_log_weight(K), K, N, batch_method=batch_method) for K in tqdm(Ks)]
     log_Z_path = jnp.array([r[0] for r in result])
     ESS = jnp.array([r[1] for r in result])
     print(f"{log_Z_path=}")
@@ -129,12 +148,22 @@ def do_lw():
         print(k, path_weight[i])
 
 # do_lw()
-# exit()
 
 # log_Z=Array(-438.8526, dtype=float32)
 # log_Z=Array(-430.81674, dtype=float32)
 # log_Z=Array(-431.36102, dtype=float32)
 
+# log_Z_path=Array([-24.367477, -23.827473, -21.73211 , -21.072435, -20.742483,
+#        -20.544456, -20.412643], dtype=float32)
+# ESS=Array([ 9492778., 11764261.,  6564328., 13200248., 22122286., 32606310.,
+#        44187160.], dtype=float32)
+# 0 0.0021624845
+# 1 0.0111325625
+# 2 0.13573469
+# 3 0.26253274
+# 4 0.27386805
+# 5 0.20030616
+# 6 0.1142641
 
 from gibbs_proposals import *
 
@@ -219,8 +248,14 @@ def get_posterior_estimates(K: int, n_chains:int = 100, n_samples_per_chain: int
 
     # result_positions = result_positions.unstack()
 
-    # mus = result_positions.data["mus"]
-    # plt.hist(mus.reshape(-1), bins=100, density=True)
+    # mus = result_positions.data["mus"].reshape(-1)
+    # vars = result_positions.data["vars"].reshape(-1)
+    # mus = mus[vars < 25]
+    # vars = vars[vars < 25]
+    # plt.hist2d(mus,vars,bins=100)
+    # plt.show()
+
+    # plt.hist(mus, bins=100, density=True)
 
     # mu_range = jnp.linspace(mus.min(), mus.max(), 1000)
     # p = jnp.sum(map_trace["w"].reshape(1,-1) * jnp.exp(dist.Normal(map_trace["mus"].reshape(1,-1), jnp.sqrt(map_trace["vars"]).reshape(1,-1)).log_prob(mu_range.reshape(-1,1))), axis=1)
@@ -275,8 +310,44 @@ def get_is_log_weight(K, mu_proposer, var_proposer):
         return log_w + log_likelihoods.sum()
     return log_weight
 
+def get_is_log_weight_2(K, mu_proposer, var_proposer):
+    @jax.jit
+    def log_weight(rng_key: PRNGKey):
+        log_w = 0.
+        w_key, mus_key, vars_key, zs_key = jax.random.split(rng_key,4)
+
+        w = dist.Dirichlet(jnp.full((K+1,), delta)).sample(w_key)
+
+        mus = mu_proposer.sample(mus_key, (K+1,))
+        log_w += dist.Normal(jnp.full((K+1,), xi), jnp.full((K+1,), 1/jax.lax.sqrt(kappa))).log_prob(mus).sum() - mu_proposer.log_prob(mus).sum()
+        # jax.debug.print("1 {lp}", lp=log_w)
+        vars = var_proposer.sample(vars_key, (K+1,))
+        # vars = jnp.maximum(vars, 1e-5)
+
+        log_w += dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)).log_prob(vars).sum() - var_proposer.log_prob(vars).sum()
+
+        zs_proposer = ZsProposal(ys)
+        zs, zs_lp = zs_proposer.propose(zs_key, {"w": w, "mus": mus, "vars": vars})
+        zs = zs["zs"]
+
+        log_w += dist.Categorical(jax.lax.broadcast(w, (ys.shape[0],))).log_prob(zs).sum() - zs_lp
+
+        # jax.debug.print("2 {lp}", lp=log_w)
+        log_w += dist.Normal(mus[zs], jnp.sqrt(vars[zs])).log_prob(ys).sum()
+
+        # jax.debug.print("{x} {y} {z} {zs}",
+        #     x=dist.Categorical(jax.lax.broadcast(w, (ys.shape[0],))).log_prob(zs).sum(),
+        #     y=zs_lp, z=dist.Normal(mus[zs], jnp.sqrt(vars[zs])).log_prob(ys).sum(),
+        #     zs=zs,
+        #     #d=zs_proposer.get_categorical({"w": w, "mus": mus, "vars": vars}).probs
+        # )
+
+        return log_w 
+    return log_weight
+
 def do_is():
     N = 1_000_000_000
+    print(f"do_is {N=}")
     Ks = range(0, 7)
     result = []
     for K in Ks:
@@ -300,34 +371,6 @@ def do_is():
         print(k, path_weight[i])
 
 # do_is()
-
-# N = 1_000_000_000
-# log_Z_path=Array([-438.79636, -412.8164 , -377.91574, -372.9174 , -371.5283 ,
-#        -371.16064, -371.81546], dtype=float32)
-# ESS=Array([1.12462055e+05, 2.03178909e+02, 2.68628502e+00, 5.95687437e+00,
-#        7.15254593e+00, 1.88663120e+01, 3.07139349e+00], dtype=float32)
-# 0 7.458007e-31
-# 1 4.292286e-19
-# 2 0.000924604
-# 3 0.13699745
-# 4 0.41214377
-# 5 0.35715997
-# 6 0.09277919
-
-# N = 100_000_000 unbtached
-# log_Z_path=Array([-438.77432, -413.00266, -382.04813, -371.68024, -368.07654,
-#        -371.96835, -370.9016 ], dtype=float32)
-# ESS=Array([1.1418117e+04, 2.5350237e+01, 4.8096180e+00, 1.5949748e+00,
-#        1.7129345e+00, 5.1691084e+00, 1.4448144e+00], dtype=float32)
-# 0 5.49753e-32
-# 1 2.5690792e-20
-# 2 1.0696934e-06
-# 3 0.034038976
-# 4 0.9377804
-# 5 0.01148299
-# 6 0.016684216
-
-
 
 # N = 1_000_000_000
 # log_Z_path=Array([-438.7951 , -412.87714, -378.07547, -372.03406, -371.0071 ,
@@ -392,8 +435,24 @@ def chibs(K: int, n_chains:int = 100, n_samples_per_chain: int = 10_000):
     # n_samples_per_chain = 10
     seed = jax.random.PRNGKey(0)
 
+    seed, key = jax.random.split(seed)
+    i = jax.random.randint(key, (n_chains,), 0, n_samples_per_chain)
+    j = jnp.arange(n_chains)
+    init_trace = result_positions.get(i,j)
+    init_lp = result_lps[i,j]
+
+    # i = jnp.argmax(result_lps, axis=0)
+    # j = jnp.arange(n_chains)
+    # init_trace = result_positions.get(i,j)
+    # init_lp = result_lps[i,j]
+
+    # init_trace = broadcast_jaxtree(map_trace, (n_chains,))
+    # init_lp = broadcast_jaxtree(map_lp, (n_chains,))
+
     names = ["w", "mus", "vars", "zs"]
-    map_log_posterior_est = 0.
+    log_posterior_est = jnp.zeros(n_chains)
+    print("init_lp:", init_lp)
+
     for i, name in enumerate(names):
         condition_names = [names[j] for j in range(i)]
         sample_names = [names[j] for j in range(i+1, len(names))]
@@ -410,26 +469,29 @@ def chibs(K: int, n_chains:int = 100, n_samples_per_chain: int = 10_000):
 
         seed, mcmc_key = jax.random.split(seed)
         keys = jax.random.split(mcmc_key, n_samples_per_chain)
-        init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((map_trace, map_lp, []), (n_chains,)))
+        init = MCMCState(jnp.array(0,int), jnp.array(1.,float), init_trace, init_lp, broadcast_jaxtree([], (n_chains,)))
 
         last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
         last_state.iteration.block_until_ready()
         
-        result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains).unstack()
+        result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains)
         
         proposal = inference_steps[i].algo.proposal
-        def gibbs_lp(X: Trace):
-            return proposal.assess(current=X, proposed=map_trace)
-        map_log_posterior_est += jax.scipy.special.logsumexp(jax.vmap(gibbs_lp)(result_positions.data)) - jnp.log(result_positions.n_samples())
+        def gibbs_lp(X: Trace, trace: Trace):
+            return jax.vmap(proposal.assess, (0, None))(X, trace)
+
+        glp = jax.vmap(gibbs_lp, in_axes=(1,0))(result_positions.data, init_trace) # (n_chains, n_samples_per_chain)
+        log_posterior_est += jax.scipy.special.logsumexp(glp,axis=1) - jnp.log(n_samples_per_chain)
 
 
-    log_Z_est = map_lp - map_log_posterior_est
-    print("log_Z =", log_Z_est)
-    return log_Z_est
+    log_Z_est = init_lp - log_posterior_est
+    print("log_Z =", log_Z_est, "+/-", jnp.std(log_Z_est))
+    return jax.scipy.special.logsumexp(log_Z_est) - jnp.log(n_chains)
 
 def do_chibs():
     n_chains = 10
-    n_samples_per_chain = 10_000
+    n_samples_per_chain = 100_000
+    print(f"do chibs {n_chains=} {n_samples_per_chain=}")
 
     Ks = range(0, 7)
     result = []

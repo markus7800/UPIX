@@ -98,7 +98,8 @@ class ZsProposal(TraceProposal):
         # jax.debug.print("mus={mus} vars={vars} w={w}", mus=mus, vars=vars, w=w)
         def get_cat(y):
             p = jnp.exp(dist.Normal(mus, jnp.sqrt(vars)).log_prob(y)) * w
-            return dist.Categorical(p / p.sum())
+            p = jax.lax.select(p.sum() < 1e-32, jax.lax.full_like(w, 1.), p)
+            return dist.CategoricalProbs(p / p.sum())
         
         cat = jax.vmap(get_cat)(self.ys)
         # jax.debug.print("cat={p}", p=cat.probs)
