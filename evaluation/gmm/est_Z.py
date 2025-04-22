@@ -6,7 +6,10 @@ import os
 # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count={}".format(
 #     multiprocessing.cpu_count()
 # )
-os.environ["JAX_PLATFORMS"] = "cpu"
+
+if len(sys.argv) > 1:
+    if sys.argv[1] == "cpu":
+        os.environ["JAX_PLATFORMS"] = "cpu"
 
 from dccxjax import *
 import jax
@@ -66,7 +69,7 @@ ys = jnp.array([
     -0.9580412415863696, 14.180597007125487, 4.052110659466889,
     -18.978055134755582, 13.441194891615718, 7.983890038551439, 7.759003567480592
 ])
-ys = ys[:5]
+# ys = ys[:25]
 
 def get_lw_log_weight(K):
     @jax.jit
@@ -113,12 +116,12 @@ def IS(log_weight, K: int, N: int, batch_method: int = 1):
 
             batch_keys = jax.random.split(jax.random.PRNGKey(0), N_batches)
             log_W, log_W_squared = jax.lax.map(batch, batch_keys)
-            log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N)
+            log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N_batches) - jnp.log(batch_size)
             ESS = jnp.exp(jax.scipy.special.logsumexp(log_W)*2 - jax.scipy.special.logsumexp(log_W_squared))
         else:
             keys = jax.random.split(jax.random.PRNGKey(0), N)
             log_W = jax.lax.map(log_weight, keys, batch_size=batch_size)
-            log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N)
+            log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N_batches) - jnp.log(batch_size)
             ESS = jnp.exp(jax.scipy.special.logsumexp(log_W)*2 - jax.scipy.special.logsumexp(log_W*2))
     else:
         keys = jax.random.split(jax.random.PRNGKey(0), N)
@@ -129,9 +132,9 @@ def IS(log_weight, K: int, N: int, batch_method: int = 1):
     return log_Z, ESS
 
 def do_lw():
-    N = 1_000_000_000
+    N = 10_000_000_000
     batch_method=1
-    print(f"do_lw {N=} {batch_method=}")
+    print(f"do_lw {N=:,} {batch_method=} {ys.shape=}")
     Ks = range(0, 7)
     result = [IS(get_lw_log_weight(K), K, N, batch_method=batch_method) for K in tqdm(Ks)]
     log_Z_path = jnp.array([r[0] for r in result])
@@ -144,27 +147,25 @@ def do_lw():
     log_Z = log_Z_path + log_Z_path_prior
     path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
 
+    print(f"do_lw {N=:,} {batch_method=} {ys.shape=}")
     for i, k in enumerate(Ks):
         print(k, path_weight[i])
 
 # do_lw()
+# exit()
 
-# log_Z=Array(-438.8526, dtype=float32)
-# log_Z=Array(-430.81674, dtype=float32)
-# log_Z=Array(-431.36102, dtype=float32)
-
-# obs = 5
-# log_Z_path=Array([-24.367477, -23.827473, -21.73211 , -21.072435, -20.742483,
-#        -20.544456, -20.412643], dtype=float32)
-# ESS=Array([ 9492778., 11764261.,  6564328., 13200248., 22122286., 32606310.,
-#        44187160.], dtype=float32)
-# 0 0.0021624845
-# 1 0.0111325625
-# 2 0.13573469
-# 3 0.26253274
-# 4 0.27386805
-# 5 0.20030616
-# 6 0.1142641
+# do_lw N=10,000,000,000 batch_method=1 ys.shape=(25,)
+# log_Z_path=Array([-110.42564, -107.22047, -105.35848, -103.65361, -102.03826,
+#        -101.3502 , -101.00215], dtype=float32)
+# ESS=Array([8409222.   ,  303162.6  ,   49098.805,   44003.824,   56211.375,
+#         116899.21 ,  191827.61 ], dtype=float32)
+# 0 2.0095133e-05
+# 1 0.0014866154
+# 2 0.014352876
+# 3 0.078950614
+# 4 0.29782015
+# 5 0.35557216
+# 6 0.25179815
 
 from gibbs_proposals import *
 
@@ -348,7 +349,7 @@ def get_is_log_weight_2(K, mu_proposer, var_proposer):
 
 def do_is():
     N = 100_000_000
-    print(f"do_is {N=}")
+    print(f"do_is {N=:,} {ys.shape=}")
     Ks = range(0, 7)
     result = []
     for K in Ks:
@@ -368,13 +369,14 @@ def do_is():
     log_Z = log_Z_path + log_Z_path_prior
     path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
 
+    print(f"do_is {N=:,} {ys.shape=}")
     for i, k in enumerate(Ks):
         print(k, path_weight[i])
 
-do_is()
-exit()
+# do_is()
+# exit()
 
-# N = 1_000_000_000
+# N = 1_000_000_000 ys.shape=(100,)
 # log_Z_path=Array([-438.7951 , -412.87714, -378.07547, -372.03406, -371.0071 ,
 #        -371.09848, -371.74484], dtype=float32)
 # ESS=Array([9.8786797e+08, 1.5797326e+06, 1.3217342e+05, 1.7380820e+04,
@@ -437,19 +439,19 @@ def chibs(K: int, n_chains:int = 100, n_samples_per_chain: int = 10_000):
     # n_samples_per_chain = 10
     seed = jax.random.PRNGKey(0)
 
-    seed, key = jax.random.split(seed)
-    i = jax.random.randint(key, (n_chains,), 0, n_samples_per_chain)
-    j = jnp.arange(n_chains)
-    init_trace = result_positions.get(i,j)
-    init_lp = result_lps[i,j]
+    # seed, key = jax.random.split(seed)
+    # i = jax.random.randint(key, (n_chains,), 0, n_samples_per_chain)
+    # j = jnp.arange(n_chains)
+    # init_trace = result_positions.get(i,j)
+    # init_lp = result_lps[i,j]
 
     # i = jnp.argmax(result_lps, axis=0)
     # j = jnp.arange(n_chains)
     # init_trace = result_positions.get(i,j)
     # init_lp = result_lps[i,j]
 
-    # init_trace = broadcast_jaxtree(map_trace, (n_chains,))
-    # init_lp = broadcast_jaxtree(map_lp, (n_chains,))
+    init_trace = broadcast_jaxtree(map_trace, (n_chains,))
+    init_lp = broadcast_jaxtree(map_lp, (n_chains,))
 
     names = ["w", "mus", "vars", "zs"]
     log_posterior_est = jnp.zeros(n_chains)
@@ -491,9 +493,9 @@ def chibs(K: int, n_chains:int = 100, n_samples_per_chain: int = 10_000):
     return jax.scipy.special.logsumexp(log_Z_est) - jnp.log(n_chains)
 
 def do_chibs():
-    n_chains = 10
-    n_samples_per_chain = 100_000
-    print(f"do chibs {n_chains=} {n_samples_per_chain=}")
+    n_chains = 1
+    n_samples_per_chain = 10_000_000
+    print(f"do chibs {n_chains=:,} {n_samples_per_chain=:,} {ys.shape=}")
 
     Ks = range(0, 7)
     result = []
@@ -511,7 +513,43 @@ def do_chibs():
     log_Z = log_Z_path + log_Z_path_prior
     path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
 
+    print(f"do chibs {n_chains=:,} {n_samples_per_chain=:,} {ys.shape=}")
     for i, k in enumerate(Ks):
         print(k, path_weight[i])
 
 do_chibs()
+
+# do chibs n_chains=10 n_samples_per_chain=1,000,000 ys.shape=(100,)
+# log_Z_path=Array([-438.79498, -413.79248, -379.86838, -374.56332, -372.84283,
+#        -372.89096, -372.95206], dtype=float32)
+# 0 3.242578e-30
+# 1 7.021925e-19
+# 2 0.0005696494
+# 3 0.11469994
+# 4 0.4806406
+# 5 0.27483195
+# 6 0.1292719
+
+# do chibs n_chains=10 n_samples_per_chain=1,000,000 ys.shape=(25,)
+# log_Z_path=Array([-110.42581 , -107.036156, -105.42306 , -103.79447 , -101.96445 ,
+#        -101.23255 , -101.096924], dtype=float32)
+# 0 1.9440942e-05
+# 1 0.0017296032
+# 2 0.013019579
+# 3 0.06635639
+# 4 0.3102515
+# 5 0.3870108
+# 6 0.22161344
+
+# do_lw N=10,000,000,000 batch_method=1 ys.shape=(100,)
+# log_Z_path=Array([-438.79694, -412.90247, -378.02847, -372.42322, -370.9722 ,
+#        -370.99368, -371.79416], dtype=float32)
+# ESS=Array([1.1252690e+06, 2.0516587e+03, 1.1735829e+01, 3.7160053e+01,
+#        3.2372032e+01, 2.7773899e+01, 2.7465406e+01], dtype=float32)
+# 0 5.1019314e-31
+# 1 2.6957338e-19
+# 2 0.0005654061
+# 3 0.15370637
+# 4 0.49194857
+# 5 0.2888929
+# 6 0.06487318
