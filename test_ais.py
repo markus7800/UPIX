@@ -400,9 +400,22 @@ xs = {"x": sample_prior(jax.random.PRNGKey(0), N)}
 lp = jax.vmap(slp.log_prior)(xs)
 lp.block_until_ready()
 t0 = time()
-log_weights = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+log_weights, _ = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
 log_weights.block_until_ready()
 t1 = time()
 print(log_weights)
 print(get_Z_ESS(log_weights))
 print(f"Finished AIS in {t1-t0:.3f}s")
+
+
+config = SMCConfig(kernel, tempering_schedule)
+xs = {"x": sample_prior(jax.random.PRNGKey(0), N)}
+lp = jax.vmap(slp.log_prior)(xs)
+lp.block_until_ready()
+t0 = time()
+log_weights = run_smc(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+log_weights.block_until_ready()
+t1 = time()
+print(log_weights)
+print(get_Z_ESS(log_weights))
+print(f"Finished SMC in {t1-t0:.3f}s")
