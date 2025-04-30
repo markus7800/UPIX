@@ -17,7 +17,7 @@ from dccxjax.core.branching_tracer import retrace_branching
 from dccxjax.infer.estimate_Z import estimate_Z_for_SLP_from_sparse_mixture
 
 import logging
-setup_logging(logging.DEBUG)
+setup_logging(logging.WARN)
 
 compilation_time_tracker = CompilationTimeTracker()
 jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
@@ -174,21 +174,21 @@ def try_estimate_Z_with_AIS():
             InferenceStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
         )
 
-        mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, gibbs_regime, collect_inference_info=True, return_map=return_map)
-        progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
-        progressbar_mng.start_progress()
-        keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+        # mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, gibbs_regime, collect_inference_info=True, return_map=return_map)
+        # progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
+        # progressbar_mng.start_progress()
+        # keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
 
-        init_info: InferenceInfos = [step.algo.init_info() for step in gibbs_regime] if collect_infos else []
-        init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
+        # init_info: InferenceInfos = [step.algo.init_info() for step in gibbs_regime] if collect_infos else []
+        # init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
 
-        last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
-        last_state.iteration.block_until_ready()
-        print("\t", last_state.infos)
+        # last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
+        # last_state.iteration.block_until_ready()
+        # print("\t", last_state.infos)
 
-        assert all_states is not None
-        result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains)
-        result_positions = result_positions.unstack()
+        # assert all_states is not None
+        # result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains)
+        # result_positions = result_positions.unstack()
 
         # harmonic mean of likelihood estimator
         # def log_likelihood(X: Trace):
@@ -205,7 +205,7 @@ def try_estimate_Z_with_AIS():
         # axs[1].hist(jnp.sqrt(result_positions.data["vars"][:,0]), bins=100, density=True, label="var")
         # plt.show()
 
-        N = 10_000
+        N_particles = 1_000
         tempering_schedule = sigmoid(jnp.linspace(-25,25,1_000))
         tempering_schedule = tempering_schedule.at[0].set(0.)
         tempering_schedule = tempering_schedule.at[-1].set(1.)
@@ -215,23 +215,26 @@ def try_estimate_Z_with_AIS():
                 m()
                 return ctx.X
             
-        X, _ = jax.vmap(jax.jit(retrace_branching(generate_from_prior_conditioned, slp.branching_decisions)))(jax.random.split(jax.random.PRNGKey(0), N))
+        X, _ = jax.vmap(jax.jit(retrace_branching(generate_from_prior_conditioned, slp.branching_decisions)))(jax.random.split(jax.random.PRNGKey(0), N_particles))
         lp = jax.vmap(slp.log_prior)(X)
 
         kernel = get_inference_regime_mcmc_step_for_slp(slp, regime)
         progressbar_mng, kernel = add_progress_bar(tempering_schedule.size, kernel)
         progressbar_mng.start_progress()
 
-        config = AISConfig(None, 0, kernel, tempering_schedule)
-
-        log_weights, position = run_ais(slp, config, jax.random.PRNGKey(0), X, lp, N)
+        # config = AISConfig(None, 0, kernel, tempering_schedule)
+        # log_weights, position = run_ais(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
+        config = SMCConfig(kernel, tempering_schedule)
+        log_weights, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
         print(f"{log_weights=}")
         print(get_Z_ESS(log_weights))
+        plt.plot(jnp.exp(log_ess))
+        plt.show()
 
         # fig = plt.figure()
         # plt.hist(log_weights, bins=100, density=True)
         
-        result_positions = StackedTrace(position, N).unstack()
+        # result_positions = StackedTrace(position, N).unstack()
 
         # fig, axs = plt.subplots(1,2, figsize=(12,6))
         # axs[0].hist(result_positions.data["mus"][:,0], bins=100, density=True, label="mu")
