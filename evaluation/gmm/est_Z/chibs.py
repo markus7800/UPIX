@@ -14,7 +14,7 @@ from dccxjax.infer.mcmc import MCMCState, InferenceInfos, get_inference_regime_m
 from dccxjax.infer.dcc import DCC_Result
 from dccxjax.core.branching_tracer import retrace_branching
 
-def chibs(K: int, n_chains:int = 100, n_samples_per_chain: int = 10_000):
+def chibs(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     inference_steps = [
         InferenceStep(SingleVariable("w"), MH(WProposal(delta, K))),
         InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
@@ -131,7 +131,7 @@ def do_chibs(n_chains = 10, n_samples_per_chain = 10_000):
     print(f"{log_Z_path=}")
     # print(f"{jnp.exp(log_Z_path - jax.scipy.special.logsumexp(log_Z_path))}")
 
-    log_Z_path_prior = dist.Poisson(lam).log_prob(jnp.array(list(Ks)))
+    log_Z_path_prior = dist.Poisson(lam-1).log_prob(jnp.array(list(Ks)))
     log_Z = log_Z_path + log_Z_path_prior
     path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
 

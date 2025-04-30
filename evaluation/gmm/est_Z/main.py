@@ -28,6 +28,8 @@ from data import *
 from lw import *
 from importance import *
 from chibs import *
+from locally_restriced_is import *
+from mixture import *
 
 import logging
 setup_logging(logging.WARN)
@@ -36,7 +38,7 @@ compilation_time_tracker = CompilationTimeTracker()
 jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
 
 
-do_lw(N=100_000)
+# do_lw(N=100_000)
 # do_lw N=10,000,000,000 batch_method=1 ys.shape=(100,)
 # log_Z_path=Array([-438.79694, -412.90247, -378.02847, -372.42322, -370.9722 ,
 #        -370.99368, -371.79416], dtype=float32)
@@ -63,7 +65,7 @@ do_lw(N=100_000)
 # 5 0.35557216
 # 6 0.25179815
 
-do_is(N=100_000)
+# do_is(N=100_000)
 # do_is N = 1_000_000_000 ys.shape=(100,)
 # log_Z_path=Array([-438.7951 , -412.87714, -378.07547, -372.03406, -371.0071 ,
 #        -371.09848, -371.74484], dtype=float32)
@@ -77,7 +79,7 @@ do_is(N=100_000)
 # 5 0.25239247
 # 6 0.06612039
 
-do_chibs(n_chains=10, n_samples_per_chain=10_0000)
+# do_chibs(n_chains=10, n_samples_per_chain=10_0000)
 # do chibs n_chains=10 n_samples_per_chain=1,000,000 ys.shape=(100,)
 # log_Z_path=Array([-438.79498, -413.79248, -379.86838, -374.56332, -372.84283,
 #        -372.89096, -372.95206], dtype=float32)
@@ -99,3 +101,8 @@ do_chibs(n_chains=10, n_samples_per_chain=10_0000)
 # 4 0.3102515
 # 5 0.3870108
 # 6 0.22161344
+
+# lis(3, n_chains=100, n_samples_per_chain=100_000)
+
+
+do_mixture_is(N = 1_000_000, n_chains = 10, n_samples_per_chain = 100_000, n_components = 10_000, sigma = 0.5)

@@ -2,16 +2,21 @@ import jax
 import dccxjax.distributions as dist
 from typing import Any, Optional, Dict, Callable
 from abc import ABC, abstractmethod
-from ..types import Trace, PRNGKey
+from ..types import Trace, PRNGKey, FloatArrayLike
 
 
 __all__ = [
     "sample",
+    "logfactor",
+    "factor"
 ]
 
 class SampleContext(ABC):
     @abstractmethod
     def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+        raise NotImplementedError
+    @abstractmethod
+    def logfactor(self, lf: FloatArrayLike) -> None:
         raise NotImplementedError
     def __enter__(self):
         global SAMPLE_CONTEXT
@@ -28,6 +33,16 @@ def sample(address: str, distribution: dist.Distribution, observed: Optional[jax
         return SAMPLE_CONTEXT.sample(address, distribution, observed)
     else:
         raise Exception("Probabilistic program run without sample context")
+    
+def logfactor(f: FloatArrayLike) -> None:
+    global SAMPLE_CONTEXT
+    if SAMPLE_CONTEXT is not None:
+        return SAMPLE_CONTEXT.logfactor(f)
+    else:
+        raise Exception("Probabilistic program run without sample context")
+
+def factor(f: FloatArrayLike) -> None:
+    logfactor(jax.lax.log(f))
     
 
 class GenerateCtx(SampleContext):
@@ -49,8 +64,10 @@ class GenerateCtx(SampleContext):
             value = self.X[address]
         self.log_prior += distribution.log_prob(value).sum()
         return value
+    def logfactor(self, lf: FloatArrayLike) -> None:
+        self.log_likelihood += lf
+        
     
-
 class LogprobCtx(SampleContext):
     def __init__(self, X: Trace) -> None:
         super().__init__()
@@ -65,6 +82,8 @@ class LogprobCtx(SampleContext):
         value = self.X[address]
         self.log_prior += distribution.log_prob(value).sum()
         return value
+    def logfactor(self, lf: FloatArrayLike) -> None:
+        self.log_likelihood += lf
     
 
 class ReplayCtx(SampleContext):
@@ -76,19 +95,22 @@ class ReplayCtx(SampleContext):
             return observed
         value = self.X[address]
         return value
+    def logfactor(self, lf: FloatArrayLike) -> None:
+        pass
     
 class CollectDistributionTypesCtx(SampleContext):
     def __init__(self, X: Trace) -> None:
         super().__init__()
         self.X = X
         self.is_discrete: Dict[str, bool] = dict()
-        
     def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
         if observed is not None:
             return observed
         value = self.X[address]
         self.is_discrete[address] = distribution.is_discrete
         return value
+    def logfactor(self, lf: FloatArrayLike) -> None:
+        pass
 
 
 class UnconstrainedLogprobCtx(SampleContext):
@@ -120,6 +142,9 @@ class UnconstrainedLogprobCtx(SampleContext):
 
         return constrained_value
     
+    def logfactor(self, lf: FloatArrayLike) -> None:
+        self.log_prob += lf
+    
 
 class TransformToUnconstrainedCtx(SampleContext):
     def __init__(self, X_constrained: Trace) -> None:
@@ -142,6 +167,9 @@ class TransformToUnconstrainedCtx(SampleContext):
 
         return constrained_value
     
+    def logfactor(self, lf: FloatArrayLike) -> None:
+        pass
+    
 class TransformToConstrainedCtx(SampleContext):
     def __init__(self, X_unconstrained: Trace) -> None:
         super().__init__()
@@ -163,3 +191,6 @@ class TransformToConstrainedCtx(SampleContext):
             self.X_constrained[address] = constrained_value
 
         return constrained_value
+    
+    def logfactor(self, lf: FloatArrayLike) -> None:
+        pass

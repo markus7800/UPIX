@@ -76,7 +76,7 @@ def do_lw(N = 1_000_000):
     print(f"{ESS=}")
     # print(f"{jnp.exp(log_Z_path - jax.scipy.special.logsumexp(log_Z_path))}")
 
-    log_Z_path_prior = dist.Poisson(lam).log_prob(jnp.array(list(Ks)))
+    log_Z_path_prior = dist.Poisson(lam-1).log_prob(jnp.array(list(Ks)))
     log_Z = log_Z_path + log_Z_path_prior
     path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
 

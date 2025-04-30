@@ -34,7 +34,7 @@ beta = 10.0
 def gmm(ys: jax.Array):
 
     N = ys.shape[0]
-    K = sample("K", dist.Poisson(lam)) + 1
+    K = sample("K", dist.Poisson(lam-1)) + 1
     w = sample("w", dist.Dirichlet(jnp.full((K,), delta)))
     mus = sample("mus", dist.Normal(jnp.full((K,), xi), jnp.full((K,), 1/jax.lax.sqrt(kappa))))
     vars = sample("vars", dist.InverseGamma(jnp.full((K,), alpha), jnp.full((K,), beta)))

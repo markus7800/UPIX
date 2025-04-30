@@ -17,7 +17,9 @@ __all__ = [
     "InferenceStep",
     "Gibbs",
     "mcmc",
-    "vectorise_kernel_over_chains"
+    "vectorise_kernel_over_chains",
+    "init_inference_infos",
+    "init_inference_infos_for_chains"
 ]
 
 InferenceInfo = NamedTuple
@@ -207,6 +209,10 @@ def add_progress_bar(num_samples: int, kernel: MCMCKernel[MCMC_COLLECT_TYPE]) ->
 
 
 
+def init_inference_infos(regime: InferenceRegime) -> InferenceInfos:
+    return [step.algo.init_info() for step in regime]
+def init_inference_infos_for_chains(regime: InferenceRegime, n_chains: int) -> InferenceInfos:
+    return broadcast_jaxtree([step.algo.init_info() for step in regime], (n_chains,))
 
 def get_initial_inference_state(slp: SLP, regime: InferenceRegime, n_chains: int, collect_inference_info: bool):
     inference_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_inference_info else []
