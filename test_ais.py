@@ -393,32 +393,63 @@ tempering_schedule.block_until_ready()
 # print(f"Finished AIS in {t1-t0:.3f}s")
 
 
+# tempering_schedule = sigmoid(jnp.linspace(-25,25,100))
+# tempering_schedule = tempering_schedule.at[0].set(0.)
+# tempering_schedule = tempering_schedule.at[-1].set(1.)
 
-N = 1_000_000
+# fig = plt.figure()
+# xs = jnp.linspace(-5.,5.,1000)
+
+# for beta in tempering_schedule:
+#     log_f = lambda x: beta*log_joint(x) + (1-beta)*log_prior(x)
+#     ps = jnp.exp(log_f(xs))
+#     plt.plot(xs, ps / ps.max(), c="gray", alpha=0.5)
+
+# ps = jnp.exp(log_joint(xs))
+# plt.plot(xs, ps / ps.max(), c="tab:green")
+# ps = jnp.exp(log_prior(xs))
+# plt.plot(xs, ps / ps.max(), c="tab:blue")
+# plt.show()
+
+
+# N = 1_000_000
 
 # config = AISConfig(None, 0, kernel, tempering_schedule)
 # xs = {"x": sample_prior(jax.random.PRNGKey(0), N)}
 # lp = jax.vmap(slp.log_prior)(xs)
 # lp.block_until_ready()
 # t0 = time()
-# log_weights, _ = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+# log_weights, position = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
 # log_weights.block_until_ready()
 # t1 = time()
 # print(log_weights)
 # print(get_Z_ESS(log_weights))
 # print(f"Finished AIS in {t1-t0:.3f}s")
 
+# plt.hist(position["x"], weights=jnp.exp(log_weights), density=True, bins=100)
+# # plt.hist(position["x"], density=True, bins=100)
+# plt.plot(x_range, jnp.exp(log_posterior(x_range)), linestyle="-")
+# plt.show()
+
+
+N = 1_000_000
+tempering_schedule = sigmoid(jnp.linspace(-25,25,1000))
+tempering_schedule = tempering_schedule.at[-1].set(1.)
 
 config = SMCConfig(kernel, tempering_schedule)
 xs = {"x": sample_prior(jax.random.PRNGKey(0), N)}
 lp = jax.vmap(slp.log_prior)(xs)
 lp.block_until_ready()
 t0 = time()
-log_weights, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+log_weights, position, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), xs, lp, N, resampling="adaptive")
 log_weights.block_until_ready()
 t1 = time()
-print(log_weights)
+# print(log_weights)
 print(get_Z_ESS(log_weights))
 print(f"Finished SMC in {t1-t0:.3f}s")
 plt.plot(jnp.exp(log_ess))
+plt.show()
+# plt.hist(position["x"], weights=jnp.exp(log_weights), density=True, bins=100)
+plt.hist(position["x"], density=True, bins=100)
+plt.plot(x_range, jnp.exp(log_posterior(x_range)), linestyle="-")
 plt.show()

@@ -73,15 +73,15 @@ class SMCCarry(NamedTuple):
 
 
 # from blackjax/smc/resampling.py
-def _sorted_uniforms(rng_key: PRNGKey, n) -> FloatArray:
+def sorted_uniforms(rng_key: PRNGKey, n) -> FloatArray:
     # Credit goes to Nicolas Chopin
-    us = jax.random.uniform(rng_key, (n + 1,))
-    z = jnp.cumsum(-jnp.log(us))
+    es = jax.random.exponential(rng_key, (n + 1,))
+    z = jnp.cumsum(es)
     return z[:-1] / z[-1]
 
 def multinomial(rng_key: PRNGKey, weights: FloatArray, num_samples: int) -> IntArray:
     n = weights.shape[0]
-    linspace = _sorted_uniforms(rng_key, num_samples)
+    linspace = sorted_uniforms(rng_key, num_samples)
     cumsum = jnp.cumsum(weights)
     idx = jnp.searchsorted(cumsum, linspace)
     return jnp.clip(idx, 0, n - 1)
@@ -97,10 +97,11 @@ def systematic_or_stratified(rng_key: PRNGKey, weights: FloatArray, num_samples:
     idx = jnp.searchsorted(cumsum, linspace)
     return jnp.clip(idx, 0, n - 1)
 
-def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array, N: int, adaptive_resampling: bool = True):
+def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array, N: int, resampling: str = "adaptive"):
     # during inference we have to hold N traces in memory, so there is no benefit of run_ais above (if it would work)
+    assert resampling in ("adaptive", "always", "never")
 
-    assert config.tempering_schedule[0] == 0.  # log prior
+    # assert config.tempering_schedule[0] == 0.  # log prior
     assert config.tempering_schedule[-1] == 1. # log joint
     
     prior_key, tempering_key = jax.random.split(seed)
@@ -110,7 +111,7 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
         jnp.zeros((N,), float),
     )
 
-    def smc_tempering_step(carry: SMCCarry, tempering: Tuple[PRNGKey,FloatArray]) -> Tuple[SMCCarry, FloatArray]:
+    def smc_tempering_step(carry: SMCCarry, tempering: Tuple[PRNGKey,FloatArray]):# -> Tuple[SMCCarry, FloatArray]:
         # following llorente 2023
 
         inference_state_from_prev_kernel = carry.mcmc_state
@@ -133,40 +134,37 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
         next_inference_state, _ = config.tempering_kernel(current_inference_state, tempering_key) # leaves p_k invariant
 
         log_w_hat = tempered_log_prob_current_position - inference_state_from_prev_kernel.log_prob # p_k(phi_{k-1}) / p_{k-1}(phi_{k-1})
+        # log_Z = jax.scipy.special.logsumexp(log_w_hat + (current_log_particle_weight - jax.scipy.special.logsumexp(current_log_particle_weight)))
+
         log_particle_weight = current_log_particle_weight + log_w_hat
         log_particle_weight_sum = jax.scipy.special.logsumexp(log_particle_weight)
         log_ess = log_particle_weight_sum * 2 - jax.scipy.special.logsumexp(log_particle_weight*2)
-    
 
         # high (quadratic?) memory consumption
         # resample_ixs = jax.random.categorical(resample_key, log_particle_weight, shape=(N,)) # uses gumbel reparametrisation trick
 
-        if adaptive_resampling:
-            resample = log_ess < jax.lax.log(N / 2.0)
+        if resampling != "never":
 
             def do_resample(next_inference_state: MCMCState, log_particle_weight: FloatArray):
-                resample_ixs = jax.lax.select(resample, multinomial(resample_key, jax.lax.exp(log_particle_weight - log_particle_weight_sum), N), jnp.arange(0,N,1,int))
+                resample_ixs = multinomial(resample_key, jax.lax.exp(log_particle_weight - log_particle_weight_sum), N)
+                # resample_ixs = systematic_or_stratified(resample_key, jax.lax.exp(log_particle_weight - log_particle_weight_sum), N, False)
+            
                 next_inference_state = MCMCState(next_inference_state.iteration, next_inference_state.temperature,
                     jax.tree_map(lambda v: v[resample_ixs,...], next_inference_state.position),
                     next_inference_state.log_prob[resample_ixs],
                     next_inference_state.infos
                 )
-                log_particle_weight = jax.lax.select(resample, jax.lax.broadcast(log_particle_weight_sum - jax.lax.log(float(N)), (N,)), log_particle_weight)
+                log_particle_weight = jax.lax.broadcast(log_particle_weight_sum - jax.lax.log(float(N)), (N,)) # proper weighting
+                # log_particle_weight = jnp.zeros((N,),float) # improper weighting
                 return next_inference_state, log_particle_weight
             
             def no_resample(next_inference_state: MCMCState, log_particle_weight: FloatArray):
                 return next_inference_state, log_particle_weight
             
-            next_inference_state, log_particle_weight = jax.lax.cond(resample, do_resample, no_resample, next_inference_state, log_particle_weight)
-
-        # resample_ixs = jax.lax.select(resample, multinomial(resample_key, jax.lax.exp(log_particle_weight - log_particle_weight_sum), N), jnp.arange(0,N,1,int))
-
-        # next_inference_state = MCMCState(next_inference_state.iteration, next_inference_state.temperature,
-        #     jax.tree_map(lambda v: v[resample_ixs,...], next_inference_state.position),
-        #     next_inference_state.log_prob[resample_ixs],
-        #     next_inference_state.infos
-        # )
-        # log_particle_weight = jax.lax.select(resample, jax.lax.broadcast(log_particle_weight_sum - jax.lax.log(float(N)), (N,)), log_particle_weight)
+            if resampling == "always":
+                next_inference_state, log_particle_weight = do_resample(next_inference_state, log_particle_weight)
+            else:
+                next_inference_state, log_particle_weight = jax.lax.cond(log_ess < jax.lax.log(N / 2.0), do_resample, no_resample, next_inference_state, log_particle_weight)
 
         return SMCCarry(next_inference_state, log_particle_weight), log_ess
 
@@ -174,9 +172,10 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
     tempering_keys = jax.random.split(tempering_key, config.tempering_schedule.size)
 
     last_tempering_state, log_ess = jax.lax.scan(smc_tempering_step, init_state, (tempering_keys, config.tempering_schedule))
+    # log_Z = log_Zs.sum()
+    # print(f"{log_Z=} {jax.lax.exp(log_Z)=}")
 
-
-    return last_tempering_state.log_particle_weight, log_ess
+    return last_tempering_state.log_particle_weight, last_tempering_state.mcmc_state.position, log_ess
 
 
     

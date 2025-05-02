@@ -78,6 +78,7 @@ def do_lw(N = 1_000_000):
 
     log_Z_path_prior = dist.Poisson(lam-1).log_prob(jnp.array(list(Ks)))
     log_Z = log_Z_path + log_Z_path_prior
+    print(f"{log_Z=}")
     path_weight = jnp.exp(log_Z - jax.scipy.special.logsumexp(log_Z))
 
     print(f"do_lw {N=:,} {batch_method=} {ys.shape=}")

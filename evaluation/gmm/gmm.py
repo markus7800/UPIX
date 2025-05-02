@@ -31,16 +31,23 @@ kappa = 0.01
 alpha = 2.0
 beta = 10.0
 
+# def gmm(ys: jax.Array):
+#     N = ys.shape[0]
+#     K = sample("K", dist.Poisson(lam-1)) + 1
+#     w = sample("w", dist.Dirichlet(jnp.full((K,), delta)))
+#     mus = sample("mus", dist.Normal(jnp.full((K,), xi), jnp.full((K,), 1/jax.lax.sqrt(kappa))))
+#     vars = sample("vars", dist.InverseGamma(jnp.full((K,), alpha), jnp.full((K,), beta)))
+#     zs = sample("zs", dist.Categorical(jax.lax.broadcast(w, (N,))))
+#     sample("ys", dist.Normal(mus[zs], jax.lax.sqrt(vars[zs])), observed=ys)
+
 def gmm(ys: jax.Array):
-
-    N = ys.shape[0]
     K = sample("K", dist.Poisson(lam-1)) + 1
-    w = sample("w", dist.Dirichlet(jnp.full((K,), delta)))
-    mus = sample("mus", dist.Normal(jnp.full((K,), xi), jnp.full((K,), 1/jax.lax.sqrt(kappa))))
-    vars = sample("vars", dist.InverseGamma(jnp.full((K,), alpha), jnp.full((K,), beta)))
-    zs = sample("zs", dist.Categorical(jax.lax.broadcast(w, (N,))))
-    sample("ys", dist.Normal(mus[zs], jax.lax.sqrt(vars[zs])), observed=ys)
-
+    w = sample("w", dist.Dirichlet(jnp.full((K+1,), delta)))
+    mus = sample("mus", dist.Normal(jnp.full((K+1,), xi), jnp.full((K+1,), 1/jax.lax.sqrt(kappa))))
+    vars = sample("vars", dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)))
+    log_likelihoods = jax.scipy.special.logsumexp((jnp.log(w).reshape(1,-1) + dist.Normal(mus.reshape(1,-1), jnp.sqrt(vars).reshape(1,-1)).log_prob(ys.reshape(-1,1))), axis=1)
+    # jax.debug.print("{x}", x=log_likelihoods.sum())
+    logfactor(log_likelihoods.sum())
 
 ys = jnp.array([
     -7.87951290075215, -23.251364738213493, -5.34679518882793, -3.163770449770572,
@@ -112,7 +119,7 @@ for i in tqdm(range(100)):
         # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
 
 active_slps = sorted(active_slps, key=m.slp_sort_key)
-active_slps = active_slps[:3]
+active_slps = active_slps[:5]
 
 # from dccxjax.infer.estimate_Z import _log_IS_weight_gaussian_mixture
 # slp = active_slps[0]
@@ -171,16 +178,16 @@ def try_estimate_Z_with_AIS():
             InferenceStep(SingleVariable("w"), RW(w_proposer)),
             InferenceStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
             InferenceStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
-            InferenceStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
+            # InferenceStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
         )
 
-        # mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, gibbs_regime, collect_inference_info=True, return_map=return_map)
+        # mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=True, return_map=return_map)
         # progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
         # progressbar_mng.start_progress()
         # keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
 
-        # init_info: InferenceInfos = [step.algo.init_info() for step in gibbs_regime] if collect_infos else []
-        # init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
+        # init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []
+        # init = MCMCState(jnp.array(0,int), jnp.array(0.5,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
 
         # last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
         # last_state.iteration.block_until_ready()
@@ -190,16 +197,6 @@ def try_estimate_Z_with_AIS():
         # result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains)
         # result_positions = result_positions.unstack()
 
-        # harmonic mean of likelihood estimator
-        # def log_likelihood(X: Trace):
-        #     with LogprobCtx(X) as ctx:
-        #         m()
-        #         return ctx.log_likelihood
-        # log_likeli, _ =  jax.vmap(jax.jit(retrace_branching(log_likelihood, slp.branching_decisions)))(result_positions.data)
-        # log_Z = jnp.log(result_positions.n_samples()) - jax.scipy.special.logsumexp(-log_likeli)
-        # print(f"{log_Z=}")
-
-
         # fig, axs = plt.subplots(1,2, figsize=(12,6))
         # axs[0].hist(result_positions.data["mus"][:,0], bins=100, density=True, label="mu")
         # axs[1].hist(jnp.sqrt(result_positions.data["vars"][:,0]), bins=100, density=True, label="var")
@@ -207,7 +204,6 @@ def try_estimate_Z_with_AIS():
 
         N_particles = 1_000
         tempering_schedule = sigmoid(jnp.linspace(-25,25,1_000))
-        tempering_schedule = tempering_schedule.at[0].set(0.)
         tempering_schedule = tempering_schedule.at[-1].set(1.)
 
         def generate_from_prior_conditioned(rng_key: PRNGKey):
@@ -225,8 +221,8 @@ def try_estimate_Z_with_AIS():
         # config = AISConfig(None, 0, kernel, tempering_schedule)
         # log_weights, position = run_ais(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
         config = SMCConfig(kernel, tempering_schedule)
-        log_weights, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
-        print(f"{log_weights=}")
+        log_weights, position, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
+        # print(f"{log_weights=}")
         print(get_Z_ESS(log_weights))
         plt.plot(jnp.exp(log_ess))
         plt.show()
@@ -234,7 +230,7 @@ def try_estimate_Z_with_AIS():
         # fig = plt.figure()
         # plt.hist(log_weights, bins=100, density=True)
         
-        # result_positions = StackedTrace(position, N).unstack()
+        result_positions = StackedTrace(position, N_particles).unstack()
 
         # fig, axs = plt.subplots(1,2, figsize=(12,6))
         # axs[0].hist(result_positions.data["mus"][:,0], bins=100, density=True, label="mu")

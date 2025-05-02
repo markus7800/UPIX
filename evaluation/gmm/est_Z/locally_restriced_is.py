@@ -57,7 +57,7 @@ def lis(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     #     mus = sample("mus", dist.Normal(jnp.full((K+1,), xi), jnp.full((K+1,), 1/jax.lax.sqrt(kappa))))
     #     vars = sample("vars", dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)))
 
-    #     log_likelihoods = jnp.log(jnp.sum(w.reshape(1,-1) * jnp.exp(dist.Normal(mus.reshape(1,-1), jnp.sqrt(vars).reshape(1,-1)).log_prob(ys.reshape(-1,1))), axis=1))
+    #     log_likelihoods = jax.scipy.special.logsumexp((jnp.log(w).reshape(1,-1) + dist.Normal(mus.reshape(1,-1), jnp.sqrt(vars).reshape(1,-1)).log_prob(ys.reshape(-1,1))), axis=1)
 
     #     logfactor(log_likelihoods.sum())
     
