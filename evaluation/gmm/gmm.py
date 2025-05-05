@@ -78,7 +78,7 @@ ys = jnp.array([
     -18.978055134755582, 13.441194891615718, 7.983890038551439, 7.759003567480592
 ])
 
-# ys = ys[:10]
+# ys = ys[:1]
 
 from dccxjax.core.samplecontext import GenerateCtx, LogprobCtx
 with GenerateCtx(jax.random.PRNGKey(0)) as ctx1:
@@ -119,7 +119,7 @@ for i in tqdm(range(100)):
         # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
 
 active_slps = sorted(active_slps, key=m.slp_sort_key)
-active_slps = active_slps[:5]
+active_slps = active_slps[:6]
 
 # from dccxjax.infer.estimate_Z import _log_IS_weight_gaussian_mixture
 # slp = active_slps[0]
@@ -202,8 +202,14 @@ def try_estimate_Z_with_AIS():
         # axs[1].hist(jnp.sqrt(result_positions.data["vars"][:,0]), bins=100, density=True, label="var")
         # plt.show()
 
-        N_particles = 1_000
-        tempering_schedule = sigmoid(jnp.linspace(-25,25,1_000))
+        # with N_particles = 10_000, 10_000 tempering
+        # 1 log_Z=Array(-412.77655, dtype=float32)
+        # 2 log_Z=Array(-378.00018, dtype=float32)
+        # 3 log_Z=Array(-372.02997, dtype=float32)
+        # 4 log_Z=Array(-370.9945, dtype=float32)
+        # 5 log_Z=Array(-371.0929, dtype=float32)
+        N_particles = 10_000
+        tempering_schedule = sigmoid(jnp.linspace(-25,25,10_000))
         tempering_schedule = tempering_schedule.at[-1].set(1.)
 
         def generate_from_prior_conditioned(rng_key: PRNGKey):
@@ -224,8 +230,8 @@ def try_estimate_Z_with_AIS():
         log_weights, position, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
         # print(f"{log_weights=}")
         print(get_Z_ESS(log_weights))
-        plt.plot(jnp.exp(log_ess))
-        plt.show()
+        # plt.plot(jnp.exp(log_ess))
+        # plt.show()
 
         # fig = plt.figure()
         # plt.hist(log_weights, bins=100, density=True)

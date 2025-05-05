@@ -38,7 +38,7 @@ compilation_time_tracker = CompilationTimeTracker()
 jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
 
 
-# do_lw(N=100_000_000)
+do_lw(N=100_000_000)
 # do_lw N=100,000,000 batch_method=1 ys.shape=(25,)
 # log_Z_path=Array([-110.42311 , -107.23499 , -105.42786 , -103.646774, -102.01914 ,
 #        -101.30518 , -101.01882 ], dtype=float32)
@@ -60,4 +60,4 @@ jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
 
 # lis(3, n_chains=100, n_samples_per_chain=100_000)
 
-do_mixture_is(N = 1_000_000, n_chains = 10, n_samples_per_chain = 100_000, n_components = 10_000, sigma = 0.5)
+# do_mixture_is(N = 1_000_000, n_chains = 10, n_samples_per_chain = 100_000, n_components = 10_000, sigma = 0.5)
