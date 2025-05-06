@@ -55,12 +55,25 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
 
 dcc_obj = DCCConfig(m, verbose=2,
               mcmc_n_chains=10,
-              mcmc_n_samples_per_chain=100_000,
+              mcmc_n_samples_per_chain=5_000,
               mcmc_collect_for_all_traces=True)
 
 result = dcc_obj.run(jax.random.PRNGKey(0))
 result.pprint()
-print(result.get_samples_for_address("m1"))
+
+plot_histogram(result, "u")
+plot_trace(result, "u")
+plot_histogram_by_slp(result, "u")
+plt.show()
+plot_histogram(result, "m1")
+plot_trace(result, "m1")
+plot_histogram_by_slp(result, "m1")
+plt.show()
+plot_histogram(result, "m2")
+plot_trace(result, "m2")
+plot_histogram_by_slp(result, "m2")
+plt.show()
+
 exit()
 
 @model

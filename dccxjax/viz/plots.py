@@ -1,4 +1,4 @@
-from dccxjax.infer.dcc import DCC_Result
+from dccxjax.infer.dcc2 import MCMCDCCResult
 import matplotlib.pyplot as plt
 import jax
 from typing import Optional
@@ -9,7 +9,7 @@ __all__ = [
     "plot_trace",
 ]
 
-def plot_histogram(result: DCC_Result, address: str):
+def plot_histogram(result: MCMCDCCResult, address: str):
     samples, weights, undef_prob = result.get_samples_for_address(address, unstack_chains=True)
 
     fig, axs = plt.subplots(1,2,sharey="all",width_ratios=[0.9,0.1])
@@ -29,15 +29,15 @@ def plot_histogram(result: DCC_Result, address: str):
 
     return fig
 
-def plot_histogram_by_slp(result: DCC_Result, address: str, N: Optional[int] = None):
+def plot_histogram_by_slp(result: MCMCDCCResult, address: str, N: Optional[int] = None):
 
-    slps = [slp for slp, slp_samples in result.samples.items() if address in slp_samples]
+    slps = result.get_slps_where_address_exists(address)
     slps = sorted(slps, key=lambda slp: slp.sort_key())
     if N is not None:
         slps = slps[:N]
 
     fig, axs = plt.subplots(len(slps)+1, 2, sharex="col", width_ratios=[0.9,0.1], figsize=(6.4, 2.*(len(slps)+1)), layout="constrained")
-    Z = sum(z for _, z in result.Zs.items())
+    Z = jax.lax.exp(result.get_log_weight_normaliser())
 
     samples, weights, undef_prob = result.get_samples_for_address(address, unstack_chains=True)
     assert samples is not None and weights is not None
@@ -47,7 +47,7 @@ def plot_histogram_by_slp(result: DCC_Result, address: str, N: Optional[int] = N
     xs = jax.numpy.linspace(samples.min(), samples.max(), 200)
     _ax[0].plot(xs, kde(xs), color="tab:blue")
     _ax[1].yaxis.set_label_position("right")
-    Z_combined = sum(result.Zs[slp] for slp in slps)
+    Z_combined = sum(jax.lax.exp(result.slp_log_weights[slp]) for slp in slps)
     _ax[1].set_ylabel(f"sum(Z)={Z_combined:.4g}")
     # _ax[1].yaxis.tick_right()
     _ax[0].set_ylabel("Combined")
@@ -66,10 +66,10 @@ def plot_histogram_by_slp(result: DCC_Result, address: str, N: Optional[int] = N
         kde = jax.scipy.stats.gaussian_kde(samples)#, weights=weights)
         xs = jax.numpy.linspace(samples.min(), samples.max(), 200)
         _ax[0].plot(xs, kde(xs), color="tab:blue")
-        _ax[1].bar(["prob"],[result.Zs[slp] / Z])
+        _ax[1].bar(["prob"],[jax.lax.exp(result.slp_log_weights[slp]) / Z])
         _ax[1].yaxis.set_label_position("right")
         # _ax[1].yaxis.tick_right()
-        _ax[1].set_ylabel(f"Z={result.Zs[slp]:.4g}")
+        _ax[1].set_ylabel(f"Z={jax.lax.exp(result.slp_log_weights[slp]):.4g}")
         
         _ax[0].set_ylabel(slp.formatted())
         _ax[1].set_ylim((0.,1.))
@@ -82,20 +82,20 @@ def plot_histogram_by_slp(result: DCC_Result, address: str, N: Optional[int] = N
     return fig
 
 
-def plot_trace(result: DCC_Result, address: str):
-    slps = [slp for slp, slp_samples in result.samples.items() if address in slp_samples]
+def plot_trace(result: MCMCDCCResult, address: str):
+    slps = result.get_slps_where_address_exists(address)
     slps = sorted(slps, key=lambda slp: slp.sort_key())
-    Z = sum(z for _, z in result.Zs.items())
+    Z = result.get_log_weight_normaliser()
 
     fig, axs = plt.subplots(len(slps), 2, sharex="col", sharey="col", width_ratios=[0.5,1.], figsize=(6.4, 2*len(slps)), layout="constrained")
     
     for i, slp in enumerate(slps):
-        samples = result.samples[slp][address]
+        samples, _ = result.get_samples_for_address_and_slp(address, slp, unstack_chains=False)
         assert len(samples.shape) == 2 # multi-dim variables not plottable
         n_chains = samples.shape[1]
         
         _axs = axs[i] if len(slps) > 1 else axs
-        w = result.Zs[slp] / Z
+        w = jax.lax.exp(result.slp_log_weights[slp] - Z)
         _axs[0].set_title(f"w = {w:.4f}")
         _axs[0].set_ylabel(slp.formatted())
 

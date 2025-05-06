@@ -169,10 +169,24 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
             print(f"\t{slp}: {weighted_sample.values} with prob {jnp.exp(log_weight).item():.6f}")
         print("}")
 
+    def get_slps(self, predicate: Callable[[DCC_COLLECT_TYPE], bool] = lambda _: True) -> List[SLP]:
+        return [slp for slp, weighted_sample in self.slp_weighted_samples.items() if predicate(weighted_sample.values.data)]
+    
+    # convience function for DCC_COLLECT_TYPE = Trace
+    def get_slps_where_address_exists(self, address: str):
+        return self.get_slps(lambda x: address in cast(Trace, x))
+    
+    # = model evidence if used DCC methods supports it, otherwise 0.
+    def get_log_weight_normaliser(self):
+        log_Zs = [log_Z for _, log_Z in self.slp_log_weights.items()]
+        return jax.scipy.special.logsumexp(jnp.vstack(log_Zs))
+
+
     def _get_samples_for_slp(self, slp: SLP, unstack_chains: bool, mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE]) -> Tuple[DCC_RESULT_QUERY_TYPE, FloatArray]:
         log_Z = self.slp_log_weights[slp]
+        log_Z_normaliser = self.get_log_weight_normaliser()
         weighted_sample = self.slp_weighted_samples[slp]
-        weights = jax.lax.exp(weighted_sample.log_weights - jax.scipy.special.logsumexp(weighted_sample.log_weights) + log_Z)
+        weights = jax.lax.exp(weighted_sample.log_weights - jax.scipy.special.logsumexp(weighted_sample.log_weights) + log_Z - log_Z_normaliser)
 
         assert weights.shape == (weighted_sample.values.N, weighted_sample.values.T)
         if unstack_chains:
@@ -197,12 +211,13 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
                      ) -> Tuple[Optional[DCC_RESULT_QUERY_TYPE], Optional[FloatArray], float]:
         
         undef_prob = 0.
+        log_Z_normaliser = self.get_log_weight_normaliser()
 
-        values: Optional[DCC_COLLECT_TYPE] = None
+        values: Optional[DCC_RESULT_QUERY_TYPE] = None
         weights: Optional[FloatArray] = None
         for slp, log_Z in self.slp_log_weights.items():
             weighted_sample = self.slp_weighted_samples[slp]
-            slp_weights = jax.lax.exp(weighted_sample.log_weights - jax.scipy.special.logsumexp(weighted_sample.log_weights) + log_Z)
+            slp_weights = jax.lax.exp(weighted_sample.log_weights - jax.scipy.special.logsumexp(weighted_sample.log_weights) + log_Z - log_Z_normaliser)
             assert slp_weights.shape == (weighted_sample.values.N, weighted_sample.values.T)
 
             if not predicate(weighted_sample.values.data):
@@ -210,9 +225,10 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
             else:
                 if unstack_chains:
                     slp_values = weighted_sample.values.unstack().data
+                    slp_weights = _unstack_sample_data(slp_weights)
                 else:
                     slp_values = weighted_sample.values.data
-                    slp_weights = _unstack_sample_data(slp_weights)
+                slp_values = mapper(slp_values)
 
                 if values is None:
                     values = slp_values
@@ -221,15 +237,13 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
                     values = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), values, slp_values)
                     weights = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), weights, slp_weights)
 
-        return_values = mapper(values) if values is not None else None
 
-        return return_values, weights, undef_prob
+        return values, weights, undef_prob
                 
-
 
     
     def get_samples(self, unstack_chains: bool = True,
-                     predicate: Callable[[DCC_COLLECT_TYPE], bool] = lambda x: True,
+                     predicate: Callable[[DCC_COLLECT_TYPE], bool] = lambda _: True,
                      mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE] = lambda x: x
                      ):
         return self._get_samples(unstack_chains, predicate, mapper)
@@ -352,11 +366,11 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
             assert isinstance(estimate, LogWeightEstimateFromPrior)
             log_Zs.append(estimate.log_Z)
 
-        log_Z_normaliser = jax.scipy.special.logsumexp(jnp.vstack(log_Zs))
+        # log_Z_normaliser = jax.scipy.special.logsumexp(jnp.vstack(log_Zs))
         slp_log_weights: Dict[SLP, FloatArray] = {}
         for slp, estimate in log_weight_estimates.items():
             assert isinstance(estimate, LogWeightEstimateFromPrior)
-            slp_log_weights[slp] = estimate.log_Z - log_Z_normaliser
+            slp_log_weights[slp] = estimate.log_Z
 
         return slp_log_weights
 

@@ -26,7 +26,7 @@ __all__ = [
 InferenceInfo = NamedTuple
 InferenceInfos = List[InferenceInfo]
 
-@dispatch(Any)
+@dispatch(Any, int)
 def summarise_mcmc_info(info, n_samples: int) -> str:
     raise NotImplementedError
 
