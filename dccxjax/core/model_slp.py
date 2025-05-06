@@ -6,6 +6,10 @@ from ..types import Trace, PRNGKey, to_shaped_array_trace, FloatArray, BoolArray
 from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays
 from .branching_tracer import BranchingDecisions, trace_branching, retrace_branching
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from _typeshed import SupportsRichComparison
+
 __all__ = [
     "Model",
     "model",
@@ -21,7 +25,7 @@ class Model:
 
         self._jitted_log_prob = False
         self.slp_formatter: Optional[Callable[["SLP"],str]] = None
-        self.slp_sort_key: Optional[Callable[["SLP"], Any]] = None
+        self.slp_sort_key: Callable[["SLP"],SupportsRichComparison] = lambda slp: slp.short_repr()
         # self._log_prob = self.make_model_logprob()
 
     def __call__(self) -> Any:
@@ -42,7 +46,7 @@ class Model:
     def set_slp_formatter(self, formatter: Callable[["SLP"],str]):
         self.slp_formatter = formatter
 
-    def set_slp_sort_key(self, key: Callable[["SLP"], Any]):
+    def set_slp_sort_key(self, key: Callable[["SLP"],SupportsRichComparison]):
         self.slp_sort_key = key
 
 def model(f:Callable) -> Callable[..., Model]:

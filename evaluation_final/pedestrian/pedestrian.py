@@ -57,8 +57,9 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
     def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
         _active_slps: List[SLP] = []
         super().initialise_active_slps(_active_slps, rng_key)
-        _active_slps.sort(key=lambda slp: slp.sort_key()) # we assume that we know that with increasing steps eventually we have unlikely SLPs
-
+        # we assume that we know that with increasing steps eventually we have unlikely SLPs
+        _active_slps.sort(key=self.model.slp_sort_key)
+        # _active_slps.sort(key=lambda slp: slp.sort_key())
         log_Z_max = -jnp.inf
         for slp in _active_slps:
             # if find_t_max(slp) <= 6:
