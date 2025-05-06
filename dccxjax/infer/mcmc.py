@@ -1,8 +1,8 @@
 import jax.experimental
-from ..types import Trace, PRNGKey, FloatArray, IntArray
+from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace
 import jax
 import jax.numpy as jnp
-from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar
+from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar, Generic
 from .gibbs_model import GibbsModel
 from .variable_selector import VariableSelector
 from abc import ABC, abstractmethod
@@ -37,7 +37,7 @@ class MCMCState(NamedTuple):
     temperature: FloatArray # scalar 0 ... prior, 1 ... joint
     position: Trace
     log_prob: FloatArray
-    infos: InferenceInfos
+    infos: Optional[InferenceInfos]
 
 
 class InferenceAlgorithm(ABC):
@@ -73,14 +73,44 @@ class Gibbs(InferenceRegime):
                 assert isinstance(subregime, Gibbs)
                 yield from subregime
 
+class ProgressbarManager:
+    def __init__(self, slp_name: str, num_samples: int) -> None:
+        self.slp_name = slp_name
+        self.tqdm_bar: Optional[tqdm_auto] = None
+        self.num_samples = num_samples
+
+    def start_progress(self):
+        assert self.tqdm_bar is None
+        self.tqdm_bar = tqdm_auto(range(self.num_samples), position=0)
+        self.tqdm_bar.set_description(f"Compiling MCMC for {self.slp_name}... ", refresh=True)
+
+    def _init_tqdm(self):
+        if self.tqdm_bar is not None:
+            self.tqdm_bar.set_description(f"Running MCMC for {self.slp_name}", refresh=True)
+            # t1 = time()
+            # tqdm_auto.write(f"Compile time {t1-t0:.3f}s")
+
+    def _update_tqdm(self, increment):
+        if self.tqdm_bar is not None:
+            increment = int(increment)
+            self.tqdm_bar.update(increment)
+
+    def _close_tqdm(self, increment):
+        if self.tqdm_bar is not None:
+            increment = int(increment)
+            self.tqdm_bar.update(increment)
+            self.tqdm_bar.close()
+            self.tqdm_bar = None
+
 
 MCMC_COLLECT_TYPE = TypeVar("MCMC_COLLECT_TYPE")
 MCMCKernel = Callable[[MCMCState,PRNGKey],Tuple[MCMCState,MCMC_COLLECT_TYPE]]
 
-def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, *,
-    collect_inference_info: bool = False,
-    vectorised: bool = True,
-    return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> MCMCKernel[MCMC_COLLECT_TYPE]:
+def get_mcmc_kernel(
+        slp: SLP, regime: InferenceRegime, *,
+        collect_inference_info: bool = False, 
+        vectorised: bool = True,
+        return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> MCMCKernel[MCMC_COLLECT_TYPE]:
     
     kernels: List[Kernel] = []
     for step_number, inference_step in enumerate(regime):
@@ -89,7 +119,7 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, *,
     
     jit_tracker = JitVariationTracker(f"_mcmc_step for {slp.short_repr()}")
     @jax.jit
-    def one_step(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
+    def _one_step(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
         maybe_jit_warning(jit_tracker, str(to_shaped_arrays(state)))
         
         # rng_key = state.rng_key
@@ -99,7 +129,7 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, *,
 
         for i, kernel in enumerate(kernels):
             rng_key, kernel_key = jax.random.split(rng_key)
-            kernel_state = KernelState(position, log_prob, infos[i] if collect_inference_info else None)
+            kernel_state = KernelState(position, log_prob, infos[i] if collect_inference_info and infos is not None else None)
 
             if vectorised:
                 # for some reason this is significantly faster
@@ -118,7 +148,8 @@ def get_inference_regime_mcmc_step_for_slp(slp: SLP, regime: InferenceRegime, *,
 
         return MCMCState(state.iteration + 1, state.temperature, position, log_prob, infos), return_map(state)
 
-    return one_step
+    return _one_step
+
 
 # this with (2) seems to be a lot slower than (1)
 # kernel had to be created with vectorised=False
@@ -134,48 +165,17 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
         return jax.vmap(kernel, in_axes=axes, out_axes=axes)(state, chain_keys)
     return _vectorised_kernel
 
-class ProgressbarManager:
-    def __init__(self, num_samples: int) -> None:
-        self.tqdm_bar: Optional[tqdm_auto] = None
-        self.num_samples = num_samples
-
-    def start_progress(self):
-        self.tqdm_bar = tqdm_auto(range(self.num_samples), position=0)
-        self.tqdm_bar.set_description("Compiling... ", refresh=True)
-
-    def _init_tqdm(self):
-        if self.tqdm_bar is not None:
-            self.tqdm_bar.set_description(f"Running MCMC", refresh=True)
-            # t1 = time()
-            # tqdm_auto.write(f"Compile time {t1-t0:.3f}s")
-
-    def _update_tqdm(self, increment):
-        if self.tqdm_bar is not None:
-            increment = int(increment)
-            self.tqdm_bar.update(increment)
-
-    def _close_tqdm(self, increment):
-        if self.tqdm_bar is not None:
-            increment = int(increment)
-            self.tqdm_bar.update(increment)
-            self.tqdm_bar.close()
-            self.tqdm_bar = None
 
 # adapted form numpyro/util.py
-def add_progress_bar(num_samples: int, kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> Tuple[ProgressbarManager,MCMCKernel[MCMC_COLLECT_TYPE]]:
-
+def add_progress_bar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], slp_name: str, num_samples: int) -> Tuple[ProgressbarManager, MCMCKernel[MCMC_COLLECT_TYPE]]:
     if num_samples > 100:
         print_rate = int(num_samples / 100)
     else:
         print_rate = 1
 
-
     remainder = num_samples % print_rate
 
-
-    progressbar_mngr = ProgressbarManager(num_samples)
-    # t0 = 0
-
+    progressbar_mngr = ProgressbarManager(slp_name, num_samples)
     
     def _update_progress_bar(iter_num: jax.Array):
         # nonlocal t0
@@ -208,6 +208,47 @@ def add_progress_bar(num_samples: int, kernel: MCMCKernel[MCMC_COLLECT_TYPE]) ->
     return progressbar_mngr, wrapped_kernel
 
 
+class MCMC(Generic[MCMC_COLLECT_TYPE]):
+    def __init__(self,
+        slp: SLP,
+        regime: InferenceRegime,
+        n_chains: int,
+        *,
+        collect_inference_info: bool = False,
+        vectorised: bool = True,
+        return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None,
+        progress_bar: bool = False) -> None:
+        
+        self.slp = slp
+        self.regime = regime
+        self.n_chains = n_chains
+        self.progress_bar = progress_bar
+
+        self.collect_inference_info = collect_inference_info
+        self.vectorised = vectorised
+        self.kernel: MCMCKernel[MCMC_COLLECT_TYPE] = get_mcmc_kernel(slp, regime, collect_inference_info=collect_inference_info, vectorised=vectorised, return_map=return_map)
+
+    def run(self, rng_key: PRNGKey, init_positions: StackedTrace, log_prob: Optional[FloatArray] = None, *, n_samples_per_chain: int) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
+        assert init_positions.T == self.n_chains
+        if log_prob is None:
+            log_prob = jax.vmap(self.slp.log_prob)(init_positions.data)
+        else:
+            assert log_prob.shape == (self.n_chains,)
+
+        infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
+        initial_state = MCMCState(jnp.array(0, int), jnp.array(1.0), init_positions.data, log_prob, infos)
+        
+        keys = jax.random.split(rng_key, n_samples_per_chain)
+
+
+        if self.progress_bar:
+            progress_bar_mngr, kernel = add_progress_bar(self.kernel, self.slp.formatted(), n_samples_per_chain)
+            progress_bar_mngr.start_progress()
+        else:
+            kernel = self.kernel
+        last_state, return_values = jax.lax.scan(kernel, initial_state, keys)
+
+        return last_state, return_values
 
 def init_inference_infos(regime: InferenceRegime) -> InferenceInfos:
     return [step.algo.init_info() for step in regime]

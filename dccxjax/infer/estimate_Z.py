@@ -8,11 +8,12 @@ from typing import Optional, Set
 
 __all__ = [
     "estimate_Z_for_SLP_from_prior",
+    "estimate_log_Z_for_SLP_from_prior",
     "estimate_Z_for_SLP_from_mcmc",
     "estimate_Z_for_SLP_from_gaussian_mixture",
 ]
 
-def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
+def estimate_log_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
     rng_keys = jax.random.split(rng_key, N)
     log_weights, in_support = jax.vmap(slp._gen_likelihood_weight)(rng_keys)
 
@@ -25,8 +26,12 @@ def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
     log_ess = log_weights_sum * 2 - log_weights_squared_sum
     # print(f"{ess=} {jnp.exp(log_ess)=}")
 
-    frac_out_of_support = 1-jnp.mean(in_support)
-    return jnp.exp(log_weights_sum) / N, jnp.exp(log_ess), frac_out_of_support
+    frac_in_support = in_support.sum() / N
+    return log_weights_sum - jax.lax.log(float(N)), jnp.exp(log_ess), frac_in_support
+
+def estimate_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey):
+    log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, N, rng_key)
+    return jax.lax.exp(log_Z), ESS, frac_in_support
 
 def estimate_Z_for_SLP_from_mcmc(
     slp: SLP, scale: float, samples_per_trace: int, seed: PRNGKey, *,

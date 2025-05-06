@@ -1,8 +1,9 @@
 import jax
+import jax.numpy as jnp
 import dccxjax.distributions as dist
 from typing import Any, Optional, Dict, Callable
 from abc import ABC, abstractmethod
-from ..types import Trace, PRNGKey, FloatArrayLike
+from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray
 
 
 __all__ = [
@@ -50,8 +51,8 @@ class GenerateCtx(SampleContext):
         super().__init__()
         self.X: Trace = dict() | Y
         self.rng_key = rng_key
-        self.log_likelihood = 0.
-        self.log_prior = 0.
+        self.log_likelihood: FloatArray = jnp.array(0.,float)
+        self.log_prior: FloatArray = jnp.array(0.,float)
     def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
         if observed is not None:
             self.log_likelihood += distribution.log_prob(observed).sum()
@@ -72,8 +73,8 @@ class LogprobCtx(SampleContext):
     def __init__(self, X: Trace) -> None:
         super().__init__()
         self.X = X
-        self.log_likelihood = 0.
-        self.log_prior = 0.
+        self.log_likelihood: FloatArray = jnp.array(0.,float)
+        self.log_prior: FloatArray = jnp.array(0.,float)
     def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
         if observed is not None:
             self.log_likelihood += distribution.log_prob(observed).sum()
@@ -118,7 +119,7 @@ class UnconstrainedLogprobCtx(SampleContext):
         super().__init__()
         self.X_unconstrained = X_unconstrained
         self.X_constrained: Trace = dict()
-        self.log_prob = 0.
+        self.log_prob: FloatArray = jnp.array(0.,float)
     
     def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
         if observed is not None:

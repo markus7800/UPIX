@@ -94,8 +94,12 @@ class StackedTraces:
         return self.T * self.N
     def unstack(self) -> Traces:
         return Traces(jax.tree_map(_unstack, self.data), self.N * self.T)
-    def get(self, n, t) -> Trace:
-        return jax.tree_map(lambda v: v[n,t,...], self.data)
+    def get(self, sample_ix, chain_ix) -> Trace:
+        return jax.tree_map(lambda v: v[sample_ix,chain_ix,...], self.data)
+    def get_stacked(self, sample_ix) -> StackedTrace:
+        return StackedTrace(jax.tree_map(lambda v: v[sample_ix,...], self.data), self.T)
+    def get_chains(self, chain_ix) -> Traces:
+        return Traces(jax.tree_map(lambda v: v[:,chain_ix,...], self.data), self.N)
 
 # Scalar = Union[float, int]
 # Numeric = Union[jax.Array, Scalar]

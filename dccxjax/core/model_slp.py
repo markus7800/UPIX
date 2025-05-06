@@ -28,7 +28,7 @@ class Model:
         return self.f(*self.args, **self.kwargs)
     
     # not jitted
-    def log_prob(self, X: Trace) -> float:
+    def log_prob(self, X: Trace) -> FloatArray:
         with LogprobCtx(X) as ctx:
             self.f(*self.args, **self.kwargs)
             return ctx.log_likelihood + ctx.log_prior
@@ -45,7 +45,7 @@ class Model:
     def set_slp_sort_key(self, key: Callable[["SLP"], Any]):
         self.slp_sort_key = key
 
-def model(f:Callable):
+def model(f:Callable) -> Callable[..., Model]:
     def _f(*args, **kwargs):
         return Model(f, args, kwargs)
     return _f
@@ -127,7 +127,7 @@ def _make_slp_unconstrained_log_prob(slp: "SLP", model: Model, branching_decisio
     
 #     return _transform_unconstrained_to_support
 
-def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], Tuple[float,bool]]:
+def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[PRNGKey], Tuple[FloatArray,BoolArray]]:
     jit_tracker = JitVariationTracker(f"slp_gen_likelihood_weight for {slp.short_repr()}")
     @jax.jit
     def _gen_likelihood_weight(key: PRNGKey):
@@ -160,19 +160,14 @@ class SLP:
         self.decision_representative = decision_representative
         self.branching_decisions = branching_decisions
 
-        self._jitted_path_indicator = False
         self._path_indicator = _make_slp_path_indicator(self, model, branching_decisions)
 
-        self._jitted_log_prob = False
         self._log_prior_likeli_pathcond = _make_slp_log_prior_likeli_pathcond(self, model, branching_decisions)
 
-        # self._jitted_grad_log_prob = False
         # self._grad_log_prob = _make_slp_log_prob_and_grad(self)
 
-        self._jitted_gen_likelihood_weight = False
         self._gen_likelihood_weight = _make_slp_gen_likelihood_weight(self, model, branching_decisions)
 
-        self._jitted_unconstrained_log_prob = False
         self._unconstrained_log_prob = _make_slp_unconstrained_log_prob(self, model, branching_decisions)
 
         # this is not jitted
