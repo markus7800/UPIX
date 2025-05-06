@@ -108,6 +108,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
 
     
     def run(self, rng_key: PRNGKey):
+        # t0 = time()
         if self.verbose >= 2:
             tqdm.write("Start DCC:")
 
@@ -142,7 +143,11 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             rng_key, update_key = jax.random.split(rng_key)
             self.update_active_slps(self.active_slps, self.inactive_slps, update_key)
         
-        return self.combine_results(self.inference_results, self.log_weight_estimates)
+        combined_result = self.combine_results(self.inference_results, self.log_weight_estimates)
+        # t1 = time()
+        # if self.verbose >= 2:
+        #     tqdm.write(f"Finished in {t1-t0:.3f}s")
+        return combined_result
 
 DCC_COLLECT_TYPE = TypeVar("DCC_COLLECT_TYPE")
 DCC_RESULT_QUERY_TYPE = TypeVar("DCC_RESULT_QUERY_TYPE")
@@ -260,7 +265,6 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
         self.return_map = return_map
 
         self.init_n_samples: int = self.config.get("init_n_samples", 100)
-        self.min_prior_path_probability: float = self.config.get("init_min_prior_path_probability", 0.01)
 
         self.mcmc_collect_inference_info: bool = self.config.get("mcmc_collect_inference_info", True)
         self.mcmc_collect_for_all_traces: bool = self.config.get("mcmc_collect_for_all_traces", True)
@@ -287,19 +291,20 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
                 if self.verbose >= 2:
                     tqdm.write(f"Discovered SLP {slp.formatted()}.")
                 discovered_slps.append(slp)
+        active_slps.extend(discovered_slps)
 
-        # select only a-priori likely paths
-        if self.min_prior_path_probability > 0.0:
-            for slp in discovered_slps:
-                rng_key, key = jax.random.split(rng_key)
-                log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.estimate_weight_n_samples, rng_key)
-                if frac_in_support > self.min_prior_path_probability:
-                    tqdm.write(f"Make SLP {slp.formatted()} active.")
-                    self.add_to_log_weight_estimates(slp, LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, self.estimate_weight_n_samples))
-                    active_slps.append(slp)
-        else:
-            tqdm.write(f"Make all discovered SLPs active.")
-            active_slps.extend(discovered_slps)
+        # # select only a-priori likely paths
+        # if self.min_prior_path_probability > 0.0:
+        #     for slp in discovered_slps:
+        #         rng_key, key = jax.random.split(rng_key)
+        #         log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.estimate_weight_n_samples, rng_key)
+        #         if frac_in_support > self.min_prior_path_probability:
+        #             tqdm.write(f"Make SLP {slp.formatted()} active (frac_in_support={frac_in_support.item():.4f}).")
+        #             self.add_to_log_weight_estimates(slp, LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, self.estimate_weight_n_samples))
+        #             active_slps.append(slp)
+        # else:
+        #     tqdm.write(f"Make all discovered SLPs active.")
+        #     active_slps.extend(discovered_slps)
 
     @abstractmethod
     def get_MCMC_inference_regime(self, slp: SLP) -> InferenceRegime:
