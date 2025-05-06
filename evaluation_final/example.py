@@ -18,7 +18,6 @@ setup_logging(logging.WARNING)
 @model
 def simple_branching_model(p):
     u = sample("u", dist.Uniform())
-    # print(f"{u=}")
     if u < p:
         m = sample("m1", dist.Normal(-1.,1.))
     else:
@@ -49,15 +48,49 @@ m.set_slp_formatter(HumanReadableDecisionsFormatter())
 # print(f"{Z1=}")
 # print(f"{Z2=}")
 
-class DCC(MCMCDCC[DCC_COLLECT_TYPE]):
+class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
     def get_MCMC_inference_regime(self, slp: SLP) -> InferenceRegime:
         return InferenceStep(AllVariables(), RW(gaussian_random_walk(0.5)))
     
 
-dcc_obj = DCC(m, verbose=2,
+dcc_obj = DCCConfig(m, verbose=2,
               mcmc_n_chains=10,
               mcmc_n_samples_per_chain=100_000,
               mcmc_collect_for_all_traces=False)
 
 result = dcc_obj.run(jax.random.PRNGKey(0))
+print(result)
+
+
+@model
+def simple_branching_model_2(p):
+    b = sample("b", dist.Bernoulli(p))
+    if b:
+        m = sample("m1", dist.Normal(-1.,1.))
+    else:
+        m = sample("m2", dist.Normal(2.,0.5))
+    sample("y", dist.Normal(m, 0.5), observed=0.5)
+
+
+
+p = 0.7
+
+m2 = simple_branching_model_2(p)
+m2.set_slp_formatter(HumanReadableDecisionsFormatter())
+
+
+class DCCConfig2(MCMCDCC[DCC_COLLECT_TYPE]):
+    def get_MCMC_inference_regime(self, slp: SLP) -> InferenceRegime:
+        return Gibbs(
+            # InferenceStep(SingleVariable("b"), RW(lambda b: dist.Bernoulli(0.1 * b + 0.9 * (1-b)))),
+            InferenceStep(PrefixSelector("m"), RW(gaussian_random_walk(0.5)))
+        )
+    
+
+dcc_obj2 = DCCConfig2(m2, verbose=2,
+              mcmc_n_chains=10,
+              mcmc_n_samples_per_chain=100_000,
+              mcmc_collect_for_all_traces=False)
+
+result = dcc_obj2.run(jax.random.PRNGKey(0))
 print(result)

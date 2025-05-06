@@ -23,7 +23,7 @@ __all__ = [
 
 def gaussian_random_walk(scale: float):
     def _gaussian(X: jax.Array) -> dist.Distribution:
-        return dist.Normal(X, scale) # type: ignore
+        return dist.Normal(X, scale)
     return _gaussian
 
 def rw_kernel(
@@ -155,6 +155,7 @@ class RandomWalk(InferenceAlgorithm):
         X_repr, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
         n_dim = sum(values.size for _, values in X_repr.items())
         is_discrete_map = gibbs_model.slp.get_is_discrete_map()
+        # for type stability either all discrete or all continuous
         assert all(is_discrete_map[addr] for addr, _ in X_repr.items()) or all(not is_discrete_map[addr] for addr, _ in X_repr.items())
 
         sparse_p = 0.

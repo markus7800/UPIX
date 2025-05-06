@@ -13,9 +13,6 @@ from abc import ABC, abstractmethod
 from ..utils import broadcast_jaxtree
 from functools import reduce
 
-class DCCResult(ABC):
-    pass
-
 class InferenceResult(ABC):
     @abstractmethod
     def concatentate(self, other: "InferenceResult") -> "InferenceResult":
@@ -68,7 +65,7 @@ class LogWeightEstimateFromPrior(LogWeightEstimate):
 
 DCC_RESULT_TYPE = TypeVar("DCC_RESULT_TYPE")            
 
-class DCC(ABC, Generic[DCC_RESULT_TYPE]):
+class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
     def __init__(self, model: Model, *ignore, verbose=0, **config_kwargs) -> None:
         if ignore:
             raise TypeError
@@ -155,11 +152,11 @@ class WeightedSample(Generic[DCC_COLLECT_TYPE]):
     log_weights: FloatArray
 
 @dataclass
-class MCMCDCCResult(Generic[DCC_COLLECT_TYPE], DCCResult):
+class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
     slp_log_weights: Dict[SLP, FloatArray]
     slp_weighted_samples: Dict[SLP, WeightedSample]
 
-class MCMCDCC(DCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_TYPE]):
+class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_TYPE]):
     def __init__(self, model: Model, return_map: Callable[[Trace], DCC_COLLECT_TYPE] = lambda trace: trace, *ignore, verbose=0, **config_kwargs) -> None:
         super().__init__(model, verbose=verbose, *ignore, **config_kwargs)
         self.return_map = return_map

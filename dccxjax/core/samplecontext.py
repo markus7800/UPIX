@@ -1,9 +1,10 @@
 import jax
 import jax.numpy as jnp
-import dccxjax.distributions as dist
-from typing import Any, Optional, Dict, Callable
+from dccxjax.distributions import Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE
+import numpyro.distributions as numpyro_dists
+from typing import Any, Optional, Dict, Callable, cast
 from abc import ABC, abstractmethod
-from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray
+from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike
 
 
 __all__ = [
@@ -14,7 +15,7 @@ __all__ = [
 
 class SampleContext(ABC):
     @abstractmethod
-    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+    def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         raise NotImplementedError
     @abstractmethod
     def logfactor(self, lf: FloatArrayLike) -> None:
@@ -28,7 +29,7 @@ class SampleContext(ABC):
         SAMPLE_CONTEXT = None
 
 SAMPLE_CONTEXT: Optional[SampleContext] = None
-def sample(address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+def sample(address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
     global SAMPLE_CONTEXT
     if SAMPLE_CONTEXT is not None:
         return SAMPLE_CONTEXT.sample(address, distribution, observed)
@@ -53,16 +54,16 @@ class GenerateCtx(SampleContext):
         self.rng_key = rng_key
         self.log_likelihood: FloatArray = jnp.array(0.,float)
         self.log_prior: FloatArray = jnp.array(0.,float)
-    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+    def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
             self.log_likelihood += distribution.log_prob(observed).sum()
-            return observed
+            return cast(DIST_SUPPORT, observed)
         self.rng_key, key = jax.random.split(self.rng_key)
         if address not in self.X:
             value = distribution.sample(key)
             self.X[address] = value
         else:
-            value = self.X[address]
+            value = cast(DIST_SUPPORT, self.X[address])
         self.log_prior += distribution.log_prob(value).sum()
         return value
     def logfactor(self, lf: FloatArrayLike) -> None:
@@ -75,12 +76,12 @@ class LogprobCtx(SampleContext):
         self.X = X
         self.log_likelihood: FloatArray = jnp.array(0.,float)
         self.log_prior: FloatArray = jnp.array(0.,float)
-    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+    def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
             self.log_likelihood += distribution.log_prob(observed).sum()
-            return observed
-        assert distribution._validate_args
-        value = self.X[address]
+            return cast(DIST_SUPPORT, observed)
+        assert distribution.numpyro_base._validate_args
+        value = cast(DIST_SUPPORT, self.X[address])
         self.log_prior += distribution.log_prob(value).sum()
         return value
     def logfactor(self, lf: FloatArrayLike) -> None:
@@ -91,10 +92,10 @@ class ReplayCtx(SampleContext):
     def __init__(self, X: Trace) -> None:
         super().__init__()
         self.X = X
-    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+    def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
-            return observed
-        value = self.X[address]
+            return cast(DIST_SUPPORT, observed)
+        value = cast(DIST_SUPPORT, self.X[address])
         return value
     def logfactor(self, lf: FloatArrayLike) -> None:
         pass
@@ -104,11 +105,11 @@ class CollectDistributionTypesCtx(SampleContext):
         super().__init__()
         self.X = X
         self.is_discrete: Dict[str, bool] = dict()
-    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+    def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
-            return observed
-        value = self.X[address]
-        self.is_discrete[address] = distribution.is_discrete
+            return cast(DIST_SUPPORT, observed)
+        value = cast(DIST_SUPPORT,self.X[address])
+        self.is_discrete[address] = distribution.numpyro_base.is_discrete
         return value
     def logfactor(self, lf: FloatArrayLike) -> None:
         pass
@@ -121,23 +122,23 @@ class UnconstrainedLogprobCtx(SampleContext):
         self.X_constrained: Trace = dict()
         self.log_prob: FloatArray = jnp.array(0.,float)
     
-    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+    def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
             self.log_prob += distribution.log_prob(observed).sum()
-            return observed
-        assert distribution._validate_args
+            return cast(DIST_SUPPORT, observed)
+        assert distribution.numpyro_base._validate_args
 
         unconstrained_value = self.X_unconstrained[address]
         
-        if distribution.is_discrete:
-            constrained_value = unconstrained_value
+        if distribution.numpyro_base.is_discrete:
+            constrained_value = cast(DIST_SUPPORT, unconstrained_value)
             self.X_constrained[address] = constrained_value
         else:
-            transform = dist.biject_to(distribution.support)
-            constrained_value = transform(unconstrained_value)
+            transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
+            constrained_value = cast(DIST_SUPPORT, transform(unconstrained_value))
             self.X_constrained[address] = constrained_value
 
-            unconstrained_distribution = dist.TransformedDistribution(distribution, transform.inv)
+            unconstrained_distribution = numpyro_dists.TransformedDistribution(distribution, transform.inv)
             
             self.log_prob += unconstrained_distribution.log_prob(unconstrained_value).sum()
 
@@ -153,16 +154,16 @@ class TransformToUnconstrainedCtx(SampleContext):
         self.X_unconstrained: Trace = dict()
         self.X_constrained: Trace = X_constrained
     
-    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+    def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
-            return observed
-        assert distribution._validate_args
-        constrained_value = self.X_constrained[address]
+            return cast(DIST_SUPPORT, observed)
+        assert distribution.numpyro_base._validate_args
+        constrained_value = cast(DIST_SUPPORT, self.X_constrained[address])
 
-        if distribution.is_discrete:
+        if distribution.numpyro_base.is_discrete:
             self.X_unconstrained[address] = constrained_value
         else:
-            transform = dist.biject_to(distribution.support)
+            transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
             unconstrained_value = transform.inv(constrained_value)
             self.X_unconstrained[address] = unconstrained_value
 
@@ -177,18 +178,18 @@ class TransformToConstrainedCtx(SampleContext):
         self.X_unconstrained: Trace = X_unconstrained
         self.X_constrained: Trace = dict()
     
-    def sample(self, address: str, distribution: dist.Distribution, observed: Optional[jax.Array] = None) -> jax.Array:
+    def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
-            return observed
-        assert distribution._validate_args
+            return cast(DIST_SUPPORT, observed)
+        assert distribution.numpyro_base._validate_args
         unconstrained_value = self.X_unconstrained[address]
 
-        if distribution.is_discrete:
-            constrained_value = unconstrained_value
+        if distribution.numpyro_base.is_discrete:
+            constrained_value = cast(DIST_SUPPORT, unconstrained_value)
             self.X_constrained[address] = constrained_value
         else:
-            transform = dist.biject_to(distribution.support)
-            constrained_value = transform(unconstrained_value)
+            transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
+            constrained_value = cast(DIST_SUPPORT, transform(unconstrained_value))
             self.X_constrained[address] = constrained_value
 
         return constrained_value
