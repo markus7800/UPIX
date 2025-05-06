@@ -87,10 +87,10 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
 dcc_obj = DCCConfig(m, verbose=2,
               init_n_samples=250,
               init_estimate_weight_n_samples=1_000_000,
-              mcmc_n_chains=10,
+              mcmc_n_chains=100,
               mcmc_n_samples_per_chain=100_000,
               mcmc_collect_for_all_traces=True,
-              estimate_weight_n_samples=10_000_000,
+              estimate_weight_n_samples=100_000_000,
               return_map=lambda trace: {"start": trace["start"]})
 
 t0 = time()
@@ -131,7 +131,8 @@ def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
 
 cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)
 W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf)) # wasserstein distance
+infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
 
 plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
-plt.title(f"W1 = {W1_distance.item():.4g}")
+plt.title(f"W1 = {W1_distance.item():.4g}, L^\\infty = {infty_distance.item():.4g}")
 plt.show()

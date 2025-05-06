@@ -351,6 +351,11 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
             for step, info in enumerate(last_state.infos):
                 info_str += f"\n\t Step {step}: {summarise_mcmc_info(info, self.mcmc_n_samples_per_chain)}"
             tqdm.write(info_str)
+        
+        # TODO: only run MCMC on gpu and handle all result data on CPU
+        cpu = jax.devices("cpu")[0]
+        return_result = jax.device_put(return_result, cpu)
+
         return MCMCInferenceResult(return_result, last_state, mcmc.n_chains, self.mcmc_n_samples_per_chain)
     
     def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
