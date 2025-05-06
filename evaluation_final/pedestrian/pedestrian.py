@@ -1,5 +1,11 @@
 import sys
+import os
 sys.path.insert(0, ".")
+if len(sys.argv) > 1:
+    if sys.argv[1].endswith ("cpu"):
+        print("Force run on CPU.")
+        os.environ["JAX_PLATFORMS"] = "cpu"
+
 
 from dccxjax import *
 import jax
@@ -79,7 +85,7 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
 
 
 dcc_obj = DCCConfig(m, verbose=2,
-              init_n_samples=500,
+              init_n_samples=250,
               init_estimate_weight_n_samples=1_000_000,
               mcmc_n_chains=10,
               mcmc_n_samples_per_chain=100_000,
@@ -98,17 +104,34 @@ print(f"Total time: {t1-t0:.3f}s")
 comp_time = compilation_time_tracker.get_total_compilation_time_secs()
 print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
 
-plot_histogram(result, "start")
-plot_trace(result, "start")
+# plot_histogram(result, "start")
+# plot_trace(result, "start")
 plot_histogram_by_slp(result, "start")
 plt.show()
 
+
+gt_xs = jnp.load("evaluation_final/pedestrian/gt_xs.npy")
+gt_cdf = jnp.load("evaluation_final/pedestrian/gt_cdf.npy")
+gt_pdf = jnp.load("evaluation_final/pedestrian/gt_pdf.npy")
+
 plot_histogram(result, "start")
-
-qs = jnp.load("evaluation_final/pedestrian/gt_qs.npy")
-ps = jnp.load("evaluation_final/pedestrian/gt_ps.npy")
-
 fig = plt.gcf()
 ax = fig.axes[0]
-ax.plot(qs, ps)
+ax.plot(gt_xs, gt_pdf)
+plt.show()
+
+start_samples, start_weights, _ = result.get_samples_for_address("start")
+assert start_samples is not None and start_weights is not None
+
+@jax.jit
+def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
+    def _cdf_estimate(q):
+        return jnp.where(sample_points < q, sample_weights, jax.lax.zeros_like_array(sample_weights)).sum()
+    return jax.lax.map(_cdf_estimate, qs)
+
+cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)
+W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf)) # wasserstein distance
+
+plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
+plt.title(f"W1 = {W1_distance.item():.4g}")
 plt.show()

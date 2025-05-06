@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from typing import Callable, Optional, Any, Set, Tuple, Dict
+from typing import Callable, Optional, Any, Set, Tuple, Dict, TypeVar
 from .samplecontext import LogprobCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
 from ..types import Trace, PRNGKey, to_shaped_array_trace, FloatArray, BoolArray
 from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays
@@ -9,6 +9,8 @@ from .branching_tracer import BranchingDecisions, trace_branching, retrace_branc
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
+else:
+    SupportsRichComparison = TypeVar("SupportsRichComparison")
 
 __all__ = [
     "Model",
