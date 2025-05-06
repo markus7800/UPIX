@@ -1,5 +1,5 @@
 import jax
-from typing import Dict, Union, NamedTuple
+from typing import Dict, Union, NamedTuple, TypeVar, Generic
 from dataclasses import dataclass
 from .utils import broadcast_jaxtree
 from jax import Array
@@ -8,8 +8,11 @@ from jax.typing import ArrayLike
 __all__ = [
     "PRNGKey",
     "Trace",
+    "SampleValues",
     "Traces",
+    "StackedSampleValue",
     "StackedTrace",
+    "StackedSampleValues",
     "StackedTraces",
     "to_traces",
     "ArrayLike",
@@ -51,32 +54,41 @@ Trace = Dict[str, jax.Array]
 def to_shaped_array_trace(X: Trace):
     return {address: value.aval for address, value in X.items()}
 
+VALUE_TYPE = TypeVar("VALUE_TYPE")
+
 # data[address] has shape (N,D) where D is the dimensionality of the RV
 @dataclass
-class Traces:
-    data: Trace
+class SampleValues(Generic[VALUE_TYPE]):
+    data: VALUE_TYPE
     N: int
+    def __repr__(self) -> str:
+        return f"SampleValues({self.data.__class__.__name__}, {self.N:,})"
     def n_samples(self):
         return self.N
+Traces = SampleValues[Trace]
 
 def to_traces(X: Trace) -> Traces:
     return Traces(broadcast_jaxtree(X, (1,)), 1)
 
 # data[address] has shape (T,D) where D is the dimensionality of the RV
 @dataclass
-class StackedTrace:
-    data: Trace
+class StackedSampleValue(Generic[VALUE_TYPE]):
+    data: VALUE_TYPE
     T: int
+    def __repr__(self) -> str:
+        return f"StackedSampleValue({self.data.__class__.__name__}, {self.T:,})"
     def n_samples(self):
         return self.T
     
-    def unstack(self) -> Traces:
-        return Traces(self.data, self.T)
+    def unstack(self) -> SampleValues[VALUE_TYPE]:
+        return SampleValues[VALUE_TYPE](self.data, self.T)
     
-    def to_stacked_traces(self) -> "StackedTraces":
-        return StackedTraces(jax.tree_map(lambda x: x.reshape((self.T, 1) + x.shape[1:]), self.data) , 1, self.T)
+    def to_stacked_values(self) -> "StackedSampleValues[VALUE_TYPE]":
+        return StackedSampleValues(jax.tree_map(lambda x: x.reshape((self.T, 1) + x.shape[1:]), self.data) , 1, self.T)
+    
+StackedTrace = StackedSampleValue[Trace]
 
-def _unstack(values: jax.Array):
+def _unstack_sample_data(values: jax.Array):
     shape = values.shape
     assert len(shape) >= 2
     var_dim = () if len(shape) < 3 else (shape[2],)
@@ -86,20 +98,29 @@ def _unstack(values: jax.Array):
 
 # data[address] has shape (N,T,D) where D is the dimensionality of the RV
 @dataclass
-class StackedTraces:
-    data: Trace
+class StackedSampleValues(Generic[VALUE_TYPE]):
+    data: VALUE_TYPE
     N: int # n_samples_per_chain
     T: int # n_chains
+    def __repr__(self) -> str:
+        return f"StackedSampleValues({self.data.__class__.__name__}, {self.N:,} x {self.T:,})"
     def n_samples(self):
         return self.T * self.N
-    def unstack(self) -> Traces:
-        return Traces(jax.tree_map(_unstack, self.data), self.N * self.T)
-    def get(self, sample_ix, chain_ix) -> Trace:
+    def unstack(self) -> SampleValues[VALUE_TYPE]:
+        return SampleValues(jax.tree_map(_unstack_sample_data, self.data), self.N * self.T)
+    def get(self, sample_ix, chain_ix) -> VALUE_TYPE:
         return jax.tree_map(lambda v: v[sample_ix,chain_ix,...], self.data)
-    def get_stacked(self, sample_ix) -> StackedTrace:
-        return StackedTrace(jax.tree_map(lambda v: v[sample_ix,...], self.data), self.T)
-    def get_chains(self, chain_ix) -> Traces:
-        return Traces(jax.tree_map(lambda v: v[:,chain_ix,...], self.data), self.N)
+    def get_stacked(self, sample_ix) -> StackedSampleValue[VALUE_TYPE]:
+        return StackedSampleValue(jax.tree_map(lambda v: v[sample_ix,...], self.data), self.T)
+    def get_chains(self, chain_ix) -> SampleValues[VALUE_TYPE]:
+        return SampleValues(jax.tree_map(lambda v: v[:,chain_ix,...], self.data), self.N)
+    def get_subset(self, sample_ix, chain_ix) -> "StackedSampleValues[VALUE_TYPE]":
+        sub_data = self.get(sample_ix, chain_ix)
+        leafs, _ = jax.tree_flatten(sub_data)
+        N, T = leafs[0].shape[0:2]
+        return StackedSampleValues(sub_data, N, T)
+
+StackedTraces = StackedSampleValues[Trace]
 
 # Scalar = Union[float, int]
 # Numeric = Union[jax.Array, Scalar]

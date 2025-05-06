@@ -1,10 +1,10 @@
 import jax
 import jax.numpy as jnp
-from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar
+from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
-from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces
+from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
 from dataclasses import dataclass
-from .mcmc import InferenceRegime, MCMC, MCMCState
+from .mcmc import InferenceRegime, MCMC, MCMCState, summarise_mcmc_info
 from .estimate_Z import estimate_log_Z_for_SLP_from_prior
 from time import time
 from copy import deepcopy
@@ -145,16 +145,100 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         return self.combine_results(self.inference_results, self.log_weight_estimates)
 
 DCC_COLLECT_TYPE = TypeVar("DCC_COLLECT_TYPE")
+DCC_RESULT_QUERY_TYPE = TypeVar("DCC_RESULT_QUERY_TYPE")
 
 @dataclass
 class WeightedSample(Generic[DCC_COLLECT_TYPE]):
-    values: DCC_COLLECT_TYPE
+    values: StackedSampleValues[DCC_COLLECT_TYPE]
     log_weights: FloatArray
+    def __repr__(self) -> str:
+        return f"WeightedSample({self.values})"
 
 @dataclass
 class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
     slp_log_weights: Dict[SLP, FloatArray]
-    slp_weighted_samples: Dict[SLP, WeightedSample]
+    slp_weighted_samples: Dict[SLP, WeightedSample[DCC_COLLECT_TYPE]]
+
+    def __repr__(self) -> str:
+        return f"MCMC-DCCResult({len(self.slp_log_weights)} SLPs)"
+    
+    def pprint(self):
+        print("MCMC-DCCResult {")
+        for slp, log_weight in self.slp_log_weights.items():
+            weighted_sample = self.slp_weighted_samples[slp]
+            print(f"\t{slp}: {weighted_sample.values} with prob {jnp.exp(log_weight).item():.6f}")
+        print("}")
+
+    def _get_samples_for_slp(self, slp: SLP, unstack_chains: bool, mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE]) -> Tuple[DCC_RESULT_QUERY_TYPE, FloatArray]:
+        log_Z = self.slp_log_weights[slp]
+        weighted_sample = self.slp_weighted_samples[slp]
+        weights = jax.lax.exp(weighted_sample.log_weights - jax.scipy.special.logsumexp(weighted_sample.log_weights) + log_Z)
+
+        assert weights.shape == (weighted_sample.values.N, weighted_sample.values.T)
+        if unstack_chains:
+            weights = _unstack_sample_data(weights) # has same shape as values (StackedSampleValues)
+            values = weighted_sample.values.unstack().data
+        else:
+            values = weighted_sample.values.data
+
+        return mapper(values), weights
+    
+    def get_samples_for_slp(self, slp: SLP, unstack_chains: bool = True, mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE] = lambda x: x) -> Tuple[DCC_RESULT_QUERY_TYPE, FloatArray]:
+        return self._get_samples_for_slp(slp, unstack_chains, mapper)
+    
+    # convience function for DCC_COLLECT_TYPE = Trace
+    def get_samples_for_address_and_slp(self, address: str, slp: SLP, unstack_chains: bool = True):
+        return self._get_samples_for_slp(slp, unstack_chains, lambda x: cast(Trace,x)[address])
+    
+
+    def _get_samples(self, unstack_chains: bool,
+                     predicate: Callable[[DCC_COLLECT_TYPE], bool],
+                     mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE]
+                     ) -> Tuple[Optional[DCC_RESULT_QUERY_TYPE], Optional[FloatArray], float]:
+        
+        undef_prob = 0.
+
+        values: Optional[DCC_COLLECT_TYPE] = None
+        weights: Optional[FloatArray] = None
+        for slp, log_Z in self.slp_log_weights.items():
+            weighted_sample = self.slp_weighted_samples[slp]
+            slp_weights = jax.lax.exp(weighted_sample.log_weights - jax.scipy.special.logsumexp(weighted_sample.log_weights) + log_Z)
+            assert slp_weights.shape == (weighted_sample.values.N, weighted_sample.values.T)
+
+            if not predicate(weighted_sample.values.data):
+                undef_prob += jax.lax.exp(log_Z).item()
+            else:
+                if unstack_chains:
+                    slp_values = weighted_sample.values.unstack().data
+                else:
+                    slp_values = weighted_sample.values.data
+                    slp_weights = _unstack_sample_data(slp_weights)
+
+                if values is None:
+                    values = slp_values
+                    weights = slp_weights
+                else:
+                    values = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), values, slp_values)
+                    weights = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), weights, slp_weights)
+
+        return_values = mapper(values) if values is not None else None
+
+        return return_values, weights, undef_prob
+                
+
+
+    
+    def get_samples(self, unstack_chains: bool = True,
+                     predicate: Callable[[DCC_COLLECT_TYPE], bool] = lambda x: True,
+                     mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE] = lambda x: x
+                     ):
+        return self._get_samples(unstack_chains, predicate, mapper)
+
+
+    # convience function for DCC_COLLECT_TYPE = Trace
+    def get_samples_for_address(self, address: str, unstack_chains: bool = True):
+        return self._get_samples(unstack_chains, lambda x: address in cast(Trace,x), lambda x: cast(Trace,x)[address])
+
 
 class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_TYPE]):
     def __init__(self, model: Model, return_map: Callable[[Trace], DCC_COLLECT_TYPE] = lambda trace: trace, *ignore, verbose=0, **config_kwargs) -> None:
@@ -246,7 +330,7 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
             assert last_state.infos is not None
             info_str = "MCMC Infos:"
             for step, info in enumerate(last_state.infos):
-                info_str += f"\n\t Step {step}: {info}"
+                info_str += f"\n\t Step {step}: {summarise_mcmc_info(info, self.mcmc_n_samples_per_chain)}"
             tqdm.write(info_str)
         return MCMCInferenceResult(return_result, last_state, mcmc.n_chains, self.mcmc_n_samples_per_chain)
     
@@ -288,7 +372,10 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
                     # assert isinstance(inference_result.value_tree, Trace)
                     values = self.return_map(inference_result.value_tree)
 
-                weighted_samples = WeightedSample(values, jnp.zeros((inference_result.n_samples_per_chain, inference_result.n_chains), float))
+                weighted_samples = WeightedSample(
+                    StackedSampleValues(values, inference_result.n_samples_per_chain, inference_result.n_chains),
+                    jnp.zeros((inference_result.n_samples_per_chain, inference_result.n_chains), float)
+                )
             
             else:
                 # number of samples per chain = number of times MCMC was performed for SLP
@@ -297,7 +384,10 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
                 n_mcmc = inference_result.last_state.iteration.size
                 n_chains = inference_result.n_chains
                 values = jax.tree_map(lambda v: v.reshape((n_mcmc,n_chains) + v.shape[1:]), inference_result.last_state.position)
-                weighted_samples = WeightedSample(values, jnp.zeros((n_mcmc,n_chains), float))
+                weighted_samples = WeightedSample(
+                    StackedSampleValues(values, n_mcmc, n_chains),
+                    jnp.zeros((n_mcmc,n_chains), float)
+                )
 
             slp_weighted_samples[slp] = weighted_samples
 

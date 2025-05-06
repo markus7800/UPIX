@@ -10,6 +10,8 @@ from jax.flatten_util import ravel_pytree
 from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays
 from .gibbs_model import GibbsModel
 from abc import ABC, abstractmethod
+from multipledispatch import dispatch
+
 
 __all__ = [
     "gaussian_random_walk",
@@ -126,6 +128,17 @@ def rw_kernel_elementwise(
     
 class MHInfo(NamedTuple):
     accepted: jax.Array
+
+@dispatch(MHInfo, int)
+def summarise_mcmc_info(info: MHInfo, n_samples: int) -> str:
+    n_chains = info.accepted.shape[0]
+    acceptance_rate = info.accepted / n_samples
+    if n_chains > 10:
+        acceptance_rate_mean = jnp.mean(acceptance_rate)
+        acceptance_rate_std = jnp.std(acceptance_rate)
+        return f"Acceptance rate: {acceptance_rate_mean.item():.4f} +/-  {acceptance_rate_std.item():.4f}"
+    else:
+        return f"Acceptance rates for {n_chains} chains: [" + ", ".join([f"{ar.item():.4f}" for ar in acceptance_rate]) + "]"
 
 class RandomWalk(InferenceAlgorithm):
     def __init__(self,

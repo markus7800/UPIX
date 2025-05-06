@@ -178,12 +178,15 @@ class SLP:
         self._all_continuous: Optional[bool] = None
 
     def __repr__(self) -> str:
+        return self.short_repr()
+    
+    def pprint(self):
         s = "SLP {"
         s += "\n  " + repr(self.model)
         s += "\n  " + repr(self.decision_representative)
         s += "\n  " + repr(self.branching_decisions.decisions)
         s += "\n}"
-        return s
+        print(s)
     
     def short_repr(self) -> str:
         s = f"<SLP at {hex(id(self))}>"
@@ -264,5 +267,5 @@ class SLP:
 
 def HumanReadableDecisionsFormatter():
     def _formatter(slp: SLP):
-        return slp.branching_decisions.to_human_readable()
+        return "SLP(" + slp.branching_decisions.to_human_readable() + ")"
     return _formatter

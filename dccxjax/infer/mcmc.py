@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from dccxjax.core import SLP
 from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays, broadcast_jaxtree
 from time import time
+from multipledispatch import dispatch
 
 from tqdm.auto import tqdm as tqdm_auto
 
@@ -24,6 +25,10 @@ __all__ = [
 
 InferenceInfo = NamedTuple
 InferenceInfos = List[InferenceInfo]
+
+@dispatch(Any)
+def summarise_mcmc_info(info, n_samples: int) -> str:
+    raise NotImplementedError
 
 class KernelState(NamedTuple):
     position: Trace

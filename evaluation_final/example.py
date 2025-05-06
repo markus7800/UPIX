@@ -56,11 +56,12 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
 dcc_obj = DCCConfig(m, verbose=2,
               mcmc_n_chains=10,
               mcmc_n_samples_per_chain=100_000,
-              mcmc_collect_for_all_traces=False)
+              mcmc_collect_for_all_traces=True)
 
 result = dcc_obj.run(jax.random.PRNGKey(0))
-print(result)
-
+result.pprint()
+print(result.get_samples_for_address("m1"))
+exit()
 
 @model
 def simple_branching_model_2(p):
@@ -93,4 +94,4 @@ dcc_obj2 = DCCConfig2(m2, verbose=2,
               mcmc_collect_for_all_traces=False)
 
 result = dcc_obj2.run(jax.random.PRNGKey(0))
-print(result)
+result.pprint()
