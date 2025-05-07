@@ -50,7 +50,7 @@ def pedestrian_rec_walk(t: int, position: FloatArrayLike, distance: FloatArrayLi
 
 def pedestrian_recursive():
     start = sample("start", dist.Uniform(0.,3.))
-    distance = pedestrian_rec_walk(0, start, 0.)
+    distance = pedestrian_rec_walk(1, start, 0.)
     sample("obs", dist.Normal(distance, 0.1), observed=1.1)
     return start
 
@@ -72,10 +72,10 @@ m.set_slp_sort_key(find_t_max)
 
 
 class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
-    def get_MCMC_inference_regime(self, slp: SLP) -> InferenceRegime:
-        return Gibbs(
-            InferenceStep(PrefixSelector("step"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
-            InferenceStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
+    def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
+        return MCMCSteps(
+            MCMCStep(PrefixSelector("step"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
+            MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
         )
     def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
         _active_slps: List[SLP] = []

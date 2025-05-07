@@ -21,7 +21,7 @@ slp = convert_model_to_SLP(m)
 t0 = time()
 result = mcmc(
     slp,
-    InferenceStep(AllVariables(), RW(gaussian_random_walk(0.5))),
+    MCMCStep(AllVariables(), RW(gaussian_random_walk(0.5))),
     10**5,
     1,
     jax.random.PRNGKey(0)

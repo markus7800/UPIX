@@ -16,12 +16,12 @@ from dccxjax.core.branching_tracer import retrace_branching
 
 def chibs(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     inference_steps = [
-        InferenceStep(SingleVariable("w"), MH(WProposal(delta, K))),
-        InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
-        InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
-        InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+        MCMCStep(SingleVariable("w"), MH(WProposal(delta, K))),
+        MCMCStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
+        MCMCStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
+        MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
     ]
-    gibbs_regime = Gibbs(*inference_steps)
+    gibbs_regime = MCMCSteps(*inference_steps)
 
     class CollectType(NamedTuple):
         position: Trace
@@ -90,7 +90,7 @@ def chibs(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
         # regime consists only of steps for sample_names and values of condition_names are initialised to map and keep their values
         # name is also perturbed by regime but marginalised out in density estimation
 
-        regime = Gibbs(*inference_steps[i:])
+        regime = MCMCSteps(*inference_steps[i:])
         mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=False, return_map=return_map)
         progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
         progressbar_mng.start_progress()

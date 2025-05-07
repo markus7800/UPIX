@@ -76,7 +76,7 @@ for slp in active_slps:
     print(slp.formatted())
     Z_slp_est = estimate_Z_for_SLP_from_prior(slp, 1_000_000, jax.random.PRNGKey(0))
     print(f"{Z_slp_est=}")
-    result = mcmc(slp, InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), block_update=False)), 10, 1, jax.random.PRNGKey(0))
+    result = mcmc(slp, MCMCStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), block_update=False)), 10, 1, jax.random.PRNGKey(0))
     print(result)
 
 
@@ -88,7 +88,7 @@ config = DCC_Config(
     n_samples_per_chain = 1000,
     n_samples_for_Z_est = 10**6
 )
-result = dcc(m, lambda slp: InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), block_update=False)), jax.random.PRNGKey(0), config)
+result = dcc(m, lambda slp: MCMCStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), block_update=False)), jax.random.PRNGKey(0), config)
 # exit()
 # %%
 plot_histogram(result, "u")

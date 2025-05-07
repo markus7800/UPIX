@@ -28,7 +28,7 @@ m: Model = model(normal)()
 t1 = time()
 
 slp = convert_branchless_model_to_SLP(m)
-regime = InferenceStep(SingleVariable("x"), RW(gaussian_random_walk(0.1)))
+regime = MCMCStep(SingleVariable("x"), RW(gaussian_random_walk(0.1)))
 
 n_chains = 100
 collect_states = True

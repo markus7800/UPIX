@@ -3,7 +3,7 @@ from typing import Dict, Optional, List, Callable
 from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
 from ..types import Trace, PRNGKey
 from dataclasses import dataclass
-from .mcmc import InferenceRegime, get_mcmc_kernel, get_initial_inference_state
+from .mcmc import MCMCRegime
 from .estimate_Z import estimate_Z_for_SLP_from_mcmc, estimate_Z_for_SLP_from_prior
 from time import time
 from copy import deepcopy
@@ -93,7 +93,7 @@ class DCC_Result:
         return n
 
 
-def dcc(model: Model, regime_factory: Callable[[SLP], InferenceRegime], rng_key: PRNGKey, config: DCC_Config):
+def dcc(model: Model, regime_factory: Callable[[SLP], MCMCRegime], rng_key: PRNGKey, config: DCC_Config):
     all_slps: List[SLP] = []
     active_slps: List[SLP] = []
     proposed_slps: Dict[SLP,int] = dict()

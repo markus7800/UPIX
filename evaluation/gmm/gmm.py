@@ -162,11 +162,11 @@ def try_estimate_Z_with_AIS():
     for i, slp in enumerate(active_slps):
         print(slp.short_repr(), slp.formatted())
 
-        gibbs_regime = Gibbs(
-            InferenceStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
-            InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, slp.decision_representative["K"].item()))),
-            InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, slp.decision_representative["K"].item()))),
-            InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+        gibbs_regime = MCMCSteps(
+            MCMCStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
+            MCMCStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, slp.decision_representative["K"].item()))),
+            MCMCStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, slp.decision_representative["K"].item()))),
+            MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
         )
 
         def w_proposer(w: jax.Array) -> dist.Distribution:
@@ -174,11 +174,11 @@ def try_estimate_Z_with_AIS():
             w_unconstrained = T.inv(w)
             return dist.TransformedDistribution(dist.Normal(w_unconstrained, 0.5), T)
 
-        regime = Gibbs(
-            InferenceStep(SingleVariable("w"), RW(w_proposer)),
-            InferenceStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
-            InferenceStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
-            # InferenceStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
+        regime = MCMCSteps(
+            MCMCStep(SingleVariable("w"), RW(w_proposer)),
+            MCMCStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
+            MCMCStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
+            # MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
         )
 
         # mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=True, return_map=return_map)
@@ -253,23 +253,23 @@ for i, slp in enumerate(active_slps):
     print("\t", f" prior Z={Z.item()}, ESS={ESS.item()}, {frac_out_of_support=}")
 
 
-    regime = Gibbs(
-        InferenceStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
-        InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, slp.decision_representative["K"].item()))),
-        InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, slp.decision_representative["K"].item()))),
-        InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+    regime = MCMCSteps(
+        MCMCStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
+        MCMCStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, slp.decision_representative["K"].item()))),
+        MCMCStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, slp.decision_representative["K"].item()))),
+        MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
     )
 
     def w_proposer(w: jax.Array) -> dist.Distribution:
         T = dist.biject_to(dist.Dirichlet(jnp.ones(slp.decision_representative["K"].item())).support)
         w_unconstrained = T.inv(w)
         return dist.TransformedDistribution(dist.Normal(w_unconstrained, 0.25), T)
-    regime = Gibbs(
-        InferenceStep(SingleVariable("w"), RW(w_proposer)),
-        InferenceStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
-        InferenceStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
-        # InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
-        InferenceStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
+    regime = MCMCSteps(
+        MCMCStep(SingleVariable("w"), RW(w_proposer)),
+        MCMCStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
+        MCMCStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
+        # MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+        MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
     )
 
     init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []

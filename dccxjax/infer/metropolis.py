@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Callable, Dict, Optional, Tuple, NamedTuple
 from ..types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
 import dccxjax.distributions as dist
-from .mcmc import MCMCState, InferenceInfo, KernelState, InferenceAlgorithm, Kernel
+from .mcmc import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel
 from dataclasses import dataclass
 import math
 from jax.flatten_util import ravel_pytree
@@ -140,7 +140,7 @@ def summarise_mcmc_info(info: MHInfo, n_samples: int) -> str:
     else:
         return f"Acceptance rates for {n_chains} chains: [" + ", ".join([f"{ar.item():.4f}" for ar in acceptance_rate]) + "]"
 
-class RandomWalk(InferenceAlgorithm):
+class RandomWalk(MCMCInferenceAlgorithm):
     def __init__(self,
                  proposer: Callable[[jax.Array],dist.Distribution],
                  elementwise: bool = False,
@@ -242,7 +242,7 @@ def mh_kernel(
     new_position, new_log_prob = jax.lax.cond(accept, lambda _: (proposed_position, proposed_log_prob), lambda _: (current_position, current_log_prob), operand=None)
     return new_position, new_log_prob, accept
 
-class MetropolisHastings(InferenceAlgorithm):
+class MetropolisHastings(MCMCInferenceAlgorithm):
     def __init__(self, proposal: TraceProposal) -> None:
         self.proposal = proposal
         self.jitted_kernel = False

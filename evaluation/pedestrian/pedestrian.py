@@ -156,10 +156,10 @@ for i, slp in enumerate(active_slps):
     rng_key, key = jax.random.split(rng_key)
     keys = jax.random.split(key, n_samples_per_chain)
 
-    # regime = InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), sparse_numvar=2))
-    regime = Gibbs(
-        InferenceStep(PrefixSelector("step_"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
-        InferenceStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
+    # regime = MCMCStep(AllVariables(), RandomWalk(gaussian_random_walk(0.1), sparse_numvar=2))
+    regime = MCMCSteps(
+        MCMCStep(PrefixSelector("step_"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
+        MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
     )
     mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_infos, return_map)
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, n_chains, mcmc_step)
@@ -241,7 +241,7 @@ plt.show()
 #     n_samples_per_chain = 1024,
 #     n_samples_for_Z_est = 10**6
 # )
-# result = dcc(m, lambda _: InferenceStep(AllVariables(), RandomWalk(gaussian_random_walk(0.25), block_update=False)), jax.random.PRNGKey(0), config)
+# result = dcc(m, lambda _: MCMCStep(AllVariables(), RandomWalk(gaussian_random_walk(0.25), block_update=False)), jax.random.PRNGKey(0), config)
 
 # # plot_histogram(result, "start")
 # # plt.show()

@@ -4,7 +4,7 @@ from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, Typ
 from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
 from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
 from dataclasses import dataclass
-from .mcmc import InferenceRegime, MCMC, MCMCState, summarise_mcmc_info
+from .mcmc import MCMCRegime, MCMC, MCMCState, summarise_mcmc_info
 from .estimate_Z import estimate_log_Z_for_SLP_from_prior
 from time import time
 from copy import deepcopy
@@ -307,7 +307,7 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
         #     active_slps.extend(discovered_slps)
 
     @abstractmethod
-    def get_MCMC_inference_regime(self, slp: SLP) -> InferenceRegime:
+    def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         raise NotImplementedError
 
     def get_MCMC(self, slp: SLP) -> MCMC:

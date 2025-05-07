@@ -15,9 +15,10 @@ from multipledispatch import dispatch
 from tqdm.auto import tqdm as tqdm_auto
 
 __all__ = [
-    "InferenceStep",
-    "Gibbs",
-    "mcmc",
+    "MCMCRegime",
+    "MCMCSteps",
+    "MCMCStep",
+    "MCMC",
     "vectorise_kernel_over_chains",
     "init_inference_infos",
     "init_inference_infos_for_chains"
@@ -45,7 +46,7 @@ class MCMCState(NamedTuple):
     infos: Optional[InferenceInfos]
 
 
-class InferenceAlgorithm(ABC):
+class MCMCInferenceAlgorithm(ABC):
     @abstractmethod
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
         raise NotImplementedError
@@ -55,27 +56,27 @@ class InferenceAlgorithm(ABC):
         raise NotImplementedError
     
 
-class InferenceRegime(ABC):
+class MCMCRegime(ABC):
     @abstractmethod
-    def __iter__(self) -> Generator["InferenceStep", Any, None]:
+    def __iter__(self) -> Generator["MCMCStep", Any, None]:
         pass
 
-class InferenceStep(InferenceRegime):
-    def __init__(self, variable_selector: VariableSelector, algo: InferenceAlgorithm) -> None:
+class MCMCStep(MCMCRegime):
+    def __init__(self, variable_selector: VariableSelector, algo: MCMCInferenceAlgorithm) -> None:
         self.variable_selector = variable_selector
         self.algo = algo
     def __iter__(self):
         yield self
 
-class Gibbs(InferenceRegime):
-    def __init__(self, *subregimes: InferenceRegime) -> None:
+class MCMCSteps(MCMCRegime):
+    def __init__(self, *subregimes: MCMCRegime) -> None:
         self.subregimes = subregimes
     def __iter__(self):
         for subregime in self.subregimes:
-            if isinstance(subregime, InferenceStep):
+            if isinstance(subregime, MCMCStep):
                 yield subregime
             else:
-                assert isinstance(subregime, Gibbs)
+                assert isinstance(subregime, MCMCSteps)
                 yield from subregime
 
 class ProgressbarManager:
@@ -112,7 +113,7 @@ MCMC_COLLECT_TYPE = TypeVar("MCMC_COLLECT_TYPE")
 MCMCKernel = Callable[[MCMCState,PRNGKey],Tuple[MCMCState,MCMC_COLLECT_TYPE]]
 
 def get_mcmc_kernel(
-        slp: SLP, regime: InferenceRegime, *,
+        slp: SLP, regime: MCMCRegime, *,
         collect_inference_info: bool = False, 
         vectorised: bool = True,
         return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> MCMCKernel[MCMC_COLLECT_TYPE]:
@@ -216,7 +217,7 @@ def add_progress_bar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], slp_name: str, num_s
 class MCMC(Generic[MCMC_COLLECT_TYPE]):
     def __init__(self,
         slp: SLP,
-        regime: InferenceRegime,
+        regime: MCMCRegime,
         n_chains: int,
         *,
         collect_inference_info: bool = False,
@@ -255,35 +256,10 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
 
         return last_state, return_values
 
-def init_inference_infos(regime: InferenceRegime) -> InferenceInfos:
+def init_inference_infos(regime: MCMCRegime) -> InferenceInfos:
     return [step.algo.init_info() for step in regime]
-def init_inference_infos_for_chains(regime: InferenceRegime, n_chains: int) -> InferenceInfos:
+
+def init_inference_infos_for_chains(regime: MCMCRegime, n_chains: int) -> InferenceInfos:
     return broadcast_jaxtree([step.algo.init_info() for step in regime], (n_chains,))
 
-def get_initial_inference_state(slp: SLP, regime: InferenceRegime, n_chains: int, collect_inference_info: bool):
-    inference_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_inference_info else []
-
-    # add leading dimension by broadcasting, i.e. X of shape (m,n,...) has now shape (n_chains,m,n,...)
-    # and X[i,m,n,...] = X[j,m,n,...] for all i, j
-    return broadcast_jaxtree(InferenceCarry(0, 1., InferenceState(slp.decision_representative, slp.log_prob(slp.decision_representative)), inference_info), (n_chains,))
-
-    result, lp = coordinate_ascent(slp, 0.1, 1000, n_chains, jax.random.PRNGKey(0))
-    assert not jnp.isinf(lp).any()
-    print("HERE", result["start"], lp)
-    return InferenceState(result)
-
-
-def mcmc(slp: SLP, regime: InferenceRegime, n_samples: int, n_chains: int, rng_key: PRNGKey, collect_states: bool = True, collect_inference_info: bool = False):
-    
-    keys = jax.random.split(rng_key, n_samples)
-
-    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collect_inference_info, return_map=lambda x: x.state.position if collect_states else None)
-
-    # mcmc_step = add_progress_bar(n_samples, mcmc_step)
-
-    init = get_initial_inference_state(slp, regime, n_chains, collect_inference_info)
-
-    last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
- 
-    return all_positions if collect_states else last_state.state.position # TODO
 

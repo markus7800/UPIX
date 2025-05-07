@@ -12,7 +12,7 @@ from dccxjax.infer.dcc2 import *
 
 import logging
 
-from dccxjax.infer.mcmc import InferenceRegime
+from dccxjax.infer.mcmc import MCMCRegime
 setup_logging(logging.WARNING)
 
 @model
@@ -49,8 +49,8 @@ m.set_slp_formatter(HumanReadableDecisionsFormatter())
 # print(f"{Z2=}")
 
 class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
-    def get_MCMC_inference_regime(self, slp: SLP) -> InferenceRegime:
-        return InferenceStep(AllVariables(), RW(gaussian_random_walk(0.5)))
+    def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
+        return MCMCStep(AllVariables(), RW(gaussian_random_walk(0.5)))
     
 
 dcc_obj = DCCConfig(m, verbose=2,
@@ -94,10 +94,10 @@ m2.set_slp_formatter(HumanReadableDecisionsFormatter())
 
 
 class DCCConfig2(MCMCDCC[DCC_COLLECT_TYPE]):
-    def get_MCMC_inference_regime(self, slp: SLP) -> InferenceRegime:
-        return Gibbs(
-            # InferenceStep(SingleVariable("b"), RW(lambda b: dist.Bernoulli(0.1 * b + 0.9 * (1-b)))),
-            InferenceStep(PrefixSelector("m"), RW(gaussian_random_walk(0.5)))
+    def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
+        return MCMCSteps(
+            # MCMCStep(SingleVariable("b"), RW(lambda b: dist.Bernoulli(0.1 * b + 0.9 * (1-b)))),
+            MCMCStep(PrefixSelector("m"), RW(gaussian_random_walk(0.5)))
         )
     
 

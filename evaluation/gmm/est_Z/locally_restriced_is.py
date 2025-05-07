@@ -19,22 +19,22 @@ from lw import IS
 
 def lis(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     inference_steps = [
-        InferenceStep(SingleVariable("w"), MH(WProposal(delta, K))),
-        InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
-        InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
-        InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+        MCMCStep(SingleVariable("w"), MH(WProposal(delta, K))),
+        MCMCStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
+        MCMCStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
+        MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
     ]
-    regime = Gibbs(*inference_steps)
+    regime = MCMCSteps(*inference_steps)
 
     # def w_proposer(w: jax.Array) -> dist.Distribution:
     #     T = dist.biject_to(dist.Dirichlet(jnp.ones(K)).support)
     #     w_unconstrained = T.inv(w)
     #     return dist.TransformedDistribution(dist.Normal(w_unconstrained, 0.25), T)
-    # regime = Gibbs(
-    #     InferenceStep(SingleVariable("w"), RW(w_proposer)),
-    #     InferenceStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
-    #     InferenceStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
-    #     # InferenceStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), K), elementwise=True)),
+    # regime = MCMCSteps(
+    #     MCMCStep(SingleVariable("w"), RW(w_proposer)),
+    #     MCMCStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
+    #     MCMCStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
+    #     # MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), K), elementwise=True)),
     # )
 
 

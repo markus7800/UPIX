@@ -51,11 +51,11 @@ class HistogramProposer():
 
 
 def get_posterior_estimates(K: int, n_chains:int = 100, n_samples_per_chain: int = 10_000):
-    gibbs_regime = Gibbs(
-        InferenceStep(SingleVariable("w"), MH(WProposal(delta, K))),
-        InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
-        InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
-        InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+    gibbs_regime = MCMCSteps(
+        MCMCStep(SingleVariable("w"), MH(WProposal(delta, K))),
+        MCMCStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
+        MCMCStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
+        MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
     )
 
     class CollectType(NamedTuple):

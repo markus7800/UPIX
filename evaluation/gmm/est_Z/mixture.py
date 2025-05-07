@@ -78,12 +78,12 @@ from matplotlib import transforms as plt_transforms
 
 def get_posterior(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     inference_steps = [
-        InferenceStep(SingleVariable("w"), MH(WProposal(delta, K))),
-        InferenceStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
-        InferenceStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
-        InferenceStep(SingleVariable("zs"), MH(ZsProposal(ys))),
+        MCMCStep(SingleVariable("w"), MH(WProposal(delta, K))),
+        MCMCStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, K))),
+        MCMCStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, K))),
+        MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
     ]
-    gibbs_regime = Gibbs(*inference_steps)
+    gibbs_regime = MCMCSteps(*inference_steps)
 
     class CollectType(NamedTuple):
         position: Trace
