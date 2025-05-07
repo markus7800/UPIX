@@ -7,8 +7,8 @@ from time import time
 
 @model
 def normal():
-    sample("X", dist.Normal(0., 1.))
-    # sample("X", dist.Uniform(0., 1.))
+    # sample("X", dist.Normal(0., 1.))
+    sample("X", dist.Uniform(0., 1.))
 
 
 m = normal()
@@ -19,7 +19,7 @@ n_samples_per_chain = 10_000
 
 mcmc_config = MCMC(
     slp,
-    MCMCStep(AllVariables(), HMC(10,0.1)),
+    MCMCStep(AllVariables(), HMC(10,0.1,unconstrained=True)),
     # MCMCStep(AllVariables(), RW(gaussian_random_walk(1.0))),
     n_chains,
     collect_inference_info=True,

@@ -118,11 +118,12 @@ class UnconstrainedLogprobCtx(SampleContext):
         super().__init__()
         self.X_unconstrained = X_unconstrained
         self.X_constrained: Trace = dict()
-        self.log_prob: FloatArray = jnp.array(0.,float)
+        self.log_prior: FloatArray = jnp.array(0.,float)
+        self.log_likelihood: FloatArray = jnp.array(0.,float)
     
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
-            self.log_prob += distribution.log_prob(observed).sum()
+            self.log_likelihood += distribution.log_prob(observed).sum()
             return cast(DIST_SUPPORT, observed)
         assert distribution.numpyro_base._validate_args
 
@@ -131,19 +132,20 @@ class UnconstrainedLogprobCtx(SampleContext):
         if distribution.numpyro_base.is_discrete:
             constrained_value = cast(DIST_SUPPORT, unconstrained_value)
             self.X_constrained[address] = constrained_value
+            self.log_prior += distribution.log_prob(constrained_value).sum()
+
         else:
-            transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
+            transform: numpyro_dists.transforms.Transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
             constrained_value = cast(DIST_SUPPORT, transform(unconstrained_value))
             self.X_constrained[address] = constrained_value
 
-            unconstrained_distribution = numpyro_dists.TransformedDistribution(distribution, transform.inv)
-            
-            self.log_prob += unconstrained_distribution.log_prob(unconstrained_value).sum()
+            unconstrained_distribution = numpyro_dists.TransformedDistribution(distribution.numpyro_base, transform.inv)
+            self.log_prior += unconstrained_distribution.log_prob(unconstrained_value).sum()
 
         return constrained_value
     
     def logfactor(self, lf: FloatArrayLike) -> None:
-        self.log_prob += lf
+        self.log_likelihood += lf
     
 
 class TransformToUnconstrainedCtx(SampleContext):
@@ -161,7 +163,7 @@ class TransformToUnconstrainedCtx(SampleContext):
         if distribution.numpyro_base.is_discrete:
             self.X_unconstrained[address] = constrained_value
         else:
-            transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
+            transform: numpyro_dists.transforms.Transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
             unconstrained_value = transform.inv(constrained_value)
             self.X_unconstrained[address] = unconstrained_value
 

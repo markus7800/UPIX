@@ -67,5 +67,26 @@ class GibbsModel:
             log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
         return _log_prob
-
     
+
+    def unconstrained_log_prior_likeli_pathcond(self, X: Trace) -> Tuple[FloatArray,FloatArray,BoolArray, Trace]:
+        assert X.keys() == self.variables
+        return self.slp._unconstrained_log_prior_likeli_pathcond(X | self.Y)
+
+    def tempered_unconstrained_log_prob(self, temperature: FloatArray) -> Callable[[Trace], FloatArray]:
+        def _log_prob(X: Trace) -> FloatArray:
+            assert X.keys() == self.variables
+            log_prior, log_likelihood, path_condition, X_constrained = self.unconstrained_log_prior_likeli_pathcond(X)
+            return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
+        return _log_prob
+    
+    def unraveled_unconstrained_tempered_log_prob(self, temperature: FloatArray, unravel_fn: Optional[Callable[[jax.Array],Trace]] = None) -> Callable[[jax.Array], FloatArray]:
+        if unravel_fn is None:
+            _, unravel_fn = ravel_pytree(self.X_representative)
+
+        def _log_prob(X_flat: jax.Array) -> FloatArray:
+            X = unravel_fn(X_flat)
+            assert X.keys() == self.variables
+            log_prior, log_likelihood, path_condition, X_constrained = self.unconstrained_log_prior_likeli_pathcond(X)
+            return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
+        return _log_prob
