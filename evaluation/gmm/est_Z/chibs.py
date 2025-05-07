@@ -38,7 +38,7 @@ def chibs(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
         sample("ys", dist.Normal(mus[zs], jax.lax.sqrt(vars[zs])), observed=ys)
 
 
-    slp = convert_branchless_model_to_SLP(model(gmm)())
+    slp = SLP_from_branchless_model(model(gmm)())
 
     mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, gibbs_regime, collect_inference_info=False, return_map=return_map)
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)

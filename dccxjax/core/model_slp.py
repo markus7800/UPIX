@@ -36,8 +36,13 @@ class Model:
     # not jitted
     def log_prob(self, X: Trace) -> FloatArray:
         with LogprobCtx(X) as ctx:
-            self.f(*self.args, **self.kwargs)
+            self()
             return ctx.log_likelihood + ctx.log_prior
+        
+    def generate(self, rng_key: PRNGKey, Y: Trace = dict()):
+        with GenerateCtx(rng_key, Y) as ctx:
+            self()
+            return ctx.X, ctx.log_likelihood + ctx.log_prior
 
     def __repr__(self) -> str:
         return f"Model({self.f.__name__}, {self.args}, {self.kwargs})"
@@ -269,8 +274,7 @@ class SLP:
         if self._all_continuous is None:
             self._all_continuous = not any(b for _, b in self.get_is_discrete_map().items())
         return self._all_continuous
-
-
+    
 def HumanReadableDecisionsFormatter():
     def _formatter(slp: SLP):
         return "SLP(" + slp.branching_decisions.to_human_readable() + ")"

@@ -4,6 +4,7 @@ from typing import Set, Optional, Tuple, Callable
 import jax
 from ..types import Trace, FloatArray, BoolArray
 import jax.numpy as jnp
+from jax.flatten_util import ravel_pytree
 
 # def make_gibbs_log_prior_likeli_pathcond(slp: SLP, conditional_variables: Set[str]) -> Callable[[Trace,Trace], Tuple[FloatArray,FloatArray,BoolArray]]:
 #     def _gibbs_log_prior_likeli_pathcond(X: Trace, Y: Trace):
@@ -26,9 +27,10 @@ class GibbsModel:
         # self._gibbs_log_prior_likeli_pathcond = make_gibbs_log_prior_likeli_pathcond(slp, self.conditional_variables)
         if Y is not None:
             assert Y.keys() == self.conditional_variables
-            self.Y = Y
+            self.Y: Trace = Y
         else:
-            self.Y = {address: slp.decision_representative[address] for address in self.conditional_variables}
+            self.Y: Trace = {address: slp.decision_representative[address] for address in self.conditional_variables}
+        self.X_representative: Trace = {address: value for address, value in slp.decision_representative.items() if address not in self.conditional_variables}
 
     def split_trace(self, t: Trace) -> Tuple[Trace,Trace]:
         X: Trace = {address: t[address] for address in self.variables}
@@ -50,6 +52,17 @@ class GibbsModel:
     
     def tempered_log_prob(self, temperature: FloatArray) -> Callable[[Trace], FloatArray]:
         def _log_prob(X: Trace) -> FloatArray:
+            assert X.keys() == self.variables
+            log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X)
+            return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
+        return _log_prob
+    
+    def unraveled_tempered_log_prob(self, temperature: FloatArray, unravel_fn: Optional[Callable[[jax.Array],Trace]] = None) -> Callable[[jax.Array], FloatArray]:
+        if unravel_fn is None:
+            _, unravel_fn = ravel_pytree(self.X_representative)
+
+        def _log_prob(X_flat: jax.Array) -> FloatArray:
+            X = unravel_fn(X_flat)
             assert X.keys() == self.variables
             log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)

@@ -10,7 +10,7 @@ __all__ = [
     "sample_from_prior",
     "sample_from_prior_with_decisions",
     "slp_from_decision_representative",
-    "convert_branchless_model_to_SLP",
+    "SLP_from_branchless_model",
 ]
 
 
@@ -41,7 +41,7 @@ def sample_from_prior_with_decisions(model: Model, rng_key: PRNGKey) -> Tuple[Tr
     
 
 # assumes model has no branching
-def convert_branchless_model_to_SLP(model: Model) -> SLP:
+def SLP_from_branchless_model(model: Model) -> SLP:
     X = sample_from_prior(model, jax.random.PRNGKey(0))
     slp = slp_from_decision_representative(model, X)
     assert len(slp.branching_decisions.decisions) == 0

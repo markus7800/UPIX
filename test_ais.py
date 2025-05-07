@@ -341,7 +341,7 @@ def normal():
     sample("y", dist.Normal(x, obs_sigma), observed=obs)
 
 m: Model = model(normal)()
-slp = convert_branchless_model_to_SLP(m)
+slp = SLP_from_branchless_model(m)
 
 # tempering_schedule = jnp.array([0.,0.5,1.], float)
 tempering_schedule = sigmoid(jnp.linspace(-25,25,1000))

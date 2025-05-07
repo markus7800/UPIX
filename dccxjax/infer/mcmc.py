@@ -21,7 +21,8 @@ __all__ = [
     "MCMC",
     "vectorise_kernel_over_chains",
     "init_inference_infos",
-    "init_inference_infos_for_chains"
+    "init_inference_infos_for_chains",
+    "summarise_mcmc_info"
 ]
 
 InferenceInfo = NamedTuple

@@ -61,7 +61,7 @@ def lis(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
 
     #     logfactor(log_likelihoods.sum())
     
-    slp = convert_branchless_model_to_SLP(model(gmm)())
+    slp = SLP_from_branchless_model(model(gmm)())
 
     collect_info = True
 

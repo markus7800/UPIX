@@ -6,7 +6,6 @@ from typing import Any, Optional, Dict, Callable, cast
 from abc import ABC, abstractmethod
 from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike
 
-
 __all__ = [
     "sample",
     "logfactor",
@@ -69,7 +68,6 @@ class GenerateCtx(SampleContext):
     def logfactor(self, lf: FloatArrayLike) -> None:
         self.log_likelihood += lf
         
-    
 class LogprobCtx(SampleContext):
     def __init__(self, X: Trace) -> None:
         super().__init__()
