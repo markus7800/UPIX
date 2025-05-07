@@ -76,9 +76,17 @@ def formatter(slp: SLP):
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_K)
 
+from reversible_jumps import *
+
+for i in range(10):
+    print(i)
+    rng_key = jax.random.PRNGKey(i)
+    X, lp = m.generate(rng_key)
+    del X["zs"]
+    split_move(X, lp, rng_key, X["K"].item(), m.log_prob, check=True)
 
 
-
+exit()
 class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         return MCMCSteps(
