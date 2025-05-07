@@ -30,86 +30,80 @@ def gaussian_random_walk(scale: float):
 
 def rw_kernel(
     rng_key: PRNGKey,
-    current_position: Trace,
+    current_position: FloatArray,
     current_log_prob: FloatArray,
-    log_prob_fn: Callable[[Trace], FloatArray],
+    log_prob_fn: Callable[[FloatArray], FloatArray],
     proposer: Callable[[jax.Array], dist.Distribution]
-) -> Tuple[Trace, FloatArray, BoolArray]:
+) -> Tuple[FloatArray, FloatArray, BoolArray]:
     
-    current_value_flat, unravel_fn = ravel_pytree(current_position)
-    proposal_dist = proposer(current_value_flat)
+    proposal_dist = proposer(current_position)
     proposal_key, accept_key = jax.random.split(rng_key)
-    proposed_value_flat = proposal_dist.sample(proposal_key)
-    proposed_position = unravel_fn(proposed_value_flat)
+    proposed_position = proposal_dist.sample(proposal_key)
     proposed_log_prob = log_prob_fn(proposed_position)
     
-    backward_dist = proposer(proposed_value_flat)
-    Q = backward_dist.log_prob(current_value_flat).sum() - proposal_dist.log_prob(proposed_value_flat).sum()
+    backward_dist = proposer(proposed_position)
+    Q = backward_dist.log_prob(current_position).sum() - proposal_dist.log_prob(proposed_position).sum()
     P = proposed_log_prob - current_log_prob
-
     accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
     new_position, new_log_prob = jax.lax.cond(accept, lambda _: (proposed_position, proposed_log_prob), lambda _: (current_position, current_log_prob), operand=None)
+
     return new_position, new_log_prob, accept
 
 def rw_kernel_sparse(   
     rng_key: PRNGKey,
-    current_position: Trace,
+    current_position: FloatArray,
     current_log_prob: FloatArray,
-    log_prob_fn: Callable[[Trace], FloatArray],
+    log_prob_fn: Callable[[FloatArray], FloatArray],
     proposer: Callable[[jax.Array], dist.Distribution],
     p: float, # static
     n_dim: int
-) -> Tuple[Trace, FloatArray, IntArray]:
+) -> Tuple[FloatArray, FloatArray, IntArray]:
     
-    current_value_flat, unravel_fn = ravel_pytree(current_position)
-    assert current_value_flat.shape == (n_dim,)
+    assert current_position.shape == (n_dim,)
 
-    def step(current_value_flat: FloatArray, current_log_prob: FloatArray, n_accepted: IntArray, step_key: PRNGKey) -> Tuple[Tuple[FloatArray,FloatArray,IntArray],None]:
-        proposal_dist = proposer(current_value_flat)
+    def step(current_position: FloatArray, current_log_prob: FloatArray, n_accepted: IntArray, step_key: PRNGKey) -> Tuple[Tuple[FloatArray,FloatArray,IntArray],None]:
+        proposal_dist = proposer(current_position)
         proposal_key, mask_key, accept_key = jax.random.split(step_key,3)
-        proposed_value_flat = proposal_dist.sample(proposal_key)
+        proposed_position = proposal_dist.sample(proposal_key)
 
-        mask = jax.random.bernoulli(mask_key, p, proposed_value_flat.shape)
-        proposed_value_flat = jax.lax.select(mask, proposed_value_flat, current_value_flat)
+        mask = jax.random.bernoulli(mask_key, p, proposed_position.shape)
+        proposed_position = jax.lax.select(mask, proposed_position, current_position)
 
-        proposed_position = unravel_fn(proposed_value_flat)
         proposed_log_prob = log_prob_fn(proposed_position)
 
-        backward_dist = proposer(proposed_value_flat)
-        Q = backward_dist.log_prob(current_value_flat).sum() - proposal_dist.log_prob(proposed_value_flat).sum()
+        backward_dist = proposer(proposed_position)
+        Q = backward_dist.log_prob(current_position).sum() - proposal_dist.log_prob(proposed_position).sum()
         P = proposed_log_prob - current_log_prob
 
         accept = jax.lax.log(jax.random.uniform(accept_key)) < (P + Q)
-        new_value_flat = jax.lax.select(accept, proposed_value_flat, current_value_flat)
+        new_value_flat = jax.lax.select(accept, proposed_position, current_position)
         new_log_prob = jax.lax.select(accept, proposed_log_prob, current_log_prob)
 
         return (new_value_flat, new_log_prob, n_accepted + accept), None
     
     scan_keys = jax.random.split(rng_key, int(math.ceil(1./p)))
-    (last_position_flat, last_log_prob, n_accepted), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_value_flat, current_log_prob, jnp.array(0,int)), scan_keys)
+    (last_position, last_log_prob, n_accepted), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_position, current_log_prob, jnp.array(0,int)), scan_keys)
 
 
-    return unravel_fn(last_position_flat), last_log_prob, n_accepted
+    return last_position, last_log_prob, n_accepted
     
 
 def rw_kernel_elementwise(
     rng_key: PRNGKey,
-    current_position: Trace,
+    current_position: FloatArray,
     current_log_prob: FloatArray,
-    log_prob_fn: Callable[[Trace], FloatArray],
+    log_prob_fn: Callable[[FloatArray], FloatArray],
     proposer: Callable[[jax.Array], dist.Distribution],
     n_dim: int
-) -> Tuple[Trace, FloatArray, IntArray]:
+) -> Tuple[FloatArray, FloatArray, IntArray]:
     
-    def _body(i: int, current_position: Trace, current_log_prob: FloatArray, n_accept: IntArray, body_rng_key: PRNGKey) -> Tuple[FloatArray,FloatArray,IntArray]:
-        current_value_flat, unravel_fn = ravel_pytree(current_position)
-        assert current_value_flat.shape == (n_dim,)
-        sub_current_value_flat = current_value_flat[i]
+    def _body(i: int, current_position: FloatArray, current_log_prob: FloatArray, n_accept: IntArray, body_rng_key: PRNGKey) -> Tuple[FloatArray,FloatArray,IntArray]:
+        assert current_position.shape == (n_dim,)
+        sub_current_value_flat = current_position[i]
         proposal_dist = proposer(sub_current_value_flat)
         body_rng_key, proposal_key = jax.random.split(body_rng_key)
         sub_proposed_value_flat = proposal_dist.sample(proposal_key)
-        proposed_value_flat = current_value_flat.at[i].set(sub_proposed_value_flat)
-        proposed_position = unravel_fn(proposed_value_flat)
+        proposed_position = current_position.at[i].set(sub_proposed_value_flat)
         proposed_log_prob = log_prob_fn(proposed_position)
 
         backward_dist = proposer(sub_proposed_value_flat)
@@ -145,7 +139,8 @@ class RandomWalk(MCMCInferenceAlgorithm):
                  proposer: Callable[[jax.Array],dist.Distribution],
                  elementwise: bool = False,
                  sparse_frac: Optional[float] = None,
-                 sparse_numvar: Optional[int] = None
+                 sparse_numvar: Optional[int] = None,
+                 unconstrained: bool = False
                  ) -> None:
 
         self.proposer = proposer
@@ -153,6 +148,7 @@ class RandomWalk(MCMCInferenceAlgorithm):
         self.sparse_frac = sparse_frac
         self.sparse_numvar = sparse_numvar
         self.sparse = self.sparse_frac is not None or self.sparse_numvar is not None
+        self.unconstrained = unconstrained
 
     def init_info(self) -> InferenceInfo:
         if not self.elementwise:
@@ -183,27 +179,39 @@ class RandomWalk(MCMCInferenceAlgorithm):
         @jax.jit
         def _rw_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
-            X, Y = gibbs_model.split_trace(state.position)
+            current_postion = gibbs_model.slp.transform_to_unconstrained(state.position) if self.unconstrained else state.position
+
+            X, Y = gibbs_model.split_trace(current_postion)
             gibbs_model.set_Y(Y)
         
-            _tempered_log_prob_fn = gibbs_model.tempered_log_prob(temperature)
+            X_flat, unravel_fn = ravel_pytree(X)
+            if self.unconstrained:
+                _tempered_log_prob_fn = gibbs_model.unraveled_unconstrained_tempered_log_prob(temperature, unravel_fn)
+            else:
+                _tempered_log_prob_fn = gibbs_model.unraveled_tempered_log_prob(temperature, unravel_fn)
+
             if not self.elementwise:
                 if self.sparse:
-                    next_X, next_log_prob, n_accepted = rw_kernel_sparse(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer, sparse_p, n_dim)
+                    next_X_flat, next_log_prob, n_accepted = rw_kernel_sparse(rng_key, X_flat, state.log_prob, _tempered_log_prob_fn, self.proposer, sparse_p, n_dim)
                     accepted = n_accepted.sum() / int(math.ceil(1./sparse_p))
                 else:
-                    next_X, next_log_prob, accepted = rw_kernel(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer)
+                    next_X_flat, next_log_prob, accepted = rw_kernel(rng_key, X_flat, state.log_prob, _tempered_log_prob_fn, self.proposer)
+    
             else:
-                next_X, next_log_prob, n_accepted = rw_kernel_elementwise(rng_key, X, state.log_prob, _tempered_log_prob_fn, self.proposer, n_dim)
+                next_X_flat, next_log_prob, n_accepted = rw_kernel_elementwise(rng_key, X_flat, state.log_prob, _tempered_log_prob_fn, self.proposer, n_dim)
                 accepted = n_accepted.sum() / n_dim
 
+
+            next_position = gibbs_model.combine_to_trace(unravel_fn(next_X_flat), Y)
+            if self.unconstrained:
+                next_position = gibbs_model.slp.transform_to_constrained(next_position)
 
             mh_info = state.info
             if collect_inferenence_info:
                 assert isinstance(mh_info, MHInfo)
                 mh_info = MHInfo(mh_info.accepted + accepted)
 
-            return KernelState(gibbs_model.combine_to_trace(next_X, Y), next_log_prob, mh_info)
+            return KernelState(next_position, next_log_prob, mh_info)
         
         return _rw_kernel
     
