@@ -39,6 +39,23 @@ def pedestrian():
     return start
 
 
+def pedestrian_rec_walk(t: int, position: FloatArrayLike, distance: FloatArrayLike) -> FloatArrayLike:
+    if (position > 0) & (distance < 10):
+        step = sample(f"step_{t}", dist.Uniform(-1.,1.))
+        position += step
+        distance += jax.lax.abs(step)
+        return pedestrian_rec_walk(t+1, position, distance)
+    else:
+        return distance
+
+def pedestrian_recursive():
+    start = sample("start", dist.Uniform(0.,3.))
+    distance = pedestrian_rec_walk(0, start, 0.)
+    sample("obs", dist.Normal(distance, 0.1), observed=1.1)
+    return start
+
+
+# m = model(pedestrian_recursive)()
 m = model(pedestrian)()
 
 def find_t_max(slp: SLP):
@@ -87,10 +104,10 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
 dcc_obj = DCCConfig(m, verbose=2,
               init_n_samples=250,
               init_estimate_weight_n_samples=1_000_000,
-              mcmc_n_chains=100,
+              mcmc_n_chains=10,
               mcmc_n_samples_per_chain=100_000,
               mcmc_collect_for_all_traces=True,
-              estimate_weight_n_samples=100_000_000,
+              estimate_weight_n_samples=10_000_000,
               return_map=lambda trace: {"start": trace["start"]})
 
 t0 = time()
@@ -134,5 +151,5 @@ W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf)) # wasserstein distance
 infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
 
 plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
-plt.title(f"W1 = {W1_distance.item():.4g}, L^\\infty = {infty_distance.item():.4g}")
+plt.title(f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}")
 plt.show()
