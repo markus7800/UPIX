@@ -168,10 +168,11 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
         return f"MCMC-DCCResult({len(self.slp_log_weights)} SLPs)"
     
     def pprint(self):
+        log_Z_normaliser = self.get_log_weight_normaliser()
         print("MCMC-DCCResult {")
         for slp, log_weight in self.slp_log_weights.items():
             weighted_sample = self.slp_weighted_samples[slp]
-            print(f"\t{slp}: {weighted_sample.values} with prob {jnp.exp(log_weight).item():.6f}")
+            print(f"\t{slp}: {weighted_sample.values} with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
         print("}")
 
     def get_slps(self, predicate: Callable[[DCC_COLLECT_TYPE], bool] = lambda _: True) -> List[SLP]:

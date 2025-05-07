@@ -23,7 +23,6 @@ setup_logging(logging.WARNING)
 compilation_time_tracker = CompilationTimeTracker()
 jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
 
-t0 = time()
 
 def pedestrian():
     start = sample("start", dist.Uniform(0.,3.))
