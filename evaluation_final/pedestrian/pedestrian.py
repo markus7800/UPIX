@@ -77,6 +77,8 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
             MCMCStep(PrefixSelector("step"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
             MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
         )
+        # return MCMCStep(AllVariables(), HMC(5, 0.01, unconstrained=True))
+    
     def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
         _active_slps: List[SLP] = []
         super().initialise_active_slps(_active_slps, rng_key)
@@ -105,7 +107,7 @@ dcc_obj = DCCConfig(m, verbose=2,
               init_n_samples=250,
               init_estimate_weight_n_samples=1_000_000,
               mcmc_n_chains=10,
-              mcmc_n_samples_per_chain=100_000,
+              mcmc_n_samples_per_chain=25_000,
               mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=10_000_000,
               return_map=lambda trace: {"start": trace["start"]})
@@ -124,6 +126,8 @@ print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.
 # plot_histogram(result, "start")
 # plot_trace(result, "start")
 plot_histogram_by_slp(result, "start")
+# plot_histogram_by_slp(result, "step_1")
+# plot_histogram_by_slp(result, "step_2")
 plt.show()
 
 

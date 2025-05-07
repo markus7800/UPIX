@@ -16,20 +16,27 @@ __all__ = [
 class HMCInfo(NamedTuple):
     accepted: IntArray
     diverged: IntArray
+    proposed_out_of_support: IntArray
 
 @dispatch(HMCInfo, int)
 def summarise_mcmc_info(info: HMCInfo, n_samples: int) -> str:
-    # TODO
     n_chains = info.accepted.shape[0]
     acceptance_rate = info.accepted / n_samples
     if n_chains > 10:
         acceptance_rate_mean = jnp.mean(acceptance_rate)
         acceptance_rate_std = jnp.std(acceptance_rate)
-        raise NotImplementedError
-        return f"Acceptance rate: {acceptance_rate_mean.item():.4f} +/-  {acceptance_rate_std.item():.4f}"
+        divergences_mean = jnp.mean(info.diverged)
+        divergences_std = jnp.std(info.diverged)
+        frac = info.proposed_out_of_support / jnp.maximum(info.diverged,1.0)
+        out_of_support_mean = jnp.mean(frac)
+        out_of_support_std = jnp.std(frac)
+        
+        s = f"HMCInfo for {n_chains} chains - acceptance rates: {acceptance_rate_mean.item():.4f} +/- {acceptance_rate_std.item():.4f}, "
+        s += f"divergences (% out-of-support): {divergences_mean.item():.4f} +/- {divergences_std.item():.4f} ({out_of_support_mean.item():.4f} +/- {out_of_support_std.item():.4f})"
+        return s
     else:
         s = f"HMCInfo for {n_chains} chains - acceptance rates: [" + ", ".join([f"{ar.item():.4f}" for ar in acceptance_rate]) + "], "
-        s += f"divergence numbers: [" + ", ".join([f"{d.item():,}" for d in info.diverged]) + "]"
+        s += f"divergences (% out-of-support): [" + ", ".join([f"{d.item():,} ({o.item()/max(d.item(),1):.2f})" for d, o in zip(info.diverged,info.proposed_out_of_support)]) + "]"
         return s
 
 class LeapfrogState(NamedTuple):
@@ -104,7 +111,7 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
 
 
     def init_info(self) -> InferenceInfo:
-        return HMCInfo(jnp.array(0,int), jnp.array(0,int))
+        return HMCInfo(jnp.array(0,int), jnp.array(0,int), jnp.array(0,int))
     
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
         X_repr, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
@@ -140,7 +147,11 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
             hmc_info = state.info
             if collect_inferenence_info:
                 assert isinstance(hmc_info, HMCInfo)
-                hmc_info = HMCInfo(hmc_info.accepted + accept, hmc_info.diverged + diverged)
+                hmc_info = HMCInfo(
+                    hmc_info.accepted + accept,
+                    hmc_info.diverged + diverged,
+                    hmc_info.proposed_out_of_support + (jnp.isinf(proposed_log_prob))
+                )
 
             return KernelState(next_position, next_log_prob, hmc_info)
         

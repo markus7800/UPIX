@@ -136,9 +136,9 @@ def summarise_mcmc_info(info: MHInfo, n_samples: int) -> str:
     if n_chains > 10:
         acceptance_rate_mean = jnp.mean(acceptance_rate)
         acceptance_rate_std = jnp.std(acceptance_rate)
-        return f"MHInfo for {n_chains} chains - acceptance rate: {acceptance_rate_mean.item():.4f} +/-  {acceptance_rate_std.item():.4f}"
+        return f"MHInfo for {n_chains} chains - acceptance rate: {acceptance_rate_mean.item():.4f} +/- {acceptance_rate_std.item():.4f}"
     else:
-        return f"MHInfo for {n_chains} chains- acceptance rates: [" + ", ".join([f"{ar.item():.4f}" for ar in acceptance_rate]) + "]"
+        return f"MHInfo for {n_chains} chains - acceptance rates: [" + ", ".join([f"{ar.item():.4f}" for ar in acceptance_rate]) + "]"
 
 class RandomWalk(MCMCInferenceAlgorithm):
     def __init__(self,
