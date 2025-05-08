@@ -78,13 +78,13 @@ m.set_slp_sort_key(find_K)
 
 from reversible_jumps import *
 
-for i in tqdm(range(1000)):
+for i in (range(1000)):
+    print(i)
     rng_key = jax.random.PRNGKey(i)
     X, lp = m.generate(rng_key)
-    del X["zs"]
-    split_move(X, lp, rng_key, X["K"].item(), m.log_prob, check=True)
+    split_move(X, lp, rng_key, X["K"].item(), ys, m.log_prob, check=True)
     if X["K"].item() > 0:
-        merge_move(X, lp, rng_key, X["K"].item(), m.log_prob, check=True)
+        merge_move(X, lp, rng_key, X["K"].item(), ys, m.log_prob, check=True)
 
 
 exit()
