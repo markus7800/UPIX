@@ -78,8 +78,7 @@ m.set_slp_sort_key(find_K)
 
 from reversible_jumps import *
 
-for i in range(1000):
-    print(i)
+for i in tqdm(range(1000)):
     rng_key = jax.random.PRNGKey(i)
     X, lp = m.generate(rng_key)
     del X["zs"]

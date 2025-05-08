@@ -49,7 +49,7 @@ def split_randomness_logQ(aux: SplitAux, K: int):
 
     logQ += numpyro_dists.Beta(2.,2.).log_prob(aux.u1)
 
-    logQ += numpyro_dists.Beta(2.,2.).log_prob(aux.u2)
+    logQ += numpyro_dists.Beta(2.,2.).log_prob(jnp.abs(aux.u2))
 
     logQ += numpyro_dists.Beta(2.,2.).log_prob(aux.u3)
 
@@ -100,26 +100,26 @@ def compute_log_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, 
 def split_move(X: Trace, lp: float, rng_key: PRNGKey, K: int, model_log_prob: Callable[[Trace],FloatArray], check=False):
     aux_key, accept_key = jax.random.split(rng_key, 2)
     split_aux = split_randomness(aux_key, K)
-    print(f"{X=}")
-    print(f"{split_aux=}")
+    # print(f"{X=}")
+    # print(f"{split_aux=}")
     logQ_split = split_randomness_logQ(split_aux, K)
 
     X_new, merge_aux, logabsdetJ = split_involution(X, split_aux, K)
-    print(f"{X_new=} {K+1=}")
+    # print(f"{X_new=} {K+1=}")
 
     if check:
         X_2, split_aux_2, logabsdetJ_2 = merge_involution(X_new, merge_aux, K+1)
-        print(f"{X_2=}")
-        print(f"{split_aux_2=}")
-        for addr, value in X_2.items():
-            assert jnp.all(jnp.isclose(value, X[addr], rtol=0, atol=1e-3)), f"{value} vs {X[addr]}"
+        # print(f"{X_2=}")
+        # print(f"{split_aux_2=}")
         split_aux_2_flat, _ = ravel_pytree(split_aux_2)
         split_aux_flat, _ = ravel_pytree(split_aux)
-        assert jnp.all(jnp.isclose(split_aux_2_flat, split_aux_flat, rtol=0, atol=1e-3))
+        assert jnp.all(jnp.isclose(split_aux_2_flat, split_aux_flat, rtol=0, atol=1e-3)), f"{split_aux_2} vs {split_aux}"
+        for addr, value in X_2.items():
+            assert jnp.all(jnp.isclose(value, X[addr], rtol=0, atol=1e-3)), f"{addr}: {value} vs {X[addr]}"
         # assert jnp.isclose(logabsdetJ_2, 1-logabsdetJ, rtol=0, atol=1e-3), f"{logabsdetJ_2} vs {1-logabsdetJ}"
-        print("Check: ok.")
+        # print("Check: ok.")
 
-    # logQ_merge = merge_randomness_logQ(merge_aux, K)
+    logQ_merge = merge_randomness_logQ(merge_aux, K+1)
 
     # log_alpha = model_log_prob(X_new) - lp + logQ_merge - logQ_split + detJ
 
@@ -139,6 +139,7 @@ def split_involution(X: Trace, aux: SplitAux, K: int):
     w1, w2 = w * u1, w * (1 - u1)
     mu1, mu2 = mu - u2 * jnp.sqrt(var * w2/w1), mu + u2 * jnp.sqrt(var * w1/w2)
     var1, var2 = u3 * (1 - jnp.square(u2)) * var * w/w1, (1 - u3) * (1 - jnp.square(u2)) * var * w/w2
+    # j1 always gets the smaller of mu1, mu2
 
     logabsdetJ = compute_log_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2)
 
@@ -147,16 +148,8 @@ def split_involution(X: Trace, aux: SplitAux, K: int):
     mus_new = jnp.zeros((K+1,))
     vars_new = jnp.zeros((K+1,))
 
-    ixs = [str(ix) if i != j_star else "*" for i, ix in enumerate(split_idx(jnp.arange(0,K+1-1), j_star, j1, j2))]
-    print(f"split ixs {j_star=} {j1=} {j2=} {ixs} {w_new.shape=} {X['w'].shape=} {K=}") # w_new.shape = (K+1,) X['w'].shape == (K,)
     ixs1 = split_idx(jnp.arange(0,j_star),j_star,j1,j2)
     ixs2 = split_idx(jnp.arange(j_star+1,K+1-1),j_star,j1,j2)
-
-    print(f"{ixs1=} {ixs2=}")
-    ixs1_ = list(range(0,j_star))
-    ixs2_ = list(range(j_star+1,K+1-1))
-
-    print(f"range(0,j_star)={ixs1_} range(j_star+1,K+1-1)={ixs2_}")
 
     w_new = w_new.at[ixs1].set(X["w"][:j_star])
     mus_new = mus_new.at[ixs1].set(X["mus"][:j_star])
@@ -192,15 +185,15 @@ def merge_move(X: Trace, lp: float, rng_key: PRNGKey, K: int, model_log_prob: Ca
 
     if check:
         X_2, merge_aux_2, logabsdetJ_2 = split_involution(X_new, split_aux, K-1)
-        for addr, value in X_2.items():
-            assert jnp.all(jnp.isclose(value, X[addr], rtol=0, atol=1e-3)), f"{value} vs {X[addr]}"
         merge_aux_2_flat, _ = ravel_pytree(merge_aux_2)
         merge_aux_flat, _ = ravel_pytree(merge_aux)
-        assert jnp.all(jnp.isclose(merge_aux_2_flat, merge_aux_flat, rtol=0, atol=1e-3))
+        assert jnp.all(jnp.isclose(merge_aux_2_flat, merge_aux_flat, rtol=0, atol=1e-3)), f"{merge_aux_2} vs {merge_aux}"
+        for addr, value in X_2.items():
+            assert jnp.all(jnp.isclose(value, X[addr], rtol=0, atol=1e-3)), f"{addr}: {value} vs {X[addr]}"
         # assert jnp.isclose(logabsdetJ_2, 1-logabsdetJ, rtol=0, atol=1e-3), f"{logabsdetJ_2} vs {1-logabsdetJ}"
-        print("Check: ok.")
+        # print("Check: ok.")
 
-    # logQ_split = split_randomness_logQ(split_aux, K)
+    logQ_split = split_randomness_logQ(split_aux, K-1)
 
     # log_alpha = model_log_prob(X_new) - lp + logQ_split - logQ_merge + detJ
 
@@ -216,16 +209,15 @@ def merge_involution(X: Trace, aux: MergeAux, K: int):
     mu1, mu2 = X["mus"][j1], X["mus"][j2]
     var1, var2 = X["vars"][j1], X["vars"][j2]
 
-
     w = w1 + w2
     mu = (w1*mu1 + w2*mu2) / w
     var = -jnp.square(mu) + (w1*(jnp.square(mu1) + var1) + w2*(jnp.square(mu2) + var2)) / w
 
     u1 = w1/w
-    u2 = (mu - mu1) / jnp.sqrt(var * w2/w1)
+    u2 = (mu - mu1) / jnp.sqrt(var * w2/w1) # u2 can be smaller than 0 here because we have not guaranteeed mu1 < mu2
     u3 = var1/var * u1 / (1 - jnp.square(u2))
 
-    logabsdetJ = 1 - compute_log_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2)
+    logabsdetJ = 1 - compute_log_abs_det_J_split(w, mu, var, u1, jnp.abs(u2), u3, w1, w2, mu1, mu2, var1, var2)
 
     K = K - 1
     min_j = min(j1,j2)
@@ -235,18 +227,9 @@ def merge_involution(X: Trace, aux: MergeAux, K: int):
     mus_new = jnp.zeros((K+1,))
     vars_new = jnp.zeros((K+1,))
 
-    ixs = [str(ix) if i not in (j1,j2) else "*" for i, ix in enumerate(merge_idx(jnp.arange(0,K+1+1), j_star, j1, j2))]
-    print(f"merge ixs {j_star=} {min_j=} {max_j=} {ixs} {w_new.shape=} {X['w'].shape=} {K=}") # w_new.shape = (K+1,) X['w'].shape == (K+1+1,)
-
     ixs1 = merge_idx(jnp.arange(0, min_j), j_star, j1, j2)
     ixs3 = merge_idx(jnp.arange(max_j+1,K+1+1), j_star, j1, j2)
     ixs2 = merge_idx(jnp.arange(min_j+1,max_j), j_star, j1, j2)
-    print(f"{ixs1=} {ixs2=} {ixs3=}")
-    ixs1_ = list(range(0,min_j))
-    ixs2_ = list(range(min_j+1,max_j))
-    ixs3_ = list(range(max_j+1, K+1+1))
-
-    print(f"range(0,min_j)={ixs1_} range(min_j+1,max_j)={ixs2_} range(max_j+1, K+1+1)={ixs3_}")
 
     w_new = w_new.at[ixs1].set(X["w"][:min_j])
     mus_new = mus_new.at[ixs1].set(X["mus"][:min_j])
