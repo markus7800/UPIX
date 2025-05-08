@@ -151,7 +151,7 @@ def split_move(X: Trace, lp: FloatArrayLike, rng_key: PRNGKey, K: int, ys: jax.A
 
     log_alpha = model_log_prob(X_new) - lp + logQ_merge - logQ_split + logabsdetJ
 
-    return jnp.minimum(jnp.exp(log_alpha), 1)
+    return jnp.minimum(log_alpha, 0.)
 
 def get_split_params(w, mu, var, u1, u2, u3):
     w1, w2 = w * u1, w * (1 - u1)
@@ -239,7 +239,7 @@ def merge_move(X: Trace, lp: FloatArrayLike, rng_key: PRNGKey, K: int, ys: jax.A
 
     log_alpha = model_log_prob(X_new) - lp + logQ_split - logQ_merge + logabsdetJ
 
-    return jnp.minimum(jnp.exp(log_alpha), 1)
+    return jnp.minimum(log_alpha, 0.)
 
 
 def merge_involution(X: Trace, aux: MergeAux, K: int):
