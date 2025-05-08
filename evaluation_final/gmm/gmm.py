@@ -92,6 +92,24 @@ from reversible_jumps import *
 #         merge_move(X, lp, rng_key, X["K"].item(), ys, m.log_prob, check=True)
 # exit()
 
+@dataclass
+class RJMCMCTransitionProbEstimate(LogWeightEstimate):
+    transition_probs: Dict[Any, FloatArray]
+    n_samples: int
+    def combine_estimate(self, other: LogWeightEstimate) -> "RJMCMCTransitionProbEstimate":
+        assert isinstance(other, RJMCMCTransitionProbEstimate)
+
+        n_combined_samples = self.n_samples + other.n_samples
+        a = self.n_samples / n_combined_samples
+        new_transition_probs: Dict[Any, FloatArray] = dict()
+
+        for key in self.transition_probs.keys() | other.transition_probs.keys():
+            est1 = self.transition_probs.get(key, -jnp.inf)
+            est2 = other.transition_probs.get(key, -jnp.inf)
+            new_transition_probs[key] = jnp.logaddexp(est1 + jax.lax.log(a), est2 + jax.lax.log(1 - a))
+
+        return RJMCMCTransitionProbEstimate(new_transition_probs, n_combined_samples)
+
 class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         return MCMCSteps(
@@ -103,14 +121,14 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
     
     def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
         # TODO: maybe expand if jump move acceptance exceeds threshold
-        for k in jnp.arange(0,3):
+        for k in jnp.arange(0,8):
             rng_key, generate_key = jax.random.split(rng_key)
             trace, _ = self.model.generate(generate_key, {"K": k})
             slp = slp_from_decision_representative(self.model, trace)
             active_slps.append(slp)
             tqdm.write(f"Make SLP {slp.formatted()} active.")
 
-    def estimate_log_weight(self, slp: SLP, rng_key: jax.Array) -> LogWeightEstimate:
+    def estimate_log_weight(self, slp: SLP, rng_key: jax.Array) -> RJMCMCTransitionProbEstimate:
         last_inference_result = self.inference_results[slp][-1]
         assert isinstance(last_inference_result, MCMCInferenceResult)
         assert not self.config.get("mcmc_optimise_memory_with_early_return_map", False)
@@ -119,23 +137,55 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         traces = jax.tree_util.tree_map(_unstack_sample_data, traces)
         lps = _unstack_sample_data(lps)
 
-
         K = find_K(slp)
 
         def split(X: Trace, lp: FloatArray, rng_key: PRNGKey):
             return split_move(X, lp, rng_key, K, ys, self.model.log_prob)
-        accept_probs = jax.jit(jax.vmap(split))(traces, lps, jax.random.split(rng_key, lps.shape[0]))
-        print("split", jnp.mean(accept_probs))
+        
+        def merge(X: Trace, lp: FloatArray, rng_key: PRNGKey):
+            return merge_move(X, lp, rng_key, K, ys, self.model.log_prob)
+        
+        transition_probs: Dict[Any, FloatArray] = dict()
+        split_transition_prob = jnp.mean(jax.jit(jax.vmap(split))(traces, lps, jax.random.split(rng_key, lps.shape[0])))
+        if K == 0: 
+            transition_probs[(K, K+1)] = split_transition_prob
+            tqdm.write(f"Estimate log weight for {slp.formatted()}: split prob = {split_transition_prob.item():.6f}")
+        else:
+            merge_transition_prob = jnp.mean(jax.jit(jax.vmap(merge))(traces, lps, jax.random.split(rng_key, lps.shape[0])))
+            transition_probs[(K, K+1)] = split_transition_prob / 2
+            transition_probs[(K, K-1)] = merge_transition_prob / 2
+            tqdm.write(f"Estimate log weight for {slp.formatted()}: split prob = {split_transition_prob.item():.6f} merge prob = {merge_transition_prob.item():.6f}")
 
-        if K > 0:
-            def merge(X: Trace, lp: FloatArray, rng_key: PRNGKey):
-                return merge_move(X, lp, rng_key, K, ys, self.model.log_prob)
-            accept_probs = jax.jit(jax.vmap(merge))(traces, lps, jax.random.split(rng_key, lps.shape[0]))
-            print("merge", jnp.mean(accept_probs))
+        return RJMCMCTransitionProbEstimate(transition_probs, lps.size)
+    
 
+    
+    def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
+        max_K = max(find_K(slp) for slp in log_weight_estimates.keys())
+        bayes_factor = jnp.ones((max_K+1, max_K+1))
+        for estimate in log_weight_estimates.values():
+            assert isinstance(estimate, RJMCMCTransitionProbEstimate)
+            for (current_k, next_k), prob in estimate.transition_probs.items():
+                if next_k <= max_K:
+                    bayes_factor = bayes_factor.at[current_k, next_k].multiply(prob)
+                    bayes_factor = bayes_factor.at[next_k, current_k].divide(prob)
+        # print(bayes_factor)
+        for i in range(max_K+1):
+            for j in range(i+1,max_K+1):
+                bayes_factor = bayes_factor.at[i, j].set(bayes_factor[i,j-1] / bayes_factor[j, j-1])
+                bayes_factor = bayes_factor.at[j, i].set(1/bayes_factor[i,j])
+        # print(bayes_factor)
+        for p in (1 / bayes_factor.sum(axis=1)):
+            print(f"{p.item():.6f}")
+        exit()
 
+        # log_Z_normaliser = jax.scipy.special.logsumexp(jnp.vstack(log_Zs))
+        slp_log_weights: Dict[SLP, FloatArray] = {}
+        for slp, estimate in log_weight_estimates.items():
+            assert isinstance(estimate, LogWeightEstimateFromPrior)
+            slp_log_weights[slp] = estimate.log_Z
 
-        return super().estimate_log_weight(slp, rng_key)
+        return slp_log_weights
 
         
 
