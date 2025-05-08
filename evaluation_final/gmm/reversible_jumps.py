@@ -4,28 +4,28 @@ from typing import NamedTuple
 from jax.flatten_util import ravel_pytree
 
 class SplitAux(NamedTuple):
-    j_star: int
-    r1: int
-    r2: int
-    u1: float
-    u2: float
-    u3: float
-    to_first: jax.Array
+    j_star: IntArray
+    r1: IntArray
+    r2: IntArray
+    u1: FloatArray
+    u2: FloatArray
+    u3: FloatArray
+    to_first: BoolArray
 
 class SplitParams(NamedTuple):
-    w1: float
-    mu1: float
-    var1: float
-    w2: float
-    mu2: float
-    var2: float
+    w1: FloatArray
+    mu1: FloatArray
+    var1: FloatArray
+    w2: FloatArray
+    mu2: FloatArray
+    var2: FloatArray
 
 # for 0...K \ {j_star} returns numbers in ascending order A = 0...K+1, where j1 and j2 are missing
 # j != j_start
 def split_idx(j, j_star, j1, j2):
     shift1 = -((j > j_star).astype(int))
-    shift2 = (j + shift1) >= min(j1, j2)
-    shift3 = (j + shift1 + shift2) >= max(j1, j2)
+    shift2 = (j + shift1) >= jnp.minimum(j1, j2)
+    shift3 = (j + shift1 + shift2) >= jnp.minimum(j1, j2)
     return j + shift1 + shift2 + shift3
 # split_idx(jnp.arange(0,10), 4, 2, 7) = [0, 1, 3, 4, *, 5, 6, 8, 9, 10]
 # DiscreteUniform(a,b) has support a...b 
@@ -50,9 +50,11 @@ def split_randomness(rng_key: PRNGKey, X: Trace, K: int, ys: jax.Array):
     var = X["vars"][j_star]
     zs = X["zs"]
     sp = get_split_params(w, mu, var, u1, u2, u3)
-    w1, mu1, var1 = sp.w1, sp.mu1, sp.var1
+    w1, mu1, var1, w2, mu2, var2 = sp.w1, sp.mu1, sp.var1, sp.w2, sp.mu2, sp.var2
+    log_p = jnp.log(w1) + numpyro_dists.Normal(mu1, jnp.sqrt(var1)).log_prob(ys) # type: ignore
+    log_q = jnp.log(w2) + numpyro_dists.Normal(mu2, jnp.sqrt(var2)).log_prob(ys) # type: ignore
 
-    _to_first = numpyro_dists.BernoulliLogits(jnp.log(w1) + numpyro_dists.Normal(mu1, jnp.sqrt(var1)).log_prob(ys)).sample(to_first_key) # type: ignore
+    _to_first = numpyro_dists.BernoulliProbs(jnp.exp(log_p - jnp.logaddexp(log_p, log_q))).sample(to_first_key) # type: ignore
     to_first = (zs == j_star) & _to_first
 
     return SplitAux(j_star, r1, r2, u1, u2, u3, to_first), sp # type: ignore
@@ -72,23 +74,26 @@ def split_randomness_logQ(aux: SplitAux, sp: SplitParams, X: Trace, K: int, ys: 
 
     logQ += numpyro_dists.Beta(2.,2.).log_prob(aux.u3)
 
-    w1, mu1, var1 = sp.w1, sp.mu1, sp.var1
-    to_first_lps = numpyro_dists.BernoulliLogits(jnp.log(w1) + numpyro_dists.Normal(mu1, jnp.sqrt(var1)).log_prob(ys)).log_prob(aux.to_first) # type: ignore
+    w1, mu1, var1, w2, mu2, var2 = sp.w1, sp.mu1, sp.var1, sp.w2, sp.mu2, sp.var2
+    log_p = jnp.log(w1) + numpyro_dists.Normal(mu1, jnp.sqrt(var1)).log_prob(ys) # type: ignore
+    log_q = jnp.log(w2) + numpyro_dists.Normal(mu2, jnp.sqrt(var2)).log_prob(ys) # type: ignore
+
+    to_first_lps = numpyro_dists.BernoulliProbs(jnp.exp(log_p - jnp.logaddexp(log_p, log_q))).log_prob(aux.to_first)
     zs = X["zs"]
     logQ += jnp.sum((zs == aux.j_star) * to_first_lps)
 
     return logQ
 
 class MergeAux(NamedTuple):
-    j_star: int
-    r1: int
-    r2: int
+    j_star: IntArray
+    r1: IntArray
+    r2: IntArray
 
 # for 0...K \ {j1,j2} returns numbers in ascending order 0...K-1 with j_star missing
 # j != j1 and j != j2
 def merge_idx(j, j_star, j1, j2):
-    shift1 = -(j > min(j1, j2)).astype(int)
-    shift2 = -(j > max(j1, j2)).astype(int)
+    shift1 = -(j > jnp.minimum(j1, j2)).astype(int)
+    shift2 = -(j > jnp.maximum(j1, j2)).astype(int)
     shift3 = (j + shift1 + shift2) >= j_star
     return j + shift1 + shift2 + shift3
 # merge_idx(jnp.arange(0,10), 4, 2, 7) = Array([0, 1, *, 2, 3, 5, 6, *, 7, 8], dtype=int32)
@@ -121,9 +126,8 @@ def compute_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2
 def compute_log_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2):
     return jnp.log(w) + jnp.log(jnp.abs(mu1 - mu2)) + jnp.log(var1) + jnp.log(var2) - jnp.log(u2) - jnp.log(1 - jnp.square(u2)) - jnp.log(u3) - jnp.log(1 - jnp.square(u3)) - jnp.log(var)
 
-def split_move(X: Trace, lp: float, rng_key: PRNGKey, K: int, ys: jax.Array, model_log_prob: Callable[[Trace],FloatArray], check=False):
-    aux_key, accept_key = jax.random.split(rng_key, 2)
-    split_aux, split_params = split_randomness(aux_key, X, K, ys)
+def split_move(X: Trace, lp: FloatArrayLike, rng_key: PRNGKey, K: int, ys: jax.Array, model_log_prob: Callable[[Trace],FloatArray], check=False):
+    split_aux, split_params = split_randomness(rng_key, X, K, ys)
     # print(f"{X=}")
     # print(f"{split_aux=}")
     logQ_split = split_randomness_logQ(split_aux, split_params, X, K, ys)
@@ -145,10 +149,9 @@ def split_move(X: Trace, lp: float, rng_key: PRNGKey, K: int, ys: jax.Array, mod
 
     logQ_merge = merge_randomness_logQ(merge_aux, K+1)
 
-    # log_alpha = model_log_prob(X_new) - lp + logQ_merge - logQ_split + detJ
+    log_alpha = model_log_prob(X_new) - lp + logQ_merge - logQ_split + logabsdetJ
 
-    # # aux merge trace = (j_star, r1, r2)
-    # return jax.random.uniform(accept_key) < log_alpha
+    return jnp.minimum(jnp.exp(log_alpha), 1)
 
 def get_split_params(w, mu, var, u1, u2, u3):
     w1, w2 = w * u1, w * (1 - u1)
@@ -176,16 +179,23 @@ def split_involution(X: Trace, aux: SplitAux, sp: SplitParams, K: int):
     mus_new = jnp.zeros((K+1,))
     vars_new = jnp.zeros((K+1,))
 
-    ixs1 = split_idx(jnp.arange(0,j_star),j_star,j1,j2)
-    ixs2 = split_idx(jnp.arange(j_star+1,K+1-1),j_star,j1,j2)
+    # ixs1 = split_idx(jnp.arange(0,j_star),j_star,j1,j2)
+    # ixs2 = split_idx(jnp.arange(j_star+1,K+1-1),j_star,j1,j2)
 
-    w_new = w_new.at[ixs1].set(X["w"][:j_star])
-    mus_new = mus_new.at[ixs1].set(X["mus"][:j_star])
-    vars_new = vars_new.at[ixs1].set(X["vars"][:j_star])
+    # w_new = w_new.at[ixs1].set(X["w"][:j_star])
+    # mus_new = mus_new.at[ixs1].set(X["mus"][:j_star])
+    # vars_new = vars_new.at[ixs1].set(X["vars"][:j_star])
 
-    w_new = w_new.at[ixs2].set(X["w"][j_star+1:])
-    mus_new = mus_new.at[ixs2].set(X["mus"][j_star+1:])
-    vars_new = vars_new.at[ixs2].set(X["vars"][j_star+1:])
+    # w_new = w_new.at[ixs2].set(X["w"][j_star+1:])
+    # mus_new = mus_new.at[ixs2].set(X["mus"][j_star+1:])
+    # vars_new = vars_new.at[ixs2].set(X["vars"][j_star+1:])
+
+    # this works because we overwrite j1 and j2 later
+    ixs = split_idx(jnp.arange(0,K+1-1),j_star,j1,j2)
+    # print(f"{w=} {w_new=} {j_star=} {ixs=}")
+    w_new = w_new.at[ixs].set(X["w"])
+    mus_new = mus_new.at[ixs].set(X["mus"])
+    vars_new = vars_new.at[ixs].set(X["vars"])
 
     w_new = w_new.at[j1].set(w1)
     w_new = w_new.at[j2].set(w2)
@@ -205,9 +215,8 @@ def split_involution(X: Trace, aux: SplitAux, sp: SplitParams, K: int):
 
     return X_new, aux_new, logabsdetJ
 
-def merge_move(X: Trace, lp: float, rng_key: PRNGKey, K: int, ys: jax.Array, model_log_prob: Callable[[Trace],FloatArray], check=False):
-    aux_key, accept_key = jax.random.split(rng_key, 2)
-    merge_aux = merge_randomness(aux_key, K)
+def merge_move(X: Trace, lp: FloatArrayLike, rng_key: PRNGKey, K: int, ys: jax.Array, model_log_prob: Callable[[Trace],FloatArray], check=False):
+    merge_aux = merge_randomness(rng_key, K)
     logQ_merge = merge_randomness_logQ(merge_aux, K)
     # print(f"{X}=")
     # print(f"{merge_aux=}")
@@ -228,9 +237,9 @@ def merge_move(X: Trace, lp: float, rng_key: PRNGKey, K: int, ys: jax.Array, mod
 
     logQ_split = split_randomness_logQ(split_aux, split_params, X_new, K-1, ys)
 
-    # log_alpha = model_log_prob(X_new) - lp + logQ_split - logQ_merge + detJ
+    log_alpha = model_log_prob(X_new) - lp + logQ_split - logQ_merge + logabsdetJ
 
-    # return jax.random.uniform(accept_key) < log_alpha
+    return jnp.minimum(jnp.exp(log_alpha), 1)
 
 
 def merge_involution(X: Trace, aux: MergeAux, K: int):
@@ -254,28 +263,34 @@ def merge_involution(X: Trace, aux: MergeAux, K: int):
     logabsdetJ = 1 - compute_log_abs_det_J_split(w, mu, var, u1, jnp.abs(u2), u3, w1, w2, mu1, mu2, var1, var2)
 
     K = K - 1
-    min_j = min(j1,j2)
-    max_j = max(j1,j2)
+    # min_j = min(j1,j2)
+    # max_j = max(j1,j2)
 
     w_new = jnp.zeros((K+1,))
     mus_new = jnp.zeros((K+1,))
     vars_new = jnp.zeros((K+1,))
 
-    ixs1 = merge_idx(jnp.arange(0, min_j), j_star, j1, j2)
-    ixs3 = merge_idx(jnp.arange(max_j+1,K+1+1), j_star, j1, j2)
-    ixs2 = merge_idx(jnp.arange(min_j+1,max_j), j_star, j1, j2)
+    # ixs1 = merge_idx(jnp.arange(0, min_j), j_star, j1, j2)
+    # ixs2 = merge_idx(jnp.arange(min_j+1,max_j), j_star, j1, j2)
+    # ixs3 = merge_idx(jnp.arange(max_j+1,K+1+1), j_star, j1, j2)
 
-    w_new = w_new.at[ixs1].set(X["w"][:min_j])
-    mus_new = mus_new.at[ixs1].set(X["mus"][:min_j])
-    vars_new = vars_new.at[ixs1].set(X["vars"][:min_j])
+    # w_new = w_new.at[ixs1].set(X["w"][:min_j])
+    # mus_new = mus_new.at[ixs1].set(X["mus"][:min_j])
+    # vars_new = vars_new.at[ixs1].set(X["vars"][:min_j])
 
-    w_new = w_new.at[ixs2].set(X["w"][min_j+1:max_j])
-    mus_new = mus_new.at[ixs2].set(X["mus"][min_j+1:max_j])
-    vars_new = vars_new.at[ixs2].set(X["vars"][min_j+1:max_j])
+    # w_new = w_new.at[ixs2].set(X["w"][min_j+1:max_j])
+    # mus_new = mus_new.at[ixs2].set(X["mus"][min_j+1:max_j])
+    # vars_new = vars_new.at[ixs2].set(X["vars"][min_j+1:max_j])
 
-    w_new = w_new.at[ixs3].set(X["w"][max_j+1:K+1+1])
-    mus_new = mus_new.at[ixs3].set(X["mus"][max_j+1:K+1+1])
-    vars_new = vars_new.at[ixs3].set(X["vars"][max_j+1:K+1+1])
+    # w_new = w_new.at[ixs3].set(X["w"][max_j+1:K+1+1])
+    # mus_new = mus_new.at[ixs3].set(X["mus"][max_j+1:K+1+1])
+    # vars_new = vars_new.at[ixs3].set(X["vars"][max_j+1:K+1+1])
+
+    # this works because we overwrite j_star later
+    ixs = merge_idx(jnp.arange(0,K+1+1), j_star, j1, j2)
+    w_new = w_new.at[ixs].set(X["w"])
+    mus_new = mus_new.at[ixs].set(X["mus"])
+    vars_new = vars_new.at[ixs].set(X["vars"])
 
 
     w_new = w_new.at[j_star].set(w)

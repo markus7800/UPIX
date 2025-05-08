@@ -322,7 +322,7 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
                 if self.mcmc_optimise_memory_with_early_return_map:
                     return self.return_map(state.position)
                 else:
-                    return state.position
+                    return (state.position, state.log_prob)
             else:
                 return None
         mcmc = MCMC(slp, regime, self.mcmc_n_chains,
@@ -395,7 +395,7 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
                     values: DCC_COLLECT_TYPE = inference_result.value_tree
                 else:
                     # assert isinstance(inference_result.value_tree, Trace)
-                    values = self.return_map(inference_result.value_tree)
+                    values = self.return_map(inference_result.value_tree[0])
 
                 weighted_samples = WeightedSample(
                     StackedSampleValues(values, inference_result.n_samples_per_chain, inference_result.n_chains),

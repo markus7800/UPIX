@@ -1,4 +1,5 @@
 import sys
+
 sys.path.insert(0, ".")
 
 from dccxjax import *
@@ -10,6 +11,7 @@ import matplotlib.pyplot as plt
 from typing import List
 from time import time
 from dccxjax.infer.dcc2 import *
+from dccxjax.types import _unstack_sample_data
 
 from gibbs_proposals import *
 import logging
@@ -68,8 +70,8 @@ def gmm(ys: jax.Array):
 
 m = gmm(ys)
 
-def find_K(slp: SLP):
-    return slp.decision_representative["K"].item()
+def find_K(slp: SLP) -> int:
+    return int(slp.decision_representative["K"].item())
 def formatter(slp: SLP):
     K = find_K(slp) + 1
     return f"#clusters={K}"
@@ -78,16 +80,18 @@ m.set_slp_sort_key(find_K)
 
 from reversible_jumps import *
 
-for i in (range(1000)):
-    print(i)
-    rng_key = jax.random.PRNGKey(i)
-    X, lp = m.generate(rng_key)
-    split_move(X, lp, rng_key, X["K"].item(), ys, m.log_prob, check=True)
-    if X["K"].item() > 0:
-        merge_move(X, lp, rng_key, X["K"].item(), ys, m.log_prob, check=True)
+# for i in (range(1000)):
+#     print(i)
+#     rng_key = jax.random.PRNGKey(i)
+#     X, lp = m.generate(rng_key)
+#     # def jump(_X, _lp, _rng_key):
+#     #     return split_move(_X, _lp, _rng_key, X["K"].item(), ys, m.log_prob, check=False)
+#     # jax.jit(jump)(X, lp, rng_key)
+#     split_move(X, lp, rng_key, X["K"].item(), ys, m.log_prob, check=True)
+#     if X["K"].item() > 0:
+#         merge_move(X, lp, rng_key, X["K"].item(), ys, m.log_prob, check=True)
+# exit()
 
-
-exit()
 class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         return MCMCSteps(
@@ -98,12 +102,43 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         )
     
     def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
-        for k in jnp.arange(0,5):
+        # TODO: maybe expand if jump move acceptance exceeds threshold
+        for k in jnp.arange(0,3):
             rng_key, generate_key = jax.random.split(rng_key)
             trace, _ = self.model.generate(generate_key, {"K": k})
             slp = slp_from_decision_representative(self.model, trace)
             active_slps.append(slp)
             tqdm.write(f"Make SLP {slp.formatted()} active.")
+
+    def estimate_log_weight(self, slp: SLP, rng_key: jax.Array) -> LogWeightEstimate:
+        last_inference_result = self.inference_results[slp][-1]
+        assert isinstance(last_inference_result, MCMCInferenceResult)
+        assert not self.config.get("mcmc_optimise_memory_with_early_return_map", False)
+        traces: Trace = last_inference_result.value_tree[0]
+        lps: FloatArray = last_inference_result.value_tree[1]
+        traces = jax.tree_util.tree_map(_unstack_sample_data, traces)
+        lps = _unstack_sample_data(lps)
+
+
+        K = find_K(slp)
+
+        def split(X: Trace, lp: FloatArray, rng_key: PRNGKey):
+            return split_move(X, lp, rng_key, K, ys, self.model.log_prob)
+        accept_probs = jax.jit(jax.vmap(split))(traces, lps, jax.random.split(rng_key, lps.shape[0]))
+        print("split", jnp.mean(accept_probs))
+
+        if K > 0:
+            def merge(X: Trace, lp: FloatArray, rng_key: PRNGKey):
+                return merge_move(X, lp, rng_key, K, ys, self.model.log_prob)
+            accept_probs = jax.jit(jax.vmap(merge))(traces, lps, jax.random.split(rng_key, lps.shape[0]))
+            print("merge", jnp.mean(accept_probs))
+
+
+
+        return super().estimate_log_weight(slp, rng_key)
+
+        
+
 
 dcc_obj = DCCConfig(m, verbose=2,
               mcmc_n_chains=10,

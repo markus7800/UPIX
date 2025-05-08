@@ -88,6 +88,7 @@ class StackedSampleValue(Generic[VALUE_TYPE]):
     
 StackedTrace = StackedSampleValue[Trace]
 
+# reshapes to remove second dimension (N,T,...) -> (N*T,...)
 def _unstack_sample_data(values: jax.Array):
     shape = values.shape
     assert len(shape) >= 2
