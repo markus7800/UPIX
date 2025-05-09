@@ -1,0 +1,5 @@
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+Gen = "ea4f424c-a589-11e8-07c0-fd5c91b9da4a"
+ProgressLogging = "33c8b6b6-d38a-422a-b730-caa89a2f386c"
+TerminalLoggers = "5d786b92-1e48-4d6f-9151-6b4477ca9bed"
