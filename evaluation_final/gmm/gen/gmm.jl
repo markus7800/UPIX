@@ -86,8 +86,29 @@ function run_inference(seed::Int, N::Int, verbose::Bool)
         Ks[i] = k
         mcmc_tr = mcmc_kernel(mcmc_tr)
     end
-    verbose && display([sum(Ks .== i) / N for i in 1:maximum(Ks)])
+    return Float64[sum(Ks .== i) / N for i in 1:maximum(Ks)]
 end
 
 run_inference(0, 100, false)
-@time run_inference(0, 10_000, true)
+@time run_inference(0, 25_000, true)
+
+function main()
+    T = Threads.nthreads()
+    println("T=$T")
+    N = 25_000
+    result = Vector{Vector{Float64}}(undef, T)
+
+    Threads.@threads for i in 1:T
+        result[i] = run_inference(i, N, false)
+    end
+    max_k = maximum(length(r) for r in result)
+    weights = zeros(max_k)
+    for r in result
+        for (k, k_frac) in enumerate(r)
+            weights[k] += k_frac / T
+        end
+    end
+    display(weights)
+end
+
+@time main()
