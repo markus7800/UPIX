@@ -78,7 +78,6 @@ inference_constraints = choicemap([(:y => i, y) for (i, y) in enumerate(ys)]...)
 function run_inference(seed::Int, N::Int, verbose::Bool)
     Gen.Random.seed!(seed)
     mcmc_tr, = generate(gmm, (length(ys),), inference_constraints)
-
     Ks = zeros(Int, N)
 
     @progress for i=1:N
@@ -91,6 +90,7 @@ end
 
 run_inference(0, 100, false)
 @time run_inference(0, 25_000, true)
+# exit()
 
 function main()
     T = Threads.nthreads()
