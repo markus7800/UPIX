@@ -185,12 +185,22 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
             print(f"\t{slp.formatted()}: {weighted_sample.values} with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
         print("}")
 
-    def get_slps(self, predicate: Callable[[DCC_COLLECT_TYPE], bool] = lambda _: True) -> List[SLP]:
-        return [slp for slp, weighted_sample in self.slp_weighted_samples.items() if predicate(weighted_sample.values.data)]
+    def get_slps(self, predicate: Callable[[SLP], bool]) -> List[SLP]:
+        return [slp for slp in self.slp_log_weights.keys() if predicate(slp)]
     
-    # convience function for DCC_COLLECT_TYPE = Trace
+    def get_slp(self, predicate: Callable[[SLP], bool]) -> Optional[SLP]:
+        slps = self.get_slps(predicate)
+        if len(slps) == 0:
+            return None
+        elif len(slps) == 1:
+            return slps[0]
+        else:
+            print("Warn: multiple slps for predicate")
+            return slps[0]
+
+    # convenience function for DCC_COLLECT_TYPE = Trace
     def get_slps_where_address_exists(self, address: str):
-        return self.get_slps(lambda x: address in cast(Trace, x))
+        return self.get_slps(lambda slp: address in slp.decision_representative)
     
     # = model evidence if used DCC methods supports it, otherwise 0.
     def get_log_weight_normaliser(self):
@@ -211,12 +221,12 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
         else:
             values = weighted_sample.values.data
 
-        return mapper(values), weights
+        return mapper(values), weights # TODO return SampleValues
     
     def get_samples_for_slp(self, slp: SLP, unstack_chains: bool = True, mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE] = lambda x: x) -> Tuple[DCC_RESULT_QUERY_TYPE, FloatArray]:
         return self._get_samples_for_slp(slp, unstack_chains, mapper)
     
-    # convience function for DCC_COLLECT_TYPE = Trace
+    # convenience function for DCC_COLLECT_TYPE = Trace
     def get_samples_for_address_and_slp(self, address: str, slp: SLP, unstack_chains: bool = True):
         return self._get_samples_for_slp(slp, unstack_chains, lambda x: cast(Trace,x)[address])
     
@@ -265,10 +275,10 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
         return self._get_samples(unstack_chains, predicate, mapper)
 
 
-    # convience function for DCC_COLLECT_TYPE = Trace
+    # convenience function for DCC_COLLECT_TYPE = Trace
     def get_samples_for_address(self, address: str, unstack_chains: bool = True):
         return self._get_samples(unstack_chains, lambda x: address in cast(Trace,x), lambda x: cast(Trace,x)[address])
-
+    
 
 class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_TYPE]):
     def __init__(self, model: Model, return_map: Callable[[Trace], DCC_COLLECT_TYPE] = lambda trace: trace, *ignore, verbose=0, **config_kwargs) -> None:

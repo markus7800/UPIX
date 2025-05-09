@@ -1,3 +1,4 @@
+#%%
 import sys
 import os
 sys.path.insert(0, ".")
@@ -72,11 +73,11 @@ m.set_slp_sort_key(find_t_max)
 
 class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
-        return MCMCSteps(
-            MCMCStep(PrefixSelector("step"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
-            MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
-        )
-        # return MCMCStep(AllVariables(), HMC(5, 0.01, unconstrained=True))
+        # return MCMCSteps(
+        #     MCMCStep(PrefixSelector("step"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
+        #     MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
+        # )
+        return MCMCStep(AllVariables(), HMC(5, 0.05, unconstrained=True))
     
     def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
         _active_slps: List[SLP] = []
@@ -109,7 +110,8 @@ dcc_obj = DCCConfig(m, verbose=2,
               mcmc_n_samples_per_chain=25_000,
               mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=10_000_000,
-              return_map=lambda trace: {"start": trace["start"]})
+              return_map=lambda trace: {"start": trace["start"]}
+)
 
 t0 = time()
 
@@ -121,6 +123,19 @@ t1 = time()
 print(f"Total time: {t1-t0:.3f}s")
 comp_time = compilation_time_tracker.get_total_compilation_time_secs()
 print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
+
+# slp = result.get_slp(lambda slp: find_t_max(slp) == 6)
+# assert slp is not None
+# traces, _ = result.get_samples_for_slp(slp, False)
+# print(traces)
+#%%
+# from dccxjax.infer.mcmc import KernelState
+# inference_step = MCMCStep(AllVariables(), HMC(5, 0.00001, unconstrained=True))
+# gibbs_model = GibbsModel(slp, inference_step.variable_selector)
+# kernel = inference_step.algo.make_kernel(gibbs_model, 0, True)
+# kernel_state = KernelState(slp.decision_representative, slp.log_prob(slp.decision_representative), inference_step.algo.init_info())
+# kernel(jax.random.PRNGKey(0), jnp.array(1.,float), kernel_state, debug=True)
+#%%
 
 # plot_histogram(result, "start")
 # plot_trace(result, "start")

@@ -49,7 +49,8 @@ def hmc_kernel(
     current_log_prob: FloatArray,
     log_prob_fn: Callable[[FloatArray], FloatArray],
     L: int,
-    eps: float
+    eps: float,
+    debug: bool
     ) -> Tuple[FloatArray,FloatArray,BoolArray,BoolArray]:
     
     proposal_key, accept_key = jax.random.split(rng_key)
@@ -66,11 +67,13 @@ def hmc_kernel(
     p = p_current
 
     p = p - eps/2 * -grad_log_prob_fn(x)
+    if debug: jax.debug.print("x={x} p={p}", x=x,p=p)
 
     # L-1 full steps
     def leapfrog_step(state: LeapfrogState, _) -> Tuple[LeapfrogState, None]:
         x_new = state.x + eps * state.p
         p_new = state.p - eps * -grad_log_prob_fn(x_new)
+        if debug: jax.debug.print("x={x} p={p}", x=x_new,p=p_new)
         return LeapfrogState(x_new, p_new), None
     
     (x, p), _ = jax.lax.scan(leapfrog_step, LeapfrogState(x, p), length=L-1)
@@ -78,6 +81,7 @@ def hmc_kernel(
     # half step
     x = x + eps * p
     p = p - eps/2 * -grad_log_prob_fn(x)
+    if debug: jax.debug.print("x={x} p={p}", x=x,p=p)
 
     # leapfrog finished
 
@@ -95,9 +99,13 @@ def hmc_kernel(
 
     accept: BoolArray = jax.lax.log(jax.random.uniform(accept_key)) < energy_delta
 
+    if debug: jax.debug.print("proposed_log_prob={a} k_proposed={b} current_log_prob={c}, k_current={d}", a=proposed_log_prob, b=k_proposed, c=current_log_prob, d=k_current)
+    if debug: jax.debug.print("energy_current={a} energy_proposed={b} diverged={c}, accept={d}", a=energy_current, b=energy_proposed, c=diverged, d=accept)
+
+
     return proposed_position, proposed_log_prob, accept, diverged
 
-
+from functools import partial
 
 class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
     def __init__(self,
@@ -121,8 +129,8 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
 
 
         jit_tracker = JitVariationTracker(f"_hmc_kernel for Inference step {step_number}: <HMC at {hex(id(self))}>")
-        @jax.jit
-        def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
+        @partial(jax.jit, static_argnums=[3])
+        def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState, debug: bool=False) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
             
             current_postion = gibbs_model.slp.transform_to_unconstrained(state.position) if self.unconstrained else state.position
@@ -136,13 +144,16 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
             else:
                 _tempered_log_prob_fn = gibbs_model.unraveled_tempered_log_prob(temperature, unravel_fn)
 
-            proposed_X, proposed_log_prob, accept, diverged = hmc_kernel(rng_key, X_flat, state.log_prob, _tempered_log_prob_fn, self.L, self.eps)
+            lp = _tempered_log_prob_fn(X_flat) if self.unconstrained else state.log_prob
+
+            proposed_X, proposed_log_prob, accept, diverged = hmc_kernel(rng_key, X_flat, lp, _tempered_log_prob_fn, self.L, self.eps, debug)
             next_X_flat, next_log_prob = jax.lax.cond(accept, lambda _: (proposed_X, proposed_log_prob), lambda _: (X_flat, state.log_prob), operand=None)
             
             
             next_position = gibbs_model.combine_to_trace(unravel_fn(next_X_flat), Y)
             if self.unconstrained:
                 next_position = gibbs_model.slp.transform_to_constrained(next_position)
+                next_log_prob = gibbs_model.tempered_log_prob(temperature)(next_position)
 
             hmc_info = state.info
             if collect_inferenence_info:
