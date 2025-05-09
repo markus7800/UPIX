@@ -41,7 +41,12 @@ def split_randomness(rng_key: PRNGKey, X: Trace, K: int, ys: jax.Array):
 
     u1 = numpyro_dists.Beta(2.,2.).sample(u1_key)
 
-    u2 = numpyro_dists.Beta(2.,2.).sample(u2_key)
+    t = numpyro_dists.transforms.AffineTransform(jnp.array([0.,0.],float),jnp.array([1.,-1.],float))
+    td = numpyro_dists.TransformedDistribution(numpyro_dists.Beta(jnp.array([2.,2.],float),jnp.array([2.,2.],float)), t)
+    u2_dist = numpyro_dists.MixtureSameFamily(numpyro_dists.CategoricalProbs(jnp.array([0.5,0.5],float)), td)
+
+    # u2_dist = numpyro_dists.Beta(2.,2.)
+    u2 = u2_dist.sample(u2_key)
 
     u3 = numpyro_dists.Beta(1.,1.).sample(u3_key)
 
@@ -70,7 +75,12 @@ def split_randomness_logQ(aux: SplitAux, sp: SplitParams, X: Trace, K: int, ys: 
 
     logQ += numpyro_dists.Beta(2.,2.).log_prob(aux.u1)
 
-    logQ += numpyro_dists.Beta(2.,2.).log_prob(jnp.abs(aux.u2))
+    t = numpyro_dists.transforms.AffineTransform(jnp.array([0.,0.],float),jnp.array([1.,-1.],float))
+    td = numpyro_dists.TransformedDistribution(numpyro_dists.Beta(jnp.array([2.,2.],float),jnp.array([2.,2.],float)), t)
+    u2_dist = numpyro_dists.MixtureSameFamily(numpyro_dists.CategoricalProbs(jnp.array([0.5,0.5],float)), td)
+
+    # u2_dist = numpyro_dists.Beta(2.,2.)
+    logQ += u2_dist.log_prob(aux.u2)
 
     logQ += numpyro_dists.Beta(1.,1.).log_prob(aux.u3)
 
@@ -123,10 +133,10 @@ def merge_randomness_logQ(aux: MergeAux, K: int):
 
 
 def compute_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2):
-    return (w * jnp.abs(mu1 - mu2) * var1 * var2) / (u2 * (1 - jnp.square(u2)) * u3 * (1 - u3) * var)
+    return (w * (mu2 - mu1) * var1 * var2) / (u2 * (1 - jnp.square(u2)) * u3 * (1 - u3) * var)
 
 def compute_log_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2):
-    return jnp.log(w) + jnp.log(jnp.abs(mu1 - mu2)) + jnp.log(var1) + jnp.log(var2) - jnp.log(u2) - jnp.log(1 - jnp.square(u2)) - jnp.log(u3) - jnp.log(1 - u3) - jnp.log(var)
+    return jnp.log(w) + jnp.log((mu2 - mu1) / u2) + jnp.log(var1) + jnp.log(var2) - jnp.log(1 - jnp.square(u2)) - jnp.log(u3) - jnp.log(1 - u3) - jnp.log(var)
 
 def split_move(X: Trace, lp: FloatArrayLike, rng_key: PRNGKey, K: int, ys: jax.Array, model_log_prob: Callable[[Trace],FloatArray], check=False):
     split_aux, split_params = split_randomness(rng_key, X, K, ys)
@@ -265,7 +275,7 @@ def merge_involution(X: Trace, aux: MergeAux, K: int):
     u2 = (mu - mu1) / jnp.sqrt(var * w2/w1) # u2 can be smaller than 0 here because we have not guaranteeed mu1 < mu2
     u3 = var1/var * u1 / (1 - jnp.square(u2))
 
-    logabsdetJ = -compute_log_abs_det_J_split(w, mu, var, u1, jnp.abs(u2), u3, w1, w2, mu1, mu2, var1, var2)
+    logabsdetJ = -compute_log_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2)
     # logabsdetJ = -jnp.log(compute_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2))
 
     K = K - 1
