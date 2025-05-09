@@ -25,7 +25,7 @@ class SplitParams(NamedTuple):
 def split_idx(j, j_star, j1, j2):
     shift1 = -((j > j_star).astype(int))
     shift2 = (j + shift1) >= jnp.minimum(j1, j2)
-    shift3 = (j + shift1 + shift2) >= jnp.minimum(j1, j2)
+    shift3 = (j + shift1 + shift2) >= jnp.maximum(j1, j2)
     return j + shift1 + shift2 + shift3
 # split_idx(jnp.arange(0,10), 4, 2, 7) = [0, 1, 3, 4, *, 5, 6, 8, 9, 10]
 # DiscreteUniform(a,b) has support a...b 
@@ -72,11 +72,13 @@ def split_randomness_logQ(aux: SplitAux, sp: SplitParams, X: Trace, K: int, ys: 
 
     logQ += numpyro_dists.Beta(2.,2.).log_prob(jnp.abs(aux.u2))
 
-    logQ += numpyro_dists.Beta(2.,2.).log_prob(aux.u3)
+    logQ += numpyro_dists.Beta(1.,1.).log_prob(aux.u3)
 
     w1, mu1, var1, w2, mu2, var2 = sp.w1, sp.mu1, sp.var1, sp.w2, sp.mu2, sp.var2
     log_p = jnp.log(w1) + numpyro_dists.Normal(mu1, jnp.sqrt(var1)).log_prob(ys) # type: ignore
     log_q = jnp.log(w2) + numpyro_dists.Normal(mu2, jnp.sqrt(var2)).log_prob(ys) # type: ignore
+
+    # print("p/(p+q)", jnp.exp(log_p - jnp.logaddexp(log_p, log_q)))
 
     to_first_lps = numpyro_dists.BernoulliProbs(jnp.exp(log_p - jnp.logaddexp(log_p, log_q))).log_prob(aux.to_first)
     zs = X["zs"]
@@ -121,10 +123,10 @@ def merge_randomness_logQ(aux: MergeAux, K: int):
 
 
 def compute_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2):
-    return (w * jnp.abs(mu1 - mu2) * var1 * var2) / (u2 * (1 - jnp.square(u2)) * u3 * (1 - jnp.square(u3)) * var)
+    return (w * jnp.abs(mu1 - mu2) * var1 * var2) / (u2 * (1 - jnp.square(u2)) * u3 * (1 - u3) * var)
 
 def compute_log_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2):
-    return jnp.log(w) + jnp.log(jnp.abs(mu1 - mu2)) + jnp.log(var1) + jnp.log(var2) - jnp.log(u2) - jnp.log(1 - jnp.square(u2)) - jnp.log(u3) - jnp.log(1 - jnp.square(u3)) - jnp.log(var)
+    return jnp.log(w) + jnp.log(jnp.abs(mu1 - mu2)) + jnp.log(var1) + jnp.log(var2) - jnp.log(u2) - jnp.log(1 - jnp.square(u2)) - jnp.log(u3) - jnp.log(1 - u3) - jnp.log(var)
 
 def split_move(X: Trace, lp: FloatArrayLike, rng_key: PRNGKey, K: int, ys: jax.Array, model_log_prob: Callable[[Trace],FloatArray], check=False):
     split_aux, split_params = split_randomness(rng_key, X, K, ys)
@@ -173,26 +175,29 @@ def split_involution(X: Trace, aux: SplitAux, sp: SplitParams, K: int):
     w1, mu1, var1, w2, mu2, var2 = sp.w1, sp.mu1, sp.var1, sp.w2, sp.mu2, sp.var2
 
     logabsdetJ = compute_log_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2)
+    # logabsdetJ = jnp.log(compute_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2))
 
     K = K + 1
     w_new = jnp.zeros((K+1,))
     mus_new = jnp.zeros((K+1,))
     vars_new = jnp.zeros((K+1,))
 
+    # print(f"{j_star=} {j1=} {j2=}")
     # ixs1 = split_idx(jnp.arange(0,j_star),j_star,j1,j2)
     # ixs2 = split_idx(jnp.arange(j_star+1,K+1-1),j_star,j1,j2)
 
     # w_new = w_new.at[ixs1].set(X["w"][:j_star])
+    # print(f"{ixs1=} {X['w'][:j_star]} {w_new=}")
     # mus_new = mus_new.at[ixs1].set(X["mus"][:j_star])
     # vars_new = vars_new.at[ixs1].set(X["vars"][:j_star])
 
     # w_new = w_new.at[ixs2].set(X["w"][j_star+1:])
+    # print(f"{ixs2=} {X['w'][j_star+1:]} {w_new=}")
     # mus_new = mus_new.at[ixs2].set(X["mus"][j_star+1:])
     # vars_new = vars_new.at[ixs2].set(X["vars"][j_star+1:])
 
     # this works because we overwrite j1 and j2 later
     ixs = split_idx(jnp.arange(0,K+1-1),j_star,j1,j2)
-    # print(f"{w=} {w_new=} {j_star=} {ixs=}")
     w_new = w_new.at[ixs].set(X["w"])
     mus_new = mus_new.at[ixs].set(X["mus"])
     vars_new = vars_new.at[ixs].set(X["vars"])
@@ -260,16 +265,17 @@ def merge_involution(X: Trace, aux: MergeAux, K: int):
     u2 = (mu - mu1) / jnp.sqrt(var * w2/w1) # u2 can be smaller than 0 here because we have not guaranteeed mu1 < mu2
     u3 = var1/var * u1 / (1 - jnp.square(u2))
 
-    logabsdetJ = 1 - compute_log_abs_det_J_split(w, mu, var, u1, jnp.abs(u2), u3, w1, w2, mu1, mu2, var1, var2)
+    logabsdetJ = -compute_log_abs_det_J_split(w, mu, var, u1, jnp.abs(u2), u3, w1, w2, mu1, mu2, var1, var2)
+    # logabsdetJ = -jnp.log(compute_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2))
 
     K = K - 1
-    # min_j = min(j1,j2)
-    # max_j = max(j1,j2)
 
     w_new = jnp.zeros((K+1,))
     mus_new = jnp.zeros((K+1,))
     vars_new = jnp.zeros((K+1,))
 
+    # min_j = jnp.minimum(j1,j2)
+    # max_j = jnp.maximum(j1,j2)
     # ixs1 = merge_idx(jnp.arange(0, min_j), j_star, j1, j2)
     # ixs2 = merge_idx(jnp.arange(min_j+1,max_j), j_star, j1, j2)
     # ixs3 = merge_idx(jnp.arange(max_j+1,K+1+1), j_star, j1, j2)
@@ -306,3 +312,23 @@ def merge_involution(X: Trace, aux: MergeAux, K: int):
     split_params = SplitParams(w1, mu1, var1, w2, mu2, var2) # type: ignore
 
     return X_new, aux_new, split_params, logabsdetJ
+
+
+#%%
+# import sympy
+# w, mu, var, u1, u2, u3 = sympy.var("w mu var u1 u2 u3")
+# w1 = w * u1
+# w2 = w * (1. - u1)
+# mu1 = mu - u2 * sympy.sqrt(var * w2/w1)
+# mu2 = mu + u2 * sympy.sqrt(var * w1/w2)
+# var1 = u3 * (1. - u2**2) * var * w/w1
+# var2 = (1. - u3) * (1. - u2**2) * var * w/w2
+# J = sympy.Matrix([
+#     w1,
+#     mu1,
+#     var1,
+#     w2,
+#     mu2,
+#     var2
+# ])
+# sympy.simplify(J.jacobian(sympy.Matrix([mu, var, w, u1, u2, u3])).det() - ((w * (mu2 - mu1) * var1 * var2) / (u2 * ( 1 - u2**2) * u3 * (1-u3) * var)))

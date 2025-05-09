@@ -56,6 +56,7 @@ ys = jnp.array([
     -0.9580412415863696, 14.180597007125487, 4.052110659466889,
     -18.978055134755582, 13.441194891615718, 7.983890038551439, 7.759003567480592
 ])
+# ys = ys[:10]
 
 @model
 def gmm(ys: jax.Array):
@@ -80,6 +81,69 @@ m.set_slp_sort_key(find_K)
 
 from reversible_jumps import *
 
+# X = {
+#     "K": jnp.array(3,int),
+#     "w": jnp.array([0.1,0.2,0.3,0.4],float),
+#     "mus": jnp.array([-3.,-1.,0.,2.],float),
+#     "vars": jnp.array([1.1,1.2,1.3,1.4],float),
+#     "zs": jnp.array([0,0,1,1,2,2,3,3,0,1],int)
+# }
+# lp = m.log_prob(X)
+# print(X, lp)
+
+# split_aux = SplitAux(3, 2, 3, 0.70185906, 0.51070815, 0.10158975, jnp.array([0,0,0,0,0,0,0,1,0,0]))
+
+# w = X["w"][split_aux.j_star]
+# mu = X["mus"][split_aux.j_star]
+# var = X["vars"][split_aux.j_star]
+# zs = X["zs"]
+# split_params = get_split_params(w, mu, var, split_aux.u1, split_aux.u2, split_aux.u3)
+# # split_aux, split_params = split_randomness(jax.random.PRNGKey(0), X, X["K"].item(), ys)
+# print("split_aux", split_aux)
+# print(w, mu, var, split_params)
+# logQ_split = split_randomness_logQ(split_aux, split_params, X, X["K"].item(), ys)
+# print("logQ_split", logQ_split)
+
+# X_new, merge_aux, logabsdetJ = split_involution(X, split_aux, split_params, X["K"].item())
+
+# print("logabsdetJ", logabsdetJ)
+# print("X_new", X_new)
+# print(m.log_prob(X_new))
+# print("merge_aux", merge_aux)
+# logQ_merge = merge_randomness_logQ(merge_aux, X_new["K"])
+# print("logQ_merge", logQ_merge)
+
+# log_alpha = m.log_prob(X_new) - lp + logQ_merge - logQ_split + logabsdetJ
+# print("log_alpha=", log_alpha)
+# print()
+
+# merge_aux = MergeAux(0,0,0)
+# print("merge_aux", merge_aux)
+# logQ_merge = merge_randomness_logQ(merge_aux, X["K"].item())
+# X_new, split_aux, split_params, logabsdetJ = merge_involution(X, merge_aux, X["K"].item())
+# logQ_split = split_randomness_logQ(split_aux, split_params, X_new, X_new["K"], ys)
+# print("logQ_merge", logQ_merge)
+# print("X_new", X_new)
+# print(m.log_prob(X_new))
+# print("split_aux", split_aux)
+# print("logQ_split", logQ_split)
+# print("logabsdetJ", logabsdetJ)
+# log_alpha = m.log_prob(X_new) - lp + logQ_split - logQ_merge + logabsdetJ
+# print("log_alpha=", log_alpha)
+
+
+
+# exit()
+
+# keys = jax.random.split(jax.random.PRNGKey(0), 1_000)
+# accept_probs = []
+# for key in tqdm(keys):
+#     accept_prob = split_move(X, lp, key, X["K"].item(), ys, m.log_prob)
+#     accept_probs.append(accept_prob)
+# print(jnp.mean(jnp.exp(jnp.array(accept_probs))))
+# exit()
+
+
 # for i in (range(1000)):
 #     print(i)
 #     rng_key = jax.random.PRNGKey(i)
@@ -91,6 +155,8 @@ from reversible_jumps import *
 #     if X["K"].item() > 0:
 #         merge_move(X, lp, rng_key, X["K"].item(), ys, m.log_prob, check=True)
 # exit()
+
+
 
 @dataclass
 class RJMCMCTransitionProbEstimate(LogWeightEstimate):
