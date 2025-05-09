@@ -45,7 +45,7 @@ def split_randomness(rng_key: PRNGKey, X: Trace, K: int, ys: jax.Array):
     td = numpyro_dists.TransformedDistribution(numpyro_dists.Beta(jnp.array([2.,2.],float),jnp.array([2.,2.],float)), t)
     u2_dist = numpyro_dists.MixtureSameFamily(numpyro_dists.CategoricalProbs(jnp.array([0.5,0.5],float)), td)
 
-    # u2_dist = numpyro_dists.Beta(2.,2.)
+    # u2_dist = numpyro_dists.Beta(2.,2.) # original version of Matheos
     u2 = u2_dist.sample(u2_key)
 
     u3 = numpyro_dists.Beta(1.,1.).sample(u3_key)
@@ -79,7 +79,7 @@ def split_randomness_logQ(aux: SplitAux, sp: SplitParams, X: Trace, K: int, ys: 
     td = numpyro_dists.TransformedDistribution(numpyro_dists.Beta(jnp.array([2.,2.],float),jnp.array([2.,2.],float)), t)
     u2_dist = numpyro_dists.MixtureSameFamily(numpyro_dists.CategoricalProbs(jnp.array([0.5,0.5],float)), td)
 
-    # u2_dist = numpyro_dists.Beta(2.,2.)
+    # u2_dist = numpyro_dists.Beta(2.,2.)  # original version of Matheos, u2 can be negative from reverse split params of merge!
     logQ += u2_dist.log_prob(aux.u2)
 
     logQ += numpyro_dists.Beta(1.,1.).log_prob(aux.u3)
