@@ -101,11 +101,21 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             self.inference_results[slp] = []
         self.inference_results[slp].append(inference_result)
 
+    def get_inference_results(self, slp: SLP):
+        if slp not in self.inference_results:
+            self.inference_results[slp] = []
+        return self.inference_results[slp]
+
     def add_to_log_weight_estimates(self, slp: SLP, log_weight_estimate: LogWeightEstimate):
         if slp not in self.log_weight_estimates:
             self.log_weight_estimates[slp] = []
         self.log_weight_estimates[slp].append(log_weight_estimate)
 
+    def get_log_weight_estimates(self, slp: SLP):
+        if slp not in self.log_weight_estimates:
+            self.log_weight_estimates[slp] = []
+        return self.log_weight_estimates[slp]
+        
     
     def run(self, rng_key: PRNGKey):
         # t0 = time()

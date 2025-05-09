@@ -108,10 +108,22 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         )
     
     def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
-        # TODO: maybe expand if jump move acceptance exceeds threshold
-        for k in jnp.arange(0,11):
-            rng_key, generate_key = jax.random.split(rng_key)
-            trace, _ = self.model.generate(generate_key, {"K": k})
+        rng_key, generate_key = jax.random.split(rng_key)
+        trace, _ = self.model.generate(generate_key, {"K": jnp.array(0,int)})
+        slp = slp_from_decision_representative(self.model, trace)
+        active_slps.append(slp)
+        tqdm.write(f"Make SLP {slp.formatted()} active.")
+
+    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
+        last_slp = active_slps.pop()
+        inactive_slps.append(last_slp)
+        estimates = self.get_log_weight_estimates(last_slp)
+        estimate = estimates[0] # we only have one per slp
+        assert isinstance(estimate, RJMCMCTransitionProbEstimate)
+        K = find_K(last_slp)
+        split_transition_log_prob = estimate.transition_log_probs[(K, K+1)]
+        if split_transition_log_prob > jnp.log(0.01):
+            trace, _ = self.model.generate(rng_key, {"K": jnp.array(K+1,int)})
             slp = slp_from_decision_representative(self.model, trace)
             active_slps.append(slp)
             tqdm.write(f"Make SLP {slp.formatted()} active.")
@@ -150,7 +162,6 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
             tqdm.write(f"Estimate log weight for {slp.formatted()}: split prob = {jnp.exp(split_transition_log_prob).item():.6f} merge prob = {jnp.exp(merge_transition_log_prob).item():.6f}")
 
         return RJMCMCTransitionProbEstimate(transition_log_probs, n_samples)
-    
 
     
     def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
@@ -195,3 +206,7 @@ result = dcc_obj.run(jax.random.PRNGKey(0))
 result.pprint()
 
 t1 = time()
+
+print(f"Total time: {t1-t0:.3f}s")
+comp_time = compilation_time_tracker.get_total_compilation_time_secs()
+print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
