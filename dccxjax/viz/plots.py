@@ -10,11 +10,12 @@ __all__ = [
 ]
 
 def plot_histogram(result: MCMCDCCResult, address: str):
-    samples, weights, undef_prob = result.get_samples_for_address(address, unstack_chains=True)
+    weighted_samples, undef_prob = result.get_samples_for_address(address)
 
     fig, axs = plt.subplots(1,2,sharey="all",width_ratios=[0.9,0.1])
     plt.subplots_adjust(wspace=0, hspace=0)
-    if samples is not None and weights is not None:
+    if weighted_samples is not None:
+        samples, weights = weighted_samples.unstack().get()
         axs[0].hist(samples, weights=weights, density=True, bins=100, alpha=0.5)
         kde = jax.scipy.stats.gaussian_kde(samples, weights=weights)
         xs = jax.numpy.linspace(samples.min(), samples.max(), 200)
@@ -39,8 +40,9 @@ def plot_histogram_by_slp(result: MCMCDCCResult, address: str, N: Optional[int] 
     fig, axs = plt.subplots(len(slps)+1, 2, sharex="col", width_ratios=[0.9,0.1], figsize=(6.4, 2.*(len(slps)+1)), layout="constrained")
     Z = jax.lax.exp(result.get_log_weight_normaliser())
 
-    samples, weights, undef_prob = result.get_samples_for_address(address, unstack_chains=True)
-    assert samples is not None and weights is not None
+    weighted_samples, undef_prob = result.get_samples_for_address(address)
+    assert weighted_samples is not None
+    samples, weights = weighted_samples.unstack().get()
     _ax = axs[-1]
     _ax[0].hist(samples, weights=weights, density=True, bins=100, alpha=0.5)
     kde = jax.scipy.stats.gaussian_kde(samples, weights=weights)
@@ -57,7 +59,7 @@ def plot_histogram_by_slp(result: MCMCDCCResult, address: str, N: Optional[int] 
     
 
     for i, slp in enumerate(slps):
-        samples, weights = result.get_samples_for_address_and_slp(address, slp, unstack_chains=True)
+        samples, weights = result.get_samples_for_address_and_slp(address, slp).unstack().get()
         assert len(samples.shape) == 1 # multi-dim variables not plottable
 
         _ax = axs[i]
@@ -90,9 +92,8 @@ def plot_trace(result: MCMCDCCResult, address: str):
     fig, axs = plt.subplots(len(slps), 2, sharex="col", sharey="col", width_ratios=[0.5,1.], figsize=(6.4, 2*len(slps)), layout="constrained")
     
     for i, slp in enumerate(slps):
-        samples, _ = result.get_samples_for_address_and_slp(address, slp, unstack_chains=False)
-        assert len(samples.shape) == 2 # multi-dim variables not plottable
-        n_chains = samples.shape[1]
+        address_results = result.get_samples_for_address_and_slp(address, slp)
+        n_chains = address_results.n_chains()
         
         _axs = axs[i] if len(slps) > 1 else axs
         w = jax.lax.exp(result.slp_log_weights[slp] - Z)
@@ -100,7 +101,8 @@ def plot_trace(result: MCMCDCCResult, address: str):
         _axs[0].set_ylabel(slp.formatted())
 
         for j in range(n_chains):
-            chain = samples[:,j]
+            chain, _ = address_results.get_chains(j).get()
+            assert len(chain.shape) == 1 # multi dim traces plots not supported yet
             kde = jax.scipy.stats.gaussian_kde(chain)
             xs = jax.numpy.linspace(chain.min(), chain.max(), 200)
             density = kde(xs)

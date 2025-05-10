@@ -41,23 +41,23 @@ class CarryStats(TypedDict, total=False):
     unconstrained_position: Trace
     unconstrained_log_prob: FloatArray
 
-def fill_carry_stats(carry_stats: CarryStats, gibbs_model: GibbsModel, temperature: FloatArray, stats: Set[str]):
+def map_carry_stats(carry_stats: CarryStats, gibbs_model: GibbsModel, temperature: FloatArray, new_stats: Set[str]):
     new_carry_stats = CarryStats()
-    if "position" in stats and "position" not in carry_stats:
+    if "position" in new_stats and "position" not in carry_stats:
         assert "unconstrained_position" in carry_stats 
         new_carry_stats["position"] = gibbs_model.slp.transform_to_constrained(carry_stats["unconstrained_position"])
-    if "log_prob" in stats and "log_prob" not in carry_stats:
+    if "log_prob" in new_stats and "log_prob" not in carry_stats:
         assert "position" in new_carry_stats 
         new_carry_stats["log_prob"] = gibbs_model.tempered_log_prob(temperature)(new_carry_stats["position"])
 
-    if "unconstrained_position" in stats and "unconstrained_position" not in carry_stats:
+    if "unconstrained_position" in new_stats and "unconstrained_position" not in carry_stats:
         assert "position" in carry_stats 
         new_carry_stats["unconstrained_position"] = gibbs_model.slp.transform_to_unconstrained(carry_stats["position"])
-    if "unconstrained_log_prob" in stats and "unconstrained_log_prob" not in carry_stats:
+    if "unconstrained_log_prob" in new_stats and "unconstrained_log_prob" not in carry_stats:
         assert "unconstrained_position" in new_carry_stats 
         new_carry_stats["unconstrained_log_prob"] = gibbs_model.tempered_unconstrained_log_prob(temperature)(new_carry_stats["unconstrained_position"])
 
-    for stat in stats:
+    for stat in new_stats:
         if stat not in new_carry_stats:
             if stat in carry_stats:
                 new_carry_stats[stat] = carry_stats[stat]
@@ -273,12 +273,12 @@ def get_mcmc_kernel(
 
         infos = state.infos
 
-        _fill_carry_stats = jax.vmap(fill_carry_stats, in_axes=(0,None,None,None)) if vectorised else fill_carry_stats
+        _map_carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None)) if vectorised else map_carry_stats
 
         for i, (step, kernel) in enumerate(zip(regime_steps, kernels)):
             rng_key, kernel_key = jax.random.split(rng_key)
 
-            carry_stats = _fill_carry_stats(carry_stats, full_model, state.temperature, step.algo.requires_stats())
+            carry_stats = _map_carry_stats(carry_stats, full_model, state.temperature, step.algo.requires_stats())
             assert step.algo.requires_stats() <= carry_stats.keys()
             kernel_state = KernelState(carry_stats, infos[i] if collect_inference_info and infos is not None else None)
 
@@ -298,7 +298,7 @@ def get_mcmc_kernel(
                 assert infos is not None and new_kernel_state.info is not None
                 infos[i] = new_kernel_state.info
 
-        carry_stats = _fill_carry_stats(carry_stats, full_model, state.temperature, {"position", "log_prob"} | carry_stats.keys())
+        carry_stats = _map_carry_stats(carry_stats, full_model, state.temperature, {"position", "log_prob"} | carry_stats.keys())
         assert "position" in carry_stats and "log_prob" in carry_stats
         position = carry_stats["position"]
         log_prob = carry_stats["log_prob"]
@@ -404,10 +404,9 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
 
         infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
 
-        # TODO: maybe tidy this up
         carry_stats = CarryStats(position=init_positions.data, log_prob=log_prob)
 
-        carry_stats = jax.vmap(fill_carry_stats, in_axes=(0,None,None,None))(carry_stats, GibbsModel(self.slp, AllVariables()), jnp.array(1.0), self.init_carry_stat_names)
+        carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None))(carry_stats, GibbsModel(self.slp, AllVariables()), jnp.array(1.0), self.init_carry_stat_names)
 
         initial_state = MCMCState(jnp.array(0, int), jnp.array(1.0), init_positions.data, log_prob, carry_stats, infos)
 

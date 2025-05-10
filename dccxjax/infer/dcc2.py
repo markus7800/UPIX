@@ -208,33 +208,28 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
         return jax.scipy.special.logsumexp(jnp.vstack(log_Zs))
 
 
-    def _get_samples_for_slp(self, slp: SLP, unstack_chains: bool, mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE]) -> Tuple[DCC_RESULT_QUERY_TYPE, FloatArray]:
+    def _get_samples_for_slp(self, slp: SLP, mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE]) -> StackedSampleValues[Tuple[DCC_RESULT_QUERY_TYPE, FloatArray]]:
         log_Z = self.slp_log_weights[slp]
         log_Z_normaliser = self.get_log_weight_normaliser()
         weighted_sample = self.slp_weighted_samples[slp]
         weights = jax.lax.exp(weighted_sample.log_weights - jax.scipy.special.logsumexp(weighted_sample.log_weights) + log_Z - log_Z_normaliser)
 
         assert weights.shape == (weighted_sample.values.N, weighted_sample.values.T)
-        if unstack_chains:
-            weights = _unstack_sample_data(weights) # has same shape as values (StackedSampleValues)
-            values = weighted_sample.values.unstack().data
-        else:
-            values = weighted_sample.values.data
 
-        return mapper(values), weights # TODO return SampleValues
+        return StackedSampleValues((mapper(weighted_sample.values.data), weights), weighted_sample.values.N, weighted_sample.values.T)
     
-    def get_samples_for_slp(self, slp: SLP, unstack_chains: bool = True, mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE] = lambda x: x) -> Tuple[DCC_RESULT_QUERY_TYPE, FloatArray]:
-        return self._get_samples_for_slp(slp, unstack_chains, mapper)
+    def get_samples_for_slp(self, slp: SLP, mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE] = lambda x: x) -> StackedSampleValues[Tuple[DCC_RESULT_QUERY_TYPE, FloatArray]]:
+        return self._get_samples_for_slp(slp, mapper)
     
     # convenience function for DCC_COLLECT_TYPE = Trace
-    def get_samples_for_address_and_slp(self, address: str, slp: SLP, unstack_chains: bool = True):
-        return self._get_samples_for_slp(slp, unstack_chains, lambda x: cast(Trace,x)[address])
+    def get_samples_for_address_and_slp(self, address: str, slp: SLP):
+        return self._get_samples_for_slp(slp, lambda x: cast(Trace,x)[address])
     
 
-    def _get_samples(self, unstack_chains: bool,
+    def _get_samples(self,
                      predicate: Callable[[DCC_COLLECT_TYPE], bool],
                      mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE]
-                     ) -> Tuple[Optional[DCC_RESULT_QUERY_TYPE], Optional[FloatArray], float]:
+                     ) -> Tuple[Optional[StackedSampleValues[Tuple[DCC_RESULT_QUERY_TYPE,FloatArray]]], float]:
         
         undef_prob = 0.
         log_Z_normaliser = self.get_log_weight_normaliser()
@@ -249,11 +244,7 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
             if not predicate(weighted_sample.values.data):
                 undef_prob += jax.lax.exp(log_Z).item()
             else:
-                if unstack_chains:
-                    slp_values = weighted_sample.values.unstack().data
-                    slp_weights = _unstack_sample_data(slp_weights)
-                else:
-                    slp_values = weighted_sample.values.data
+                slp_values = weighted_sample.values.data
                 slp_values = mapper(slp_values)
 
                 if values is None:
@@ -263,21 +254,24 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
                     values = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), values, slp_values)
                     weights = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), weights, slp_weights)
 
-
-        return values, weights, undef_prob
+        if values is not None:
+            assert weights is not None
+            return StackedSampleValues((values, weights), *weights.shape), undef_prob
+        else:
+            return None, undef_prob
                 
 
     
-    def get_samples(self, unstack_chains: bool = True,
+    def get_samples(self,
                      predicate: Callable[[DCC_COLLECT_TYPE], bool] = lambda _: True,
                      mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE] = lambda x: x
                      ):
-        return self._get_samples(unstack_chains, predicate, mapper)
+        return self._get_samples(predicate, mapper)
 
 
     # convenience function for DCC_COLLECT_TYPE = Trace
-    def get_samples_for_address(self, address: str, unstack_chains: bool = True):
-        return self._get_samples(unstack_chains, lambda x: address in cast(Trace,x), lambda x: cast(Trace,x)[address])
+    def get_samples_for_address(self, address: str):
+        return self._get_samples(lambda x: address in cast(Trace,x), lambda x: cast(Trace,x)[address])
     
 
 class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_TYPE]):
