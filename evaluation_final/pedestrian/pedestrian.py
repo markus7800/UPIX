@@ -85,12 +85,8 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         super().initialise_active_slps(_active_slps, rng_key)
         # we assume that we know that with increasing steps eventually we have unlikely SLPs
         _active_slps.sort(key=self.model.slp_sort_key)
-        # _active_slps.sort(key=lambda slp: slp.sort_key())
         log_Z_max = -jnp.inf
         for slp in _active_slps:
-            # if find_t_max(slp) <= 6:
-            #     active_slps.append(slp)
-
             rng_key, estimate_key = jax.random.split(rng_key)
             estimate_weight_n_samples: int = self.config["init_estimate_weight_n_samples"]
             log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, estimate_weight_n_samples, estimate_key)
@@ -133,7 +129,6 @@ plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
 plt.xlabel("step_1")
 plt.ylabel("step_2")
 plt.title(slp.formatted())
-plt.show()
 
 slp = result.get_slp(lambda slp: find_t_max(slp) == 3)
 assert slp is not None
@@ -157,11 +152,9 @@ plt.title(slp.formatted())
 plt.show()
 
 
-# plot_histogram(result, "start")
-# plot_trace(result, "start")
 plot_histogram_by_slp(result, "start")
-# plot_histogram_by_slp(result, "step_1")
-# plot_histogram_by_slp(result, "step_2")
+plot_histogram_by_slp(result, "step_1")
+plot_histogram_by_slp(result, "step_2")
 plt.show()
 
 
