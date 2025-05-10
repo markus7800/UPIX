@@ -2,7 +2,7 @@ import jax.experimental
 from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace
 import jax
 import jax.numpy as jnp
-from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar, Generic
+from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar, Generic, TypedDict, Set
 from .gibbs_model import GibbsModel
 from .variable_selector import VariableSelector
 from abc import ABC, abstractmethod
@@ -11,6 +11,8 @@ from dccxjax.core import SLP
 from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays, broadcast_jaxtree
 from time import time
 from multipledispatch import dispatch
+from jax.flatten_util import ravel_pytree
+from .variable_selector import AllVariables
 
 from tqdm.auto import tqdm as tqdm_auto
 
@@ -22,7 +24,8 @@ __all__ = [
     "vectorise_kernel_over_chains",
     "init_inference_infos",
     "init_inference_infos_for_chains",
-    "summarise_mcmc_info"
+    "summarise_mcmc_info",
+    "pprint_mcmc_regime"
 ]
 
 InferenceInfo = NamedTuple
@@ -32,22 +35,57 @@ InferenceInfos = List[InferenceInfo]
 def summarise_mcmc_info(info, n_samples: int) -> str:
     raise NotImplementedError
 
-class KernelState(NamedTuple):
+class CarryStats(TypedDict, total=False):
     position: Trace
     log_prob: FloatArray
+    unconstrained_position: Trace
+    unconstrained_log_prob: FloatArray
+
+def fill_carry_stats(carry_stats: CarryStats, gibbs_model: GibbsModel, temperature: FloatArray, stats: Set[str]):
+    new_carry_stats = CarryStats()
+    if "position" in stats and "position" not in carry_stats:
+        assert "unconstrained_position" in carry_stats 
+        new_carry_stats["position"] = gibbs_model.slp.transform_to_constrained(carry_stats["unconstrained_position"])
+    if "log_prob" in stats and "log_prob" not in carry_stats:
+        assert "position" in new_carry_stats 
+        new_carry_stats["log_prob"] = gibbs_model.tempered_log_prob(temperature)(new_carry_stats["position"])
+
+    if "unconstrained_position" in stats and "unconstrained_position" not in carry_stats:
+        assert "position" in carry_stats 
+        new_carry_stats["unconstrained_position"] = gibbs_model.slp.transform_to_unconstrained(carry_stats["position"])
+    if "unconstrained_log_prob" in stats and "unconstrained_log_prob" not in carry_stats:
+        assert "unconstrained_position" in new_carry_stats 
+        new_carry_stats["unconstrained_log_prob"] = gibbs_model.tempered_unconstrained_log_prob(temperature)(new_carry_stats["unconstrained_position"])
+
+    for stat in stats:
+        if stat not in new_carry_stats:
+            if stat in carry_stats:
+                new_carry_stats[stat] = carry_stats[stat]
+            else:
+                raise Exception(f"Do not know how to fill stat {stat} with {sorted(carry_stats.keys())}")
+        
+    return new_carry_stats
+            
+
+class KernelState(NamedTuple):
+    carry_stats: CarryStats
     info: Optional[InferenceInfo]
     
 Kernel = Callable[[PRNGKey,FloatArray,KernelState],KernelState]
+
 
 class MCMCState(NamedTuple):
     iteration: IntArray # scalar
     temperature: FloatArray # scalar 0 ... prior, 1 ... joint
     position: Trace
     log_prob: FloatArray
+    carry_stats: CarryStats
     infos: Optional[InferenceInfos]
 
 
 class MCMCInferenceAlgorithm(ABC):
+    unconstrained: bool
+
     @abstractmethod
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
         raise NotImplementedError
@@ -56,6 +94,44 @@ class MCMCInferenceAlgorithm(ABC):
     def init_info(self) -> InferenceInfo:
         raise NotImplementedError
     
+    def requires_stats(self) -> Set[str]:
+        return {"unconstrained_position", "unconstrained_log_prob"} if self.unconstrained else {"position", "log_prob"}
+    
+    def provides_stats(self) -> Set[str]:
+        return {"unconstrained_position", "unconstrained_log_prob"} if self.unconstrained else {"position", "log_prob"}
+    
+    def default_preprocess_to_flat(self, gibbs_model: GibbsModel, temperature: FloatArray, state: KernelState):
+        if self.unconstrained:
+            assert "unconstrained_position" in state.carry_stats
+            assert "unconstrained_log_prob" in state.carry_stats
+            current_postion: Trace = state.carry_stats["unconstrained_position"]
+            log_prob: FloatArray = state.carry_stats["unconstrained_log_prob"]
+
+        else:
+            assert "position" in state.carry_stats
+            assert "log_prob" in state.carry_stats
+            current_postion: Trace = state.carry_stats["position"]
+            log_prob: FloatArray = state.carry_stats["log_prob"]
+
+        X, Y = gibbs_model.split_trace(current_postion)
+        gibbs_model.set_Y(Y)
+        X_flat, unravel_fn = ravel_pytree(X)
+
+        if self.unconstrained:
+            _tempered_log_prob_fn = gibbs_model.unraveled_unconstrained_tempered_log_prob(temperature, unravel_fn)
+        else:
+            _tempered_log_prob_fn = gibbs_model.unraveled_tempered_log_prob(temperature, unravel_fn)
+
+        return X_flat, log_prob, unravel_fn, _tempered_log_prob_fn
+    
+    def default_postprocess_from_flat(self, gibbs_model: GibbsModel, X_flat: jax.Array, log_prob: FloatArray, unravel_fn: Callable[[jax.Array], Trace]):
+        next_position = gibbs_model.combine_to_trace(unravel_fn(X_flat), gibbs_model.Y)
+        if self.unconstrained:
+            return CarryStats(unconstrained_position=next_position, unconstrained_log_prob=log_prob)
+        else:
+            return CarryStats(position=next_position, log_prob=log_prob)
+        
+
 
 class MCMCRegime(ABC):
     @abstractmethod
@@ -68,6 +144,12 @@ class MCMCStep(MCMCRegime):
         self.algo = algo
     def __iter__(self):
         yield self
+    def description(self, slp: Optional[SLP]) -> str:
+        if slp is not None:
+            target = sorted([address for address in slp.decision_representative.keys() if self.variable_selector.contains(address)])
+        else:
+            target = str(self.variable_selector)
+        return f"{self.algo} targeting {target}"
 
 class MCMCSteps(MCMCRegime):
     def __init__(self, *subregimes: MCMCRegime) -> None:
@@ -113,17 +195,68 @@ class ProgressbarManager:
 MCMC_COLLECT_TYPE = TypeVar("MCMC_COLLECT_TYPE")
 MCMCKernel = Callable[[MCMCState,PRNGKey],Tuple[MCMCState,MCMC_COLLECT_TYPE]]
 
+def _get_sym_for_stat(stat: str, curr_stats: Set[str], next_stats: Set[str]) -> str:
+    if stat in curr_stats and stat in next_stats:
+        return "="
+    elif stat in curr_stats:
+        return "-"
+    else:
+        return "+"
+
+def pprint_mcmc_regime(regime: MCMCRegime, slp: Optional[SLP]=None):
+    regime_steps: List[MCMCStep] = list(regime)
+
+    init_carry_stat_names = (regime_steps[0].algo.requires_stats() & regime_steps[-1].algo.provides_stats()) - {"position", "log_prob"}
+
+    print("MCMC Regime:")
+    curr_stats = init_carry_stat_names | {"position", "log_prob"}
+    s = "Call stats: "
+    for stat in sorted(curr_stats):
+        s += stat + " "
+    print("\t", s)
+
+    next_stats = regime_steps[0].algo.requires_stats()
+    s = "Init: "
+    for stat in sorted(curr_stats | next_stats):
+        s += _get_sym_for_stat(stat, curr_stats, next_stats) + stat + " "
+    print("\t", s)
+
+    for i in range(0, len(regime_steps)-1):
+        curr_step = regime_steps[i]
+        next_step = regime_steps[i+1]
+        curr_stats = curr_step.algo.provides_stats()
+        next_stats = next_step.algo.requires_stats()
+        s = "Transfer: "
+        for stat in sorted(curr_stats | next_stats):
+            s += _get_sym_for_stat(stat, curr_stats, next_stats) + stat + " "
+        print("\t", f"Step {i}.", curr_step.description(slp))
+        print("\t", s)
+    print("\t", f"Step {len(regime_steps)-1}.", regime_steps[-1].description(slp))
+
+    curr_stats = regime_steps[-1].algo.provides_stats()
+    next_stats = regime_steps[0].algo.requires_stats() | {"position", "log_prob"}
+    s = "Wrap: "
+    for stat in sorted(curr_stats | next_stats):
+        s += _get_sym_for_stat(stat, curr_stats, next_stats) + stat + " "
+    print("\t", s)
+
 def get_mcmc_kernel(
         slp: SLP, regime: MCMCRegime, *,
         collect_inference_info: bool = False, 
         vectorised: bool = True,
-        return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> MCMCKernel[MCMC_COLLECT_TYPE]:
+        return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> Tuple[MCMCKernel[MCMC_COLLECT_TYPE], Set[str]]:
     
+    regime_steps: List[MCMCStep] = list(regime)
     kernels: List[Kernel] = []
-    for step_number, inference_step in enumerate(regime):
+    for step_number, inference_step in enumerate(regime_steps):
         gibbs_model = GibbsModel(slp, inference_step.variable_selector)
         kernels.append(inference_step.algo.make_kernel(gibbs_model, step_number, collect_inference_info))
     
+    full_model = GibbsModel(slp, AllVariables())
+
+    # they have to be initialised before kernel is run
+    mcmc_carry_stat_names = (regime_steps[0].algo.requires_stats() & regime_steps[-1].algo.provides_stats()) - {"position", "log_prob"}
+
     jit_tracker = JitVariationTracker(f"_mcmc_step for {slp.short_repr()}")
     @jax.jit
     def _one_step(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
@@ -132,11 +265,22 @@ def get_mcmc_kernel(
         # rng_key = state.rng_key
         position = state.position
         log_prob = state.log_prob
+
+        carry_stats: CarryStats = state.carry_stats
+        assert carry_stats.keys() == mcmc_carry_stat_names, f"{carry_stats.keys()} does not match {mcmc_carry_stat_names}"
+        carry_stats["position"] = position
+        carry_stats["log_prob"] = log_prob
+
         infos = state.infos
 
-        for i, kernel in enumerate(kernels):
+        _fill_carry_stats = jax.vmap(fill_carry_stats, in_axes=(0,None,None,None)) if vectorised else fill_carry_stats
+
+        for i, (step, kernel) in enumerate(zip(regime_steps, kernels)):
             rng_key, kernel_key = jax.random.split(rng_key)
-            kernel_state = KernelState(position, log_prob, infos[i] if collect_inference_info and infos is not None else None)
+
+            carry_stats = _fill_carry_stats(carry_stats, full_model, state.temperature, step.algo.requires_stats())
+            assert step.algo.requires_stats() <= carry_stats.keys()
+            kernel_state = KernelState(carry_stats, infos[i] if collect_inference_info and infos is not None else None)
 
             if vectorised:
                 # for some reason this is significantly faster
@@ -147,15 +291,27 @@ def get_mcmc_kernel(
             else:
                 new_kernel_state = kernel(kernel_key, state.temperature, kernel_state) # (2)
 
-            position = new_kernel_state.position
-            log_prob = new_kernel_state.log_prob
+            carry_stats = new_kernel_state.carry_stats
+            assert carry_stats.keys() <= step.algo.provides_stats()
+
             if collect_inference_info:
                 assert infos is not None and new_kernel_state.info is not None
                 infos[i] = new_kernel_state.info
 
-        return MCMCState(state.iteration + 1, state.temperature, position, log_prob, infos), return_map(state)
+        carry_stats = _fill_carry_stats(carry_stats, full_model, state.temperature, {"position", "log_prob"} | carry_stats.keys())
+        assert "position" in carry_stats and "log_prob" in carry_stats
+        position = carry_stats["position"]
+        log_prob = carry_stats["log_prob"]
+                               
+        next_carry_stats = CarryStats()
+        for stat, carry in carry_stats.items():
+            if stat in mcmc_carry_stat_names:
+                next_carry_stats[stat] = carry
 
-    return _one_step
+
+        return MCMCState(state.iteration + 1, state.temperature, position, log_prob, next_carry_stats, infos), return_map(state)
+
+    return _one_step, mcmc_carry_stat_names
 
 
 # this with (2) seems to be a lot slower than (1)
@@ -233,7 +389,11 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
 
         self.collect_inference_info = collect_inference_info
         self.vectorised = vectorised
-        self.kernel: MCMCKernel[MCMC_COLLECT_TYPE] = get_mcmc_kernel(slp, regime, collect_inference_info=collect_inference_info, vectorised=vectorised, return_map=return_map)
+
+        kernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, collect_inference_info=collect_inference_info, vectorised=vectorised, return_map=return_map)
+
+        self.kernel: MCMCKernel[MCMC_COLLECT_TYPE] = kernel
+        self.init_carry_stat_names: Set[str] = init_carry_stat_names
 
     def run(self, rng_key: PRNGKey, init_positions: StackedTrace, log_prob: Optional[FloatArray] = None, *, n_samples_per_chain: int) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
         assert init_positions.T == self.n_chains
@@ -243,17 +403,28 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             assert log_prob.shape == (self.n_chains,)
 
         infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
-        initial_state = MCMCState(jnp.array(0, int), jnp.array(1.0), init_positions.data, log_prob, infos)
-        
-        keys = jax.random.split(rng_key, n_samples_per_chain)
 
+        # TODO: maybe tidy this up
+        carry_stats = CarryStats(position=init_positions.data, log_prob=log_prob)
+
+        carry_stats = jax.vmap(fill_carry_stats, in_axes=(0,None,None,None))(carry_stats, GibbsModel(self.slp, AllVariables()), jnp.array(1.0), self.init_carry_stat_names)
+
+        initial_state = MCMCState(jnp.array(0, int), jnp.array(1.0), init_positions.data, log_prob, carry_stats, infos)
+
+        return self.continue_run(rng_key, initial_state, n_samples_per_chain=n_samples_per_chain)
+        
+    def continue_run(self, rng_key: PRNGKey, state: MCMCState, *, n_samples_per_chain: int, reset_info: bool=True):
+        keys = jax.random.split(rng_key, n_samples_per_chain)
+        if reset_info:
+            infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
+            state = MCMCState(jnp.array(0, int), jnp.array(1.0), state.position, state.log_prob, state.carry_stats, infos)
 
         if self.progress_bar:
             progress_bar_mngr, kernel = add_progress_bar(self.kernel, self.slp.formatted(), n_samples_per_chain)
             progress_bar_mngr.start_progress()
         else:
             kernel = self.kernel
-        last_state, return_values = jax.lax.scan(kernel, initial_state, keys)
+        last_state, return_values = jax.lax.scan(kernel, state, keys)
 
         return last_state, return_values
 

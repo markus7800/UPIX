@@ -117,43 +117,29 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
         self.eps = eps
         self.unconstrained = unconstrained
 
-
     def init_info(self) -> InferenceInfo:
         return HMCInfo(jnp.array(0,int), jnp.array(0,int), jnp.array(0,int))
     
+    def __repr__(self) -> str:
+        s = f"HMC(L={self.L}, eps={self.eps}, at {hex(id(self))})"
+        return s
+
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
         X_repr, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
         is_discrete_map = gibbs_model.slp.get_is_discrete_map()
-
-        assert all(not is_discrete_map[addr] for addr, _ in X_repr.items())
-
+        assert all(not is_discrete_map[addr] for addr, _ in X_repr.items()), "No discrete parameters allowed in HMC."
 
         jit_tracker = JitVariationTracker(f"_hmc_kernel for Inference step {step_number}: <HMC at {hex(id(self))}>")
         @partial(jax.jit, static_argnums=[3])
         def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState, debug: bool=False) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
             
-            current_postion = gibbs_model.slp.transform_to_unconstrained(state.position) if self.unconstrained else state.position
+            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, state)
 
-            X, Y = gibbs_model.split_trace(current_postion)
-            gibbs_model.set_Y(Y)
-        
-            X_flat, unravel_fn = ravel_pytree(X)
-            if self.unconstrained:
-                _tempered_log_prob_fn = gibbs_model.unraveled_unconstrained_tempered_log_prob(temperature, unravel_fn)
-            else:
-                _tempered_log_prob_fn = gibbs_model.unraveled_tempered_log_prob(temperature, unravel_fn)
-
-            lp = _tempered_log_prob_fn(X_flat) if self.unconstrained else state.log_prob
-
-            proposed_X, proposed_log_prob, accept, diverged = hmc_kernel(rng_key, X_flat, lp, _tempered_log_prob_fn, self.L, self.eps, debug)
-            next_X_flat, next_log_prob = jax.lax.cond(accept, lambda _: (proposed_X, proposed_log_prob), lambda _: (X_flat, state.log_prob), operand=None)
+            proposed_X, proposed_log_prob, accept, diverged = hmc_kernel(rng_key, X_flat, log_prob, target_fn, self.L, self.eps, debug)
+            next_X_flat, next_log_prob = jax.lax.cond(accept, lambda _: (proposed_X, proposed_log_prob), lambda _: (X_flat, log_prob), operand=None)
             
-            
-            next_position = gibbs_model.combine_to_trace(unravel_fn(next_X_flat), Y)
-            if self.unconstrained:
-                next_position = gibbs_model.slp.transform_to_constrained(next_position)
-                next_log_prob = gibbs_model.tempered_log_prob(temperature)(next_position)
+            next_stats = self.default_postprocess_from_flat(gibbs_model, next_X_flat, next_log_prob, unravel_fn)
 
             hmc_info = state.info
             if collect_inferenence_info:
@@ -164,7 +150,7 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
                     hmc_info.proposed_out_of_support + (jnp.isinf(proposed_log_prob))
                 )
 
-            return KernelState(next_position, next_log_prob, hmc_info)
+            return KernelState(next_stats, hmc_info)
         
         return _hmc_kernel
     

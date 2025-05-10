@@ -1,9 +1,9 @@
 import jax
 import jax.numpy as jnp
-from typing import Callable, Dict, Optional, Tuple, NamedTuple
+from typing import Callable, Dict, Optional, Set, Tuple, NamedTuple, List
 from ..types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
 import dccxjax.distributions as dist
-from .mcmc import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel
+from .mcmc import InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, CarryStats
 from dataclasses import dataclass
 import math
 from jax.flatten_util import ravel_pytree
@@ -150,6 +150,27 @@ class RandomWalk(MCMCInferenceAlgorithm):
         self.sparse = self.sparse_frac is not None or self.sparse_numvar is not None
         self.unconstrained = unconstrained
 
+        if self.sparse:
+            assert not self.elementwise
+            assert (self.sparse_frac is None) ^ (self.sparse_numvar is None)
+
+    def __repr__(self) -> str:
+        args: List[str] =  []
+        if self.sparse:
+            if self.sparse_frac:
+                args.append(f"sparse_frac={self.sparse_frac}")
+            if self.sparse_numvar:
+                args.append(f"sparse_numvar={self.sparse_numvar}")
+        if self.elementwise:
+            args.append("elementwise")
+        if self.unconstrained:
+            args.append("unconstrained")
+
+        args.append(f"at {hex(id(self))}")
+        s_args = ", ".join(args)
+        s = f"RandomWalk({s_args})"
+        return s
+
     def init_info(self) -> InferenceInfo:
         if not self.elementwise:
             if self.sparse:
@@ -164,7 +185,7 @@ class RandomWalk(MCMCInferenceAlgorithm):
         n_dim = sum(values.size for _, values in X_repr.items())
         is_discrete_map = gibbs_model.slp.get_is_discrete_map()
         # for type stability either all discrete or all continuous
-        assert all(is_discrete_map[addr] for addr, _ in X_repr.items()) or all(not is_discrete_map[addr] for addr, _ in X_repr.items())
+        assert all(is_discrete_map[addr] for addr, _ in X_repr.items()) or all(not is_discrete_map[addr] for addr, _ in X_repr.items()), "All variables must be either discrete or continuous."
 
         sparse_p = 0.
         if self.sparse:
@@ -179,39 +200,28 @@ class RandomWalk(MCMCInferenceAlgorithm):
         @jax.jit
         def _rw_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
-            current_postion = gibbs_model.slp.transform_to_unconstrained(state.position) if self.unconstrained else state.position
-
-            X, Y = gibbs_model.split_trace(current_postion)
-            gibbs_model.set_Y(Y)
-        
-            X_flat, unravel_fn = ravel_pytree(X)
-            if self.unconstrained:
-                _tempered_log_prob_fn = gibbs_model.unraveled_unconstrained_tempered_log_prob(temperature, unravel_fn)
-            else:
-                _tempered_log_prob_fn = gibbs_model.unraveled_tempered_log_prob(temperature, unravel_fn)
+            
+            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, state)
 
             if not self.elementwise:
                 if self.sparse:
-                    next_X_flat, next_log_prob, n_accepted = rw_kernel_sparse(rng_key, X_flat, state.log_prob, _tempered_log_prob_fn, self.proposer, sparse_p, n_dim)
+                    next_X_flat, next_log_prob, n_accepted = rw_kernel_sparse(rng_key, X_flat, log_prob, target_fn, self.proposer, sparse_p, n_dim)
                     accepted = n_accepted.sum() / int(math.ceil(1./sparse_p))
                 else:
-                    next_X_flat, next_log_prob, accepted = rw_kernel(rng_key, X_flat, state.log_prob, _tempered_log_prob_fn, self.proposer)
+                    next_X_flat, next_log_prob, accepted = rw_kernel(rng_key, X_flat, log_prob, target_fn, self.proposer)
     
             else:
-                next_X_flat, next_log_prob, n_accepted = rw_kernel_elementwise(rng_key, X_flat, state.log_prob, _tempered_log_prob_fn, self.proposer, n_dim)
+                next_X_flat, next_log_prob, n_accepted = rw_kernel_elementwise(rng_key, X_flat, log_prob, target_fn, self.proposer, n_dim)
                 accepted = n_accepted.sum() / n_dim
 
-
-            next_position = gibbs_model.combine_to_trace(unravel_fn(next_X_flat), Y)
-            if self.unconstrained:
-                next_position = gibbs_model.slp.transform_to_constrained(next_position)
+            next_stats = self.default_postprocess_from_flat(gibbs_model, next_X_flat, next_log_prob, unravel_fn)
 
             mh_info = state.info
             if collect_inferenence_info:
                 assert isinstance(mh_info, MHInfo)
                 mh_info = MHInfo(mh_info.accepted + accepted)
 
-            return KernelState(next_position, next_log_prob, mh_info)
+            return KernelState(next_stats, mh_info)
         
         return _rw_kernel
     
@@ -252,27 +262,36 @@ def mh_kernel(
 class MetropolisHastings(MCMCInferenceAlgorithm):
     def __init__(self, proposal: TraceProposal) -> None:
         self.proposal = proposal
+        self.unconstrained = False
 
     def init_info(self) -> InferenceInfo:
         return MHInfo(jnp.array(0,int))
+    
+    def __repr__(self) -> str:
+        s = f"MH(proposal={self.proposal}), at {hex(id(self))}"
+        return s
     
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
         jit_tracker = JitVariationTracker(f"_mh_kernel for Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>")
         @jax.jit
         def _mh_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
-            X, Y = gibbs_model.split_trace(state.position)
+            assert "position" in state.carry_stats
+            assert "log_prob" in state.carry_stats
+
+            X, Y = gibbs_model.split_trace(state.carry_stats["position"])
             gibbs_model.set_Y(Y)
-            # current_mh_state = InferenceState(X, carry.state.log_prob)
             
-            next_X, next_log_prob, accepted = mh_kernel(rng_key, X, state.log_prob, gibbs_model.tempered_log_prob(temperature), self.proposal, gibbs_model.Y)
+            log_prob = state.carry_stats["log_prob"]
+            
+            next_X, next_log_prob, accepted = mh_kernel(rng_key, X, log_prob, gibbs_model.tempered_log_prob(temperature), self.proposal, gibbs_model.Y)
 
             mh_info = state.info
             if collect_inferenence_info:
                 assert isinstance(mh_info, MHInfo)
                 mh_info = MHInfo(mh_info.accepted + accepted)
 
-            return KernelState(gibbs_model.combine_to_trace(next_X, Y), next_log_prob, mh_info)
+            return KernelState(CarryStats(position=gibbs_model.combine_to_trace(next_X, Y), log_prob=next_log_prob), mh_info)
         
         return _mh_kernel
     

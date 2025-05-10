@@ -18,30 +18,40 @@ class VariableSelector(ABC):
 class AllVariables(VariableSelector):
     def contains(self, variable: str) -> bool:
         return True
+    def __repr__(self) -> str:
+        return "<all variables>"
 
 class SingleVariable(VariableSelector):
     def __init__(self, variable: str) -> None:
         self.variable = variable
     def contains(self, variable: str) -> bool:
         return self.variable == variable
+    def __repr__(self) -> str:
+        return f"<{self.variable}>"
     
 class VariableSet(VariableSelector):
     def __init__(self, *variables: str) -> None:
         self.variable_set = set(variables)
     def contains(self, variable: str) -> bool:
         return variable in self.variable_set
+    def __repr__(self) -> str:
+        return f"<{sorted(self.variable_set)}>"
     
 class PrefixSelector(VariableSelector):
     def __init__(self, prefix: str) -> None:
         self.prefix = prefix
     def contains(self, variable: str) -> bool:
         return variable.startswith(self.prefix)
+    def __repr__(self) -> str:
+        return f"<{self.prefix}.*>"
     
 class PredicateSelector(VariableSelector):
     def __init__(self, predicate: Callable[[str], bool]) -> None:
         self.predicate = predicate
     def contains(self, variable: str) -> bool:
         return self.predicate(variable)
+    def __repr__(self) -> str:
+        return f"<predicate {self.predicate}>"
     
 
 T = TypeVar("T")

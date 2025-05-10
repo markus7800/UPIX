@@ -38,7 +38,7 @@ class GibbsModel:
         return (X, Y)
     
     def combine_to_trace(self, X: Trace, Y: Trace) -> Trace:
-        assert X.keys() == self.variables
+        self._check_variables(X)
         assert Y.keys() == self.conditional_variables
         return X | Y
 
@@ -46,13 +46,16 @@ class GibbsModel:
         assert Y.keys() == self.conditional_variables
         self.Y = Y
 
+    def _check_variables(self, X: Trace):
+        assert X.keys() == self.variables, f"Attempted to evaluate GibbsModel with variables {self.variables} at {X}"
+    # methods should not be called on batched traces -> use vmap instead
     def log_prior_likeli_pathcond(self, X: Trace) -> Tuple[FloatArray,FloatArray,BoolArray]:
-        assert X.keys() == self.variables
+        self._check_variables(X)
         return self.slp._log_prior_likeli_pathcond(X | self.Y)
     
     def tempered_log_prob(self, temperature: FloatArray) -> Callable[[Trace], FloatArray]:
         def _log_prob(X: Trace) -> FloatArray:
-            assert X.keys() == self.variables
+            self._check_variables(X)
             log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
         return _log_prob
@@ -63,19 +66,19 @@ class GibbsModel:
 
         def _log_prob(X_flat: jax.Array) -> FloatArray:
             X = unravel_fn(X_flat)
-            assert X.keys() == self.variables
+            self._check_variables(X)
             log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
         return _log_prob
     
 
     def unconstrained_log_prior_likeli_pathcond(self, X: Trace) -> Tuple[FloatArray,FloatArray,BoolArray, Trace]:
-        assert X.keys() == self.variables
+        self._check_variables(X)
         return self.slp._unconstrained_log_prior_likeli_pathcond(X | self.Y)
 
     def tempered_unconstrained_log_prob(self, temperature: FloatArray) -> Callable[[Trace], FloatArray]:
         def _log_prob(X: Trace) -> FloatArray:
-            assert X.keys() == self.variables
+            self._check_variables(X)
             log_prior, log_likelihood, path_condition, X_constrained = self.unconstrained_log_prior_likeli_pathcond(X)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
         return _log_prob
@@ -86,7 +89,7 @@ class GibbsModel:
 
         def _log_prob(X_flat: jax.Array) -> FloatArray:
             X = unravel_fn(X_flat)
-            assert X.keys() == self.variables
+            self._check_variables(X)
             log_prior, log_likelihood, path_condition, X_constrained = self.unconstrained_log_prior_likeli_pathcond(X)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
         return _log_prob
