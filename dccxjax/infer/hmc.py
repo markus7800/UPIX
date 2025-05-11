@@ -6,12 +6,15 @@ import dccxjax.distributions as dist
 from .mcmc import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
-from .gibbs_model import GibbsModel
+from .gibbs_model import GibbsModel, SLP
 from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays
+from .variable_selector import VariableSelector, AllVariables
 
 __all__ = [
     "HamiltonianMonteCarlo",
     "HMC",
+    "DiscontinuousHamiltonianMonteCarlo",
+    "DHMC",
 ]
 class HMCInfo(NamedTuple):
     accepted: IntArray
@@ -43,14 +46,18 @@ class LeapfrogState(NamedTuple):
     x: FloatArray
     p: FloatArray
 
+class LeapfrogState2(NamedTuple):
+    x: FloatArray
+    g: FloatArray # gradient of U at x
+    p: FloatArray
+
 def hmc_kernel(
     rng_key: PRNGKey,
     current_position: FloatArray,
     current_log_prob: FloatArray,
     log_prob_fn: Callable[[FloatArray], FloatArray],
     L: int,
-    eps: float,
-    debug: bool
+    eps: float
     ) -> Tuple[FloatArray,FloatArray,BoolArray,BoolArray]:
     
     proposal_key, accept_key = jax.random.split(rng_key)
@@ -62,28 +69,37 @@ def hmc_kernel(
 
     grad_log_prob_fn: Callable[[FloatArray], FloatArray] = jax.grad(log_prob_fn)
     
-    # half step
+    # initial
     x = current_position
     p = p_current
 
-    p = p - eps/2 * -grad_log_prob_fn(x)
-    if debug: jax.debug.print("x={x} p={p}", x=x,p=p)
+    # half step on momentum
+    p = p + eps/2 * grad_log_prob_fn(x)
 
-    # L-1 full steps
+    # L-1 full steps on position and momentum
     def leapfrog_step(state: LeapfrogState, _) -> Tuple[LeapfrogState, None]:
         x_new = state.x + eps * state.p
-        p_new = state.p - eps * -grad_log_prob_fn(x_new)
-        if debug: jax.debug.print("x={x} p={p}", x=x_new,p=p_new)
+        p_new = state.p + eps * grad_log_prob_fn(x_new) # grad_U = -grad_log_prob_fn
         return LeapfrogState(x_new, p_new), None
     
     (x, p), _ = jax.lax.scan(leapfrog_step, LeapfrogState(x, p), length=L-1)
 
-    # half step
+    # full step on position and half step on momentum
     x = x + eps * p
-    p = p - eps/2 * -grad_log_prob_fn(x)
-    if debug: jax.debug.print("x={x} p={p}", x=x,p=p)
+    p = p + eps/2 * grad_log_prob_fn(x)
 
     # leapfrog finished
+
+    # more compactly, but more ops and have to store grad
+    # L steps
+    # def leapfrog_step2(state: LeapfrogState2, _) -> Tuple[LeapfrogState2, None]:
+    #     p_half_step = state.p - eps / 2 * state.g
+    #     x_new = state.x + eps * p_half_step
+    #     g_new = -grad_log_prob_fn(x_new)
+    #     p_new = p_half_step - eps / 2 * g_new
+    #     return LeapfrogState2(x_new, g_new, p_new), None
+    
+    # (x, _, p), _ = jax.lax.scan(leapfrog_step2, LeapfrogState2(x, -grad_log_prob_fn(x), p), length=L)
 
     proposed_position = x
     proposed_log_prob = log_prob_fn(proposed_position)
@@ -99,13 +115,8 @@ def hmc_kernel(
 
     accept: BoolArray = jax.lax.log(jax.random.uniform(accept_key)) < energy_delta
 
-    if debug: jax.debug.print("proposed_log_prob={a} k_proposed={b} current_log_prob={c}, k_current={d}", a=proposed_log_prob, b=k_proposed, c=current_log_prob, d=k_current)
-    if debug: jax.debug.print("energy_current={a} energy_proposed={b} diverged={c}, accept={d}", a=energy_current, b=energy_proposed, c=diverged, d=accept)
-
-
     return proposed_position, proposed_log_prob, accept, diverged
 
-from functools import partial
 
 class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
     def __init__(self,
@@ -127,16 +138,16 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
         X_repr, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
         is_discrete_map = gibbs_model.slp.get_is_discrete_map()
-        assert all(not is_discrete_map[addr] for addr, _ in X_repr.items()), "No discrete parameters allowed in HMC."
+        assert all(not is_discrete_map[addr] for addr in X_repr.keys()), "No discrete parameters allowed in HMC."
 
         jit_tracker = JitVariationTracker(f"_hmc_kernel for Inference step {step_number}: <HMC at {hex(id(self))}>")
-        @partial(jax.jit, static_argnums=[3])
-        def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState, debug: bool=False) -> KernelState:
+        @jax.jit
+        def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
             
             X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, state)
 
-            proposed_X, proposed_log_prob, accept, diverged = hmc_kernel(rng_key, X_flat, log_prob, target_fn, self.L, self.eps, debug)
+            proposed_X, proposed_log_prob, accept, diverged = hmc_kernel(rng_key, X_flat, log_prob, target_fn, self.L, self.eps)
             next_X_flat, next_log_prob = jax.lax.cond(accept, lambda _: (proposed_X, proposed_log_prob), lambda _: (X_flat, log_prob), operand=None)
             
             next_stats = self.default_postprocess_from_flat(gibbs_model, next_X_flat, next_log_prob, unravel_fn)
@@ -155,3 +166,174 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
         return _hmc_kernel
     
 HMC = HamiltonianMonteCarlo
+
+class DiscontLeapfrogState(NamedTuple):
+    x: FloatArray
+    u: FloatArray
+    g: FloatArray # gradient of U at x
+    p: FloatArray
+
+class CoordIntegratorState(NamedTuple):
+    x: FloatArray
+    u: FloatArray
+    p: FloatArray
+
+def dhmc_kernel(
+    rng_key: PRNGKey,
+    current_position: FloatArray,
+    current_log_prob: FloatArray,
+    log_prob_fn: Callable[[FloatArray], FloatArray],
+    L: int,
+    eps_min: float,
+    eps_max: float,
+    all_discontinuous: bool,
+    discontinuous_mask: BoolArray, # we have at least on discontinuous
+    discontinuous_ixs: IntArray
+    ) -> Tuple[FloatArray,FloatArray,BoolArray,BoolArray]:
+    
+    proposal_key, eps_key, permute_key, accept_key = jax.random.split(rng_key,4)
+
+    p_current = jax.lax.select(discontinuous_mask,
+                               jax.random.laplace(proposal_key, shape=current_position.shape), 
+                               jax.random.normal(proposal_key, shape=current_position.shape))
+    k_current = jax.lax.select(discontinuous_mask, jax.lax.abs(p_current), jax.lax.square(p_current)/2).sum()
+
+    eps = jax.random.uniform(eps_key, minval=eps_min, maxval=eps_max)
+
+    # mixed continuous / discontinuous leapfrog integrator
+
+    grad_log_prob_fn: Callable[[FloatArray], FloatArray] = jax.grad(log_prob_fn)
+
+    # initial
+    x = current_position
+    p = p_current
+
+
+    def coord_integrator(state: CoordIntegratorState, ix: IntArray) -> Tuple[CoordIntegratorState, None]:
+        x, u, p = state
+        x_new = x.at[ix].set(x[ix] + eps * jax.lax.sign(p[ix]))
+        u_new = -log_prob_fn(x_new)
+        delta_u = u_new - u
+        accept = jax.lax.abs(p[ix]) > delta_u
+        new_state = jax.lax.cond(accept,
+            lambda _: CoordIntegratorState(x_new, u_new, p.at[ix].set(p[ix] - jax.lax.sign(p[ix]) * delta_u)),
+            lambda _: CoordIntegratorState(x, u, -p),
+            operand=None
+        )
+        return new_state, None
+        
+
+    def leapfrog_step(state: DiscontLeapfrogState, permute_key: PRNGKey) -> Tuple[DiscontLeapfrogState, None]:
+        x, u, g, p = state
+
+        if not all_discontinuous:
+            # leave discontinuous variables untouched
+            p_half_step = jax.lax.select(discontinuous_mask, p, p - eps / 2 * g)
+            x_half_step = jax.lax.select(discontinuous_mask, x, x + eps / 2 * p_half_step)
+            
+            x = x_half_step
+            u = -log_prob_fn(x_half_step)
+            # do not need to update g here
+            p = p_half_step
+
+        ixs = jax.random.permutation(permute_key, discontinuous_ixs)
+        (x, u, p), _ = jax.lax.scan(coord_integrator, CoordIntegratorState(x, u, p), ixs) # makes gradient g invalid
+
+        if not all_discontinuous:
+            # leave discontinuous variables untouched
+            x = jax.lax.select(discontinuous_mask, x, x + eps / 2 * p)
+            u = -log_prob_fn(x)
+            g = -grad_log_prob_fn(x)
+            p = jax.lax.select(discontinuous_mask, p, p - eps / 2 * g)
+        # else gradient g is not updated
+
+        return DiscontLeapfrogState(x, u, g, p), None
+    
+    (x, u, _, p), _ = jax.lax.scan(
+        leapfrog_step,
+        DiscontLeapfrogState(x, -log_prob_fn(x), -grad_log_prob_fn(x), p),
+        jax.random.split(permute_key,L))
+    
+    # leapfrog finished
+
+    proposed_position = x
+    proposed_log_prob = -u
+    p_proposed = -p
+    k_proposed = jax.lax.select(discontinuous_mask, jax.lax.abs(p_proposed), jax.lax.square(p_proposed)/2).sum()
+
+    energy_current = -current_log_prob + k_current
+    energy_proposed = -proposed_log_prob + k_proposed
+
+    energy_delta = energy_current - energy_proposed
+    energy_delta = jax.lax.select(jnp.isnan(energy_delta), -jnp.inf, energy_delta)
+    diverged: BoolArray = -energy_delta > 1000
+
+    accept: BoolArray = jax.lax.log(jax.random.uniform(accept_key)) < energy_delta
+
+    return proposed_position, proposed_log_prob, accept, diverged
+
+class DiscontinuousHamiltonianMonteCarlo(MCMCInferenceAlgorithm):
+    def __init__(self,
+                 L: int,
+                 eps_min: float,
+                 eps_max: float,
+                 discontinuous: VariableSelector = AllVariables(),
+                 unconstrained: bool = False,
+                 ) -> None:
+        self.L = L
+        self.eps_min = eps_min
+        self.eps_max = eps_max
+        self.unconstrained = unconstrained
+        self.discontinuous = discontinuous
+
+    def init_info(self) -> InferenceInfo:
+        return HMCInfo(jnp.array(0,int), jnp.array(0,int), jnp.array(0,int))
+    
+    def __repr__(self) -> str:
+        s = f"DHMC(L={self.L}, eps=[{self.eps_min},{self.eps_max}], discont={self.discontinuous}, at {hex(id(self))})"
+        return s
+
+    def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
+        X_repr, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
+        is_discrete_map = gibbs_model.slp.get_is_discrete_map()
+        assert all(not is_discrete_map[addr] for addr in X_repr.keys()), "No discrete parameters allowed in DHMC."
+        X_repr_is_discontinuous = {addr: self.discontinuous.contains(addr) for addr in X_repr.keys()}
+        all_discontinuous = all(X_repr_is_discontinuous.values())
+        any_discontinuous = any(X_repr_is_discontinuous.values())
+
+        if not any_discontinuous:
+            return HMC(self.L, (self.eps_min + self.eps_max) / 2, self.unconstrained).make_kernel(gibbs_model, step_number, collect_inferenence_info)
+
+        discontinuous_mask, _ = ravel_pytree(X_repr_is_discontinuous)
+        discontinuous_ixs = jnp.arange(0,discontinuous_mask.shape[0],dtype=int)[discontinuous_mask.astype(bool)]
+        # print("discontinuous_ixs:", discontinuous_ixs)
+
+        jit_tracker = JitVariationTracker(f"_dhmc_kernel for Inference step {step_number}: <DHMC at {hex(id(self))}>")
+        @jax.jit
+        def _dhmc_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
+            maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
+            
+            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, state)
+
+            proposed_X, proposed_log_prob, accept, diverged = dhmc_kernel(
+                rng_key, X_flat, log_prob, target_fn, self.L, self.eps_min, self.eps_max,
+                all_discontinuous, discontinuous_mask, discontinuous_ixs
+            )
+            next_X_flat, next_log_prob = jax.lax.cond(accept, lambda _: (proposed_X, proposed_log_prob), lambda _: (X_flat, log_prob), operand=None)
+            
+            next_stats = self.default_postprocess_from_flat(gibbs_model, next_X_flat, next_log_prob, unravel_fn)
+
+            hmc_info = state.info
+            if collect_inferenence_info:
+                assert isinstance(hmc_info, HMCInfo)
+                hmc_info = HMCInfo(
+                    hmc_info.accepted + accept,
+                    hmc_info.diverged + diverged,
+                    hmc_info.proposed_out_of_support + (jnp.isinf(proposed_log_prob))
+                )
+
+            return KernelState(next_stats, hmc_info)
+        
+        return _dhmc_kernel
+    
+DHMC = DiscontinuousHamiltonianMonteCarlo

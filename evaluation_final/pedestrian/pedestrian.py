@@ -72,11 +72,12 @@ m.set_slp_sort_key(find_t_max)
 
 class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
-        regime = MCMCSteps(
-            MCMCStep(PrefixSelector("step"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
-            MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
-        )
-        # regime = MCMCStep(AllVariables(), HMC(5, 0.05, unconstrained=True))
+        # regime = MCMCSteps(
+        #     MCMCStep(PrefixSelector("step"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
+        #     MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
+        # )
+        # regime = MCMCStep(AllVariables(), HMC(10, 0.05, unconstrained=True))
+        regime = MCMCStep(AllVariables(), DHMC(10, 0.05, 0.15, unconstrained=True))
         pprint_mcmc_regime(regime, slp)
         return regime
     
@@ -181,7 +182,9 @@ def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
 cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)
 W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf)) # wasserstein distance
 infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
+title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
+print(title)
 
 plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
-plt.title(f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}")
+plt.title(title)
 plt.show()
