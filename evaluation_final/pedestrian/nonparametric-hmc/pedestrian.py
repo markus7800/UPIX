@@ -42,6 +42,44 @@ def pyro_walk_model() -> float:
     pyro.sample("obs", pyro.distributions.Normal(1.1, 0.1), obs=distance)
     return start.item()
 
+import torch.multiprocessing as mp
+
+def target_NP_LA_DHMC(rep, bar_pos=None):
+    # pick best from paper
+    count = 1_000
+    eps = 0.1
+    L = 5
+    alpha = 0.1
+    K = 2
+    run_inference_icml2022(
+        lambda trace: run_prob_prog(walk_model, trace=trace),
+        name=f"walk_model_{rep}",
+        count=count,
+        burnin=0,  # 100,
+        eps=eps,
+        L=L,
+        K=K,
+        alpha=alpha,
+        seed=rep,
+        bar_pos=bar_pos
+    )
+
+def target_NP_DHMC(rep, bar_pos=None):
+    # pick from paper
+    count = 1_000
+    eps = 0.1
+    num_steps = 50
+    run_inference(
+        lambda trace: run_prob_prog(walk_model, trace=trace),
+        name=f"walk_model{rep}",
+        count=count,
+        burnin=100,
+        eps=eps,
+        leapfrog_steps=num_steps,
+        seed=rep,
+        bar_pos=bar_pos
+    )
+
 
 if __name__ == "__main__":
     count = 1_000
@@ -57,38 +95,31 @@ if __name__ == "__main__":
         #     for alpha in [1.0, 0.5, 0.1]
         #     for K in [0, 1, 2]
         # ]
-        # pick best from paper
-        eps = 0.1
-        L = 5
-        alpha = 0.1
-        K = 2
-        for rep in range(repetitions):
-            print(
-                f"REPETITION {rep+1}/{repetitions} ({eps=}, {L=}, {alpha=}, {K=})"
-            )
-            run_inference_icml2022(
-                lambda trace: run_prob_prog(walk_model, trace=trace),
-                name=f"walk_model_{rep}",
-                count=count,
-                burnin=0,  # 100,
-                eps=eps,
-                L=L,
-                K=K,
-                alpha=alpha,
-                seed=rep,
-            )
+        if len(sys.argv) > 2 and sys.argv[2] == "parallel":
+            processes = []
+            for rep in range(repetitions):
+                p = mp.Process(target=target_NP_LA_DHMC, args=(rep,rep))
+                p.start()
+                processes.append(p)
+            for p in processes:
+                p.join()
+        else:
+            for rep in range(repetitions):
+                print(
+                    f"REPETITION {rep+1}/{repetitions}"
+                )
+                target_NP_LA_DHMC(rep)
+
     elif sys.argv[1] == "NP-DHMC":
-        eps = 0.1
-        num_steps = 50
-        for rep in range(repetitions):
-            print(f"REPETITION {rep+1}/{repetitions}")
-            run_inference(
-                lambda trace: run_prob_prog(walk_model, trace=trace),
-                name=f"walk_model{rep}",
-                count=count,
-                burnin=100,
-                eps=eps,
-                leapfrog_steps=num_steps,
-                seed=rep,
-            )
-            
+        if len(sys.argv) > 2 and sys.argv[2] == "parallel":
+            processes = []
+            for rep in range(repetitions):
+                p = mp.Process(target=target_NP_DHMC, args=(rep,rep))
+                p.start()
+                processes.append(p)
+            for p in processes:
+                p.join()
+        else:
+            for rep in range(repetitions):
+                print(f"REPETITION {rep+1}/{repetitions}")
+                target_NP_DHMC(rep)

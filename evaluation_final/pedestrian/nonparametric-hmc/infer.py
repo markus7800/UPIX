@@ -195,6 +195,7 @@ def np_dhmc(
     leapfrog_steps: int,
     eps: float,
     burnin: int = None,
+    bar_pos: int = None,
 ) -> List[T]:
     """Samples from a probabilistic program using NP-DHMC.
 
@@ -217,7 +218,7 @@ def np_dhmc(
     is_cont = result.is_cont.clone().detach()
     count += burnin
     accept_count = 0
-    for _ in tqdm(range(count)):
+    for _ in tqdm(range(count),position=bar_pos, desc="Rep "+str(bar_pos) if bar_pos else None):
         N = len(q)
         dt = ((torch.rand(()) + 0.5) * eps).item()
         gaussian = Normal(0, 1).sample([N]) * is_cont
@@ -260,7 +261,8 @@ def np_dhmc(
             final_samples.append(prev_res.value)
     count = len(final_samples)
     final_samples = final_samples[burnin:]  # discard first samples (burn-in)
-    print(f"acceptance ratio: {accept_count / count * 100}%")
+    if bar_pos is None:
+        print(f"acceptance ratio: {accept_count / count * 100}%")
     return final_samples
 
 
@@ -272,6 +274,7 @@ def np_lookahead_dhmc(
     K: int = 0,
     alpha: float = 1,
     burnin: int = None,
+    bar_pos: int = None
 ) -> Tuple[List[T], Any]:
     """Samples from a probabilistic program using "Lookahead" NP-DHMC.
 
@@ -307,7 +310,7 @@ def np_lookahead_dhmc(
     p = gaussian + laplace
     count += burnin
     accept_count = 0
-    for _ in tqdm(range(count)):
+    for _ in tqdm(range(count), position=bar_pos, desc="Rep "+str(bar_pos) if bar_pos else None):
         N = len(q)
         dt = ((torch.rand(()) + 0.5) * eps).item()
         p_cont = p * math.sqrt(1 - alpha * alpha) + Normal(0, alpha).sample([N])
@@ -357,8 +360,9 @@ def np_lookahead_dhmc(
             lookahead_stats[0] += 1
     count = len(final_samples)
     final_samples = final_samples[burnin:]  # discard first samples (burn-in)
-    print(f"acceptance ratio: {accept_count / count * 100}%")
-    print(f"lookahead stats: {lookahead_stats}")
+    if bar_pos is None:
+        print(f"acceptance ratio: {accept_count / count * 100}%")
+        print(f"lookahead stats: {lookahead_stats}")
     return final_samples, lookahead_stats
 
 
@@ -370,6 +374,7 @@ def run_inference(
     leapfrog_steps: int,
     burnin: int = None,
     seed: int = None,
+    bar_pos: int = None,
     **kwargs,
 ) -> dict:
     """Runs importance sampling and NP-DHMC, then saves the samples to a .pickle file.
@@ -393,7 +398,7 @@ def run_inference(
 
     adjusted_count = count * leapfrog_steps
     samples = {}
-    print("Running NP-DHMC...")
+    # print("Running NP-DHMC...")
     samples["hmc"] = run(
         lambda: np_dhmc(
             run_prog,
@@ -401,6 +406,7 @@ def run_inference(
             eps=eps,
             leapfrog_steps=leapfrog_steps,
             burnin=burnin,
+            bar_pos=bar_pos,
             **kwargs,
         ),
     )
@@ -432,6 +438,7 @@ def run_inference_icml2022(
     alpha: float = 1,
     burnin: int = None,
     seed: int = None,
+    bar_pos: int = None,
     **kwargs,
 ) -> dict:
     """Runs NP-LA-DHMC with persistence, then saves the samples to a .pickle file.
@@ -470,6 +477,7 @@ def run_inference_icml2022(
             K=K,
             burnin=burnin,
             alpha=alpha,
+            bar_pos=bar_pos,
             **kwargs,
         )
     )

@@ -1,3 +1,4 @@
 {
-    "reportPrivateImportUsage": false
+    "reportPrivateImportUsage": false,
+    "ignore": ["evaluation_final/pedestrian/nonparametric-hmc"]
 }

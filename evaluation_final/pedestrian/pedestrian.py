@@ -77,7 +77,8 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         #     MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
         # )
         # regime = MCMCStep(AllVariables(), HMC(10, 0.05, unconstrained=True))
-        regime = MCMCStep(AllVariables(), DHMC(10, 0.05, 0.15, unconstrained=True))
+        # regime = MCMCStep(AllVariables(), DHMC(10, 0.05, 0.15, unconstrained=False)) # this is very good W1 = 0.01796, L_inf = 0.0008
+        regime = MCMCStep(AllVariables(), DHMC(50, 0.05, 0.15, unconstrained=False)) # W1 = 0.01503, L_inf = 0.001072
         pprint_mcmc_regime(regime, slp)
         return regime
     
