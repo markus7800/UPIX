@@ -1,4 +1,5 @@
 import sys
+
 sys.path.insert(0, ".")
 
 from dccxjax import *
@@ -7,22 +8,20 @@ import jax.numpy as jnp
 import dccxjax.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
-from typing import List, NamedTuple
+from typing import List
 from time import time
+from dccxjax.infer.dcc2 import *
+from dccxjax.types import _unstack_sample_data
 
-from dccxjax.infer.mcmc import MCMCState, InferenceInfos, get_inference_regime_mcmc_step_for_slp, add_progress_bar
-from dccxjax.infer.dcc import DCC_Result
-from dccxjax.core.branching_tracer import retrace_branching
-
-from dccxjax.infer.estimate_Z import estimate_Z_for_SLP_from_sparse_mixture
+from gibbs_proposals import *
+from reversible_jumps import *
 
 import logging
-setup_logging(logging.WARN)
+setup_logging(logging.WARNING)
 
 compilation_time_tracker = CompilationTimeTracker()
 jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
 
-t0 = time()
 
 lam = 3
 delta = 5.0
@@ -30,24 +29,6 @@ xi = 0.0
 kappa = 0.01
 alpha = 2.0
 beta = 10.0
-
-# def gmm(ys: jax.Array):
-#     N = ys.shape[0]
-#     K = sample("K", dist.Poisson(lam-1)) + 1
-#     w = sample("w", dist.Dirichlet(jnp.full((K,), delta)))
-#     mus = sample("mus", dist.Normal(jnp.full((K,), xi), jnp.full((K,), 1/jax.lax.sqrt(kappa))))
-#     vars = sample("vars", dist.InverseGamma(jnp.full((K,), alpha), jnp.full((K,), beta)))
-#     zs = sample("zs", dist.Categorical(jax.lax.broadcast(w, (N,))))
-#     sample("ys", dist.Normal(mus[zs], jax.lax.sqrt(vars[zs])), observed=ys)
-
-def gmm(ys: jax.Array):
-    K = sample("K", dist.Poisson(lam-1)) + 1
-    w = sample("w", dist.Dirichlet(jnp.full((K+1,), delta)))
-    mus = sample("mus", dist.Normal(jnp.full((K+1,), xi), jnp.full((K+1,), 1/jax.lax.sqrt(kappa))))
-    vars = sample("vars", dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)))
-    log_likelihoods = jax.scipy.special.logsumexp((jnp.log(w).reshape(1,-1) + dist.Normal(mus.reshape(1,-1), jnp.sqrt(vars).reshape(1,-1)).log_prob(ys.reshape(-1,1))), axis=1)
-    # jax.debug.print("{x}", x=log_likelihoods.sum())
-    logfactor(log_likelihoods.sum())
 
 ys = jnp.array([
     -7.87951290075215, -23.251364738213493, -5.34679518882793, -3.163770449770572,
@@ -78,250 +59,151 @@ ys = jnp.array([
     -18.978055134755582, 13.441194891615718, 7.983890038551439, 7.759003567480592
 ])
 
-# ys = ys[:1]
+@model
+def gmm(ys: jax.Array):
+    N = ys.shape[0]
+    K = sample("K", dist.Poisson(lam-1)) + 1
+    w = sample("w", dist.Dirichlet(jnp.full((K,), delta)))
+    mus = sample("mus", dist.Normal(jnp.full((K,), xi), jnp.full((K,), 1/jax.lax.sqrt(kappa))))
+    vars = sample("vars", dist.InverseGamma(jnp.full((K,), alpha), jnp.full((K,), beta)))
+    zs = sample("zs", dist.Categorical(jax.lax.broadcast(w, (N,))))
+    sample("ys", dist.Normal(mus[zs], jax.lax.sqrt(vars[zs])), observed=ys)
 
-from dccxjax.core.samplecontext import GenerateCtx, LogprobCtx
-with GenerateCtx(jax.random.PRNGKey(0)) as ctx1:
-    gmm(ys)
-    print(ctx1.log_likelihood + ctx1.log_prior)
 
+m = gmm(ys)
 
-# X = {'mus': jnp.array([ 5.0535045,  0.2384372, 22.40249  , -5.599992 ]), 'vars': jnp.array([10.463084 , 46.026665 ,  4.8527174,  3.1191897]), 'w': jnp.array([-0.00192596,  0.37337512,  0.10586993,  0.13905858]), 'zs': jnp.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])}
-# with LogprobCtx(X) as ctx2:
-#     gmm(ys)
-#     print(ctx2.log_prob)
-# exit()
-
-m: Model = model(gmm)(ys)
-
-def find_K(slp: SLP):
-    return slp.decision_representative["K"].item()
+def find_K(slp: SLP) -> int:
+    return int(slp.decision_representative["K"].item())
 def formatter(slp: SLP):
     K = find_K(slp) + 1
     return f"#clusters={K}"
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_K)
 
-rng_key = jax.random.PRNGKey(0)
+@dataclass
+class RJMCMCTransitionProbEstimate(LogWeightEstimate):
+    transition_log_probs: Dict[Any, FloatArray]
+    n_samples: int
+    def combine_estimate(self, other: LogWeightEstimate) -> "RJMCMCTransitionProbEstimate":
+        assert isinstance(other, RJMCMCTransitionProbEstimate)
 
-active_slps: List[SLP] = []
-for i in tqdm(range(100)):
-    rng_key, key = jax.random.split(rng_key)
-    X = sample_from_prior(m, key)
-    # print(slp.formatted(), slp.branching_decisions.to_human_readable())
+        n_combined_samples = self.n_samples + other.n_samples
+        a = self.n_samples / n_combined_samples
+        new_transition_log_probs: Dict[Any, FloatArray] = dict()
 
-    if all(slp.path_indicator(X) == 0 for slp in active_slps):
-        slp = slp_from_decision_representative(m, X)
-        active_slps.append(slp)
-        # print(i, slp.formatted())
+        for key in self.transition_log_probs.keys() | other.transition_log_probs.keys():
+            est1 = self.transition_log_probs.get(key, -jnp.inf)
+            est2 = other.transition_log_probs.get(key, -jnp.inf)
+            new_transition_log_probs[key] = jnp.logaddexp(est1 + jax.lax.log(a), est2 + jax.lax.log(1 - a))
 
-        # print(slp.branching_decisions.decisions)
-        # slp_to_mcmc_step[slp] = get_inference_regime_mcmc_step_for_slp(slp, deepcopy(regime), config.n_chains, config.collect_intermediate_chain_states)
+        return RJMCMCTransitionProbEstimate(new_transition_log_probs, n_combined_samples)
 
-active_slps = sorted(active_slps, key=m.slp_sort_key)
-active_slps = active_slps[:6]
-
-# from dccxjax.infer.estimate_Z import _log_IS_weight_gaussian_mixture
-# slp = active_slps[0]
-# print(slp.short_repr())
-# print(slp.decision_representative)
-# X = StackedTrace(broadcast_jaxtree(slp.decision_representative, (4,)), 4)
-# _log_IS_weight_gaussian_mixture(slp, jax.random.PRNGKey(0), unstack_trace(X), 1.)
-
-
-# exit()
-# for i, slp in enumerate(active_slps):
-#     print(slp.short_repr(), slp.formatted())
-
-
-n_chains = 10
-collect_states = True
-collect_infos = True
-n_samples_per_chain = 10_000
-
-class CollectType(NamedTuple):
-    position: Trace
-    log_prob: FloatArray
-def return_map(x: MCMCState):
-    return CollectType(x.position, x.log_prob) if collect_states else None
-
-
-from dccxjax.infer.ais import *
-def sigmoid(z):
-    return 1/(1 + jnp.exp(-z))
-def get_Z_ESS(log_weights):
-    log_Z = jax.scipy.special.logsumexp(log_weights) - jnp.log(log_weights.shape[0])
-    print(f"{log_Z=}")
-    Z = jnp.exp(log_Z)
-    ESS = jnp.exp(jax.scipy.special.logsumexp(log_weights)*2 - jax.scipy.special.logsumexp(log_weights*2))
-    return Z, ESS
-
-from gibbs_proposals import *
-
-def try_estimate_Z_with_AIS():
-    for i, slp in enumerate(active_slps):
-        print(slp.short_repr(), slp.formatted())
-
-        gibbs_regime = MCMCSteps(
+class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
+    def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
+        return MCMCSteps(
             MCMCStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
             MCMCStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, slp.decision_representative["K"].item()))),
             MCMCStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, slp.decision_representative["K"].item()))),
             MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
         )
+    
+    def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
+        rng_key, generate_key = jax.random.split(rng_key)
+        trace, _ = self.model.generate(generate_key, {"K": jnp.array(0,int)})
+        slp = slp_from_decision_representative(self.model, trace)
+        active_slps.append(slp)
+        tqdm.write(f"Make SLP {slp.formatted()} active.")
 
-        def w_proposer(w: jax.Array) -> dist.Distribution:
-            T = dist.biject_to(dist.Dirichlet(jnp.ones(slp.decision_representative["K"].item())).support)
-            w_unconstrained = T.inv(w)
-            return dist.TransformedDistribution(dist.Normal(w_unconstrained, 0.5), T)
+    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
+        last_slp = active_slps.pop()
+        inactive_slps.append(last_slp)
+        estimates = self.get_log_weight_estimates(last_slp)
+        estimate = estimates[0] # we only have one per slp
+        assert isinstance(estimate, RJMCMCTransitionProbEstimate)
+        K = find_K(last_slp)
+        split_transition_log_prob = estimate.transition_log_probs[(K, K+1)]
+        if split_transition_log_prob > jnp.log(0.01):
+            trace, _ = self.model.generate(rng_key, {"K": jnp.array(K+1,int)})
+            slp = slp_from_decision_representative(self.model, trace)
+            active_slps.append(slp)
+            tqdm.write(f"Make SLP {slp.formatted()} active.")
 
-        regime = MCMCSteps(
-            MCMCStep(SingleVariable("w"), RW(w_proposer)),
-            MCMCStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
-            MCMCStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
-            # MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
-        )
+    def estimate_log_weight(self, slp: SLP, rng_key: jax.Array) -> RJMCMCTransitionProbEstimate:
+        last_inference_result = self.inference_results[slp][-1]
+        assert isinstance(last_inference_result, MCMCInferenceResult)
+        assert not self.config.get("mcmc_optimise_memory_with_early_return_map", False)
+        traces: Trace = last_inference_result.value_tree[0]
+        lps: FloatArray = last_inference_result.value_tree[1]
+        traces = jax.tree_util.tree_map(_unstack_sample_data, traces)
+        lps = _unstack_sample_data(lps)
 
-        # mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=True, return_map=return_map)
-        # progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
-        # progressbar_mng.start_progress()
-        # keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+        K = find_K(slp)
 
-        # init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []
-        # init = MCMCState(jnp.array(0,int), jnp.array(0.5,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
-
-        # last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
-        # last_state.iteration.block_until_ready()
-        # print("\t", last_state.infos)
-
-        # assert all_states is not None
-        # result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains)
-        # result_positions = result_positions.unstack()
-
-        # fig, axs = plt.subplots(1,2, figsize=(12,6))
-        # axs[0].hist(result_positions.data["mus"][:,0], bins=100, density=True, label="mu")
-        # axs[1].hist(jnp.sqrt(result_positions.data["vars"][:,0]), bins=100, density=True, label="var")
-        # plt.show()
-
-        # with N_particles = 10_000, 10_000 tempering
-        # 1 log_Z=Array(-412.77655, dtype=float32)
-        # 2 log_Z=Array(-378.00018, dtype=float32)
-        # 3 log_Z=Array(-372.02997, dtype=float32)
-        # 4 log_Z=Array(-370.9945, dtype=float32)
-        # 5 log_Z=Array(-371.0929, dtype=float32)
-        N_particles = 10_000
-        tempering_schedule = sigmoid(jnp.linspace(-25,25,10_000))
-        tempering_schedule = tempering_schedule.at[-1].set(1.)
-
-        def generate_from_prior_conditioned(rng_key: PRNGKey):
-            with GenerateCtx(rng_key, {"K": jnp.array(slp.decision_representative["K"].item(), int)}) as ctx:
-                m()
-                return ctx.X
-            
-        X, _ = jax.vmap(jax.jit(retrace_branching(generate_from_prior_conditioned, slp.branching_decisions)))(jax.random.split(jax.random.PRNGKey(0), N_particles))
-        lp = jax.vmap(slp.log_prior)(X)
-
-        kernel = get_inference_regime_mcmc_step_for_slp(slp, regime)
-        progressbar_mng, kernel = add_progress_bar(tempering_schedule.size, kernel)
-        progressbar_mng.start_progress()
-
-        # config = AISConfig(None, 0, kernel, tempering_schedule)
-        # log_weights, position = run_ais(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
-        config = SMCConfig(kernel, tempering_schedule)
-        log_weights, position, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
-        # print(f"{log_weights=}")
-        print(get_Z_ESS(log_weights))
-        # plt.plot(jnp.exp(log_ess))
-        # plt.show()
-
-        # fig = plt.figure()
-        # plt.hist(log_weights, bins=100, density=True)
+        def split(X: Trace, lp: FloatArray, rng_key: PRNGKey):
+            return split_move(X, lp, rng_key, K, ys, self.model.log_prob)
         
-        result_positions = StackedTrace(position, N_particles).unstack()
+        def merge(X: Trace, lp: FloatArray, rng_key: PRNGKey):
+            return merge_move(X, lp, rng_key, K, ys, self.model.log_prob)
+        
+        transition_log_probs: Dict[Any, FloatArray] = dict()
+        n_samples = lps.size
+        split_transition_log_prob = jax.scipy.special.logsumexp(jax.jit(jax.vmap(split))(traces, lps, jax.random.split(rng_key, lps.shape[0]))) - jnp.log(n_samples)
+        if K == 0: 
+            transition_log_probs[(K, K+1)] = split_transition_log_prob
+            tqdm.write(f"Estimate log weight for {slp.formatted()}: split prob = {jnp.exp(split_transition_log_prob.item()):.6f}")
+        else:
+            merge_transition_log_prob = jax.scipy.special.logsumexp(jax.jit(jax.vmap(merge))(traces, lps, jax.random.split(rng_key, lps.shape[0]))) - jnp.log(n_samples)
 
-        # fig, axs = plt.subplots(1,2, figsize=(12,6))
-        # axs[0].hist(result_positions.data["mus"][:,0], bins=100, density=True, label="mu")
-        # axs[1].hist(jnp.sqrt(result_positions.data["vars"][:,0]), bins=100, density=True, label="var")
-        # plt.show()
-try_estimate_Z_with_AIS()
-exit()
+            merge_transition_log_prob = merge_transition_log_prob - jnp.log(2)
+            split_transition_log_prob = split_transition_log_prob - jnp.log(2)
 
+            transition_log_probs[(K, K+1)] = split_transition_log_prob
+            transition_log_probs[(K, K-1)] = merge_transition_log_prob
+            tqdm.write(f"Estimate log weight for {slp.formatted()}: split prob = {jnp.exp(split_transition_log_prob).item():.6f} merge prob = {jnp.exp(merge_transition_log_prob).item():.6f}")
 
-for i, slp in enumerate(active_slps):
-    print(slp.short_repr(), slp.formatted())
-
-    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 100_000, jax.random.PRNGKey(0))
-    print("\t", f" prior Z={Z.item()}, ESS={ESS.item()}, {frac_out_of_support=}")
-
-
-    regime = MCMCSteps(
-        MCMCStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
-        MCMCStep(SingleVariable("mus"), MH(MusProposal(ys, kappa, xi, slp.decision_representative["K"].item()))),
-        MCMCStep(SingleVariable("vars"), MH(VarsProposal(ys, alpha, beta, slp.decision_representative["K"].item()))),
-        MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
-    )
-
-    def w_proposer(w: jax.Array) -> dist.Distribution:
-        T = dist.biject_to(dist.Dirichlet(jnp.ones(slp.decision_representative["K"].item())).support)
-        w_unconstrained = T.inv(w)
-        return dist.TransformedDistribution(dist.Normal(w_unconstrained, 0.25), T)
-    regime = MCMCSteps(
-        MCMCStep(SingleVariable("w"), RW(w_proposer)),
-        MCMCStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
-        MCMCStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
-        # MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
-        MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
-    )
-
-    init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []
-    init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
-
-    mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=collect_infos, return_map=return_map)
-    progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
-    progressbar_mng.start_progress()
-    keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
-    last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
-    last_state.iteration.block_until_ready()
-    print("\t", last_state.infos)
-
-    result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains) if all_states is not None else StackedTrace(last_state.position, n_chains)
-    result_lps: jax.Array | float = all_states.log_prob if all_states is not None else last_state.log_prob
-
-    amax = jnp.unravel_index(jnp.argmax(result_lps), result_lps.shape)
-    map = result_positions.get(*amax)
-    print("\t", map)
-    y_range = jnp.linspace(ys.min()-2, ys.max()+2, 1000)
-    p = jnp.sum(map["w"].reshape(1,-1) * jnp.exp(dist.Normal(map["mus"].reshape(1,-1), jnp.sqrt(map["vars"]).reshape(1,-1)).log_prob(y_range.reshape(-1,1))), axis=1)
-    plt.plot(y_range, p, color="gray")
-    # plt.scatter(ys, jnp.full_like(ys, 0.))
-    K = map["w"].size
-    cmap = plt.get_cmap('tab10')
-    for k in range(K):
-        cluster_ys = ys[map["zs"] == k]
-        y_range = jnp.linspace(cluster_ys.min()-2, cluster_ys.max()+2, 1000)
-        p = map["w"][k] * jnp.exp(dist.Normal(map["mus"][k], jnp.sqrt(map["vars"])[k]).log_prob(y_range))
-        plt.plot(y_range, p, c=cmap(k))
-        plt.scatter(cluster_ys, jnp.full_like(cluster_ys, 0.), color=cmap(k))
-    plt.show()
-
-    # positions_unstacked = StackedTraces(result_positions, n_samples_per_chain, n_chains).unstack() if collect_states else Traces(result_positions, n_samples_per_chain)
-    # positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked.data)
-
-    # for s in [0.01, 0.1, 1.0,]:
-    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, 1.0, 0.0, 1, jax.random.PRNGKey(0), positions_unstacked_unconstrained, True)
-
-    #     print("\t", f" MCMC constrained {s=} Z={Z.item()}, ESS={ESS.item():,.0f}, frac_out_of_support={frac_out_of_support.item()}")
+        return RJMCMCTransitionProbEstimate(transition_log_probs, n_samples)
 
     
-# 0.0008
-# 0.00038
-# 0.00104
-# 0.33794
-# 0.43936
-# 0.17692
-# 0.03692
-# 0.00624
-# 0.0004
-# 0.0
+    def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
+        max_K = max(find_K(slp) for slp in log_weight_estimates.keys())
+        visited_k = jnp.zeros((max_K+1,))
+        bayes_factor = jnp.zeros((max_K+1, max_K+1))
+        for estimate in log_weight_estimates.values():
+            assert isinstance(estimate, RJMCMCTransitionProbEstimate)
+            for (current_k, next_k), log_prob in estimate.transition_log_probs.items():
+                visited_k = visited_k.at[current_k].set(1)
+                if next_k <= max_K:
+                    bayes_factor = bayes_factor.at[current_k, next_k].add(log_prob)
+                    bayes_factor = bayes_factor.at[next_k, current_k].add(-log_prob)
+        assert jnp.all(visited_k == 1)
+        for i in range(max_K+1):
+            for j in range(i+1,max_K+1):
+                bayes_factor = bayes_factor.at[i, j].set(bayes_factor[i,j-1] - bayes_factor[j, j-1])
+                bayes_factor = bayes_factor.at[j, i].set(-bayes_factor[i,j])
+        
+        k_to_log_weight = -jax.scipy.special.logsumexp(bayes_factor, axis=1)
+
+        result: Dict[SLP, FloatArray] = dict()
+        for slp in log_weight_estimates.keys():
+            k = find_K(slp)
+            result[slp] = k_to_log_weight[k]
+
+        return result
+
+        
+
+
+dcc_obj = DCCConfig(m, verbose=2,
+              mcmc_n_chains=10,
+              mcmc_n_samples_per_chain=25_000,
+              mcmc_collect_for_all_traces=True,
+              estimate_weight_n_samples=1000)
+
+
+t0 = time()
+
+result = dcc_obj.run(jax.random.PRNGKey(0))
+result.pprint()
 
 t1 = time()
 

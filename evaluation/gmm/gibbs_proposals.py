@@ -90,31 +90,36 @@ class ZsProposal(TraceProposal):
     def __init__(self, ys: jax.Array) -> None:
         self.ys = ys
 
-    def get_categorical(self, current: Trace) -> dist.CategoricalProbs:
+    def get_categorical(self, current: Trace) -> dist.Categorical | dist.CategoricalLogits:
         mus = current["mus"]
         vars = current["vars"]
         w = current["w"]
         
-        # jax.debug.print("mus={mus} vars={vars} w={w}", mus=mus, vars=vars, w=w)
-        def get_cat(y):
-            p = jnp.exp(dist.Normal(mus, jnp.sqrt(vars)).log_prob(y)) * w
-            p = jax.lax.select(p.sum() < 1e-32, jax.lax.full_like(w, 1.), p)
-            return dist.CategoricalProbs(p / p.sum())
+        # def get_cat_probs(y):
+        #     p = jnp.exp(dist.Normal(mus, jnp.sqrt(vars)).log_prob(y)) * w
+        #     p = jax.lax.select(p.sum() < 1e-32, jax.lax.full_like(w, 1.), p)
+        #     return p / p.sum()
         
-        cat = jax.vmap(get_cat)(self.ys)
-        # jax.debug.print("cat={p}", p=cat.probs)
+        # cat = dist.Categorical(jax.vmap(get_cat_probs)(self.ys))
+        # return cat
+    
+        def get_cat_log_probs(y):
+            # unnormalised is fine
+            log_p = dist.Normal(mus, jnp.sqrt(vars)).log_prob(y) + jax.lax.log(w)
+            return log_p
+        
+        cat = dist.CategoricalLogits(jax.vmap(get_cat_log_probs)(self.ys))
         return cat
+        
         
         
     def propose(self, rng_key: PRNGKey, current: Trace) -> Tuple[Trace,jax.Array]:
         d = self.get_categorical(current)
         proposed = d.sample(rng_key)
         lp = d.log_prob(proposed).sum()
-        # jax.debug.print("{z} {lp}", z=proposed, lp=lp)
         return {"zs": proposed}, lp
     
     def assess(self, current: Trace, proposed: Trace) -> jax.Array:
         d = self.get_categorical(current)
         lp = d.log_prob(proposed["zs"])
-        # jax.debug.print("cat={p} lp={lp} {s} z={z}", p=d.probs, lp=lp, s=lp.sum(), z=proposed["zs"])
         return lp.sum()

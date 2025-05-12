@@ -95,6 +95,6 @@ gt_pdf = jnp.hstack([jnp.array(0.),jnp.diff(gt_cdf)]) / (start_linspace[1] - sta
 plt.plot(start_linspace, gt_pdf, color="tab:orange")
 plt.show()
 
-jnp.save("evaluation_final/pedestrian/gt_xs.npy", start_linspace)
-jnp.save("evaluation_final/pedestrian/gt_pdf.npy", gt_pdf)
-jnp.save("evaluation_final/pedestrian/gt_cdf.npy", gt_cdf)
+jnp.save("evaluation/pedestrian/gt_xs.npy", start_linspace)
+jnp.save("evaluation/pedestrian/gt_pdf.npy", gt_pdf)
+jnp.save("evaluation/pedestrian/gt_cdf.npy", gt_cdf)

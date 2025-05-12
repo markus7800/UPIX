@@ -1,6 +1,6 @@
 venv/
 __pycache__
-evaluation/pedestrian/nonparametric-hmc
-evaluation_final/pedestrian/nonparametric-hmc/lookahead_samples
-evaluation_final/pedestrian/nonparametric-hmc/samples_produced
+old_evaluation/pedestrian/nonparametric-hmc
+evaluation/pedestrian/nonparametric-hmc/lookahead_samples
+evaluation/pedestrian/nonparametric-hmc/samples_produced
 *.pdf
