@@ -67,6 +67,14 @@ class SampleValues(Generic[VALUE_TYPE]):
         return self.N
     def get(self) -> VALUE_TYPE:
         return self.data
+    def get_selection(self, sample_ix) -> VALUE_TYPE:
+        return jax.tree_map(lambda v: v[sample_ix,...], self.data)
+    def get_subset(self, sample_ix) -> "SampleValues[VALUE_TYPE]":
+        sub_data = self.get_selection(sample_ix)
+        leafs, _ = jax.tree_flatten(sub_data)
+        N = leafs[0].shape[0]
+        return SampleValues(sub_data, N)
+    
 Traces = SampleValues[Trace]
 
 def to_traces(X: Trace) -> Traces:
@@ -81,10 +89,10 @@ class StackedSampleValue(Generic[VALUE_TYPE]):
         return f"StackedSampleValue({self.data.__class__.__name__}, {self.T:,})"
     def n_samples(self):
         return self.T
-    
+    def get(self):
+        return self.data
     def unstack(self) -> SampleValues[VALUE_TYPE]:
         return SampleValues[VALUE_TYPE](self.data, self.T)
-    
     def to_stacked_values(self) -> "StackedSampleValues[VALUE_TYPE]":
         return StackedSampleValues(jax.tree_map(lambda x: x.reshape((self.T, 1) + x.shape[1:]), self.data) , 1, self.T)
     

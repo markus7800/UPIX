@@ -77,8 +77,8 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         #     MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
         # )
         # regime = MCMCStep(AllVariables(), HMC(10, 0.05, unconstrained=True))
-        # regime = MCMCStep(AllVariables(), DHMC(10, 0.05, 0.15, unconstrained=False)) # this is very good W1 = 0.01796, L_inf = 0.0008
-        regime = MCMCStep(AllVariables(), DHMC(50, 0.05, 0.15, unconstrained=False)) # W1 = 0.01503, L_inf = 0.001072
+        regime = MCMCStep(AllVariables(), DHMC(10, 0.05, 0.15, unconstrained=False)) # this is very good W1 = 0.01796, L_inf = 0.0008
+        # regime = MCMCStep(AllVariables(), DHMC(50, 0.05, 0.15, unconstrained=False)) # W1 = 0.01503, L_inf = 0.001072
         pprint_mcmc_regime(regime, slp)
         return regime
     
@@ -123,57 +123,60 @@ print(f"Total time: {t1-t0:.3f}s")
 comp_time = compilation_time_tracker.get_total_compilation_time_secs()
 print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
 
-slp = result.get_slp(lambda slp: find_t_max(slp) == 2)
-assert slp is not None
-traces, _ = result.get_samples_for_slp(slp).unstack().get()
-
-plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
-plt.xlabel("step_1")
-plt.ylabel("step_2")
-plt.title(slp.formatted())
-
-slp = result.get_slp(lambda slp: find_t_max(slp) == 3)
-assert slp is not None
-traces, _ = result.get_samples_for_slp(slp).unstack().get()
-
-plt.figure()
-plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
-plt.xlabel("step_1")
-plt.ylabel("step_2")
-plt.title(slp.formatted())
-plt.figure()
-plt.scatter(traces["step_2"], traces["step_3"], alpha=0.1, s=1)
-plt.xlabel("step_2")
-plt.ylabel("step_3")
-plt.title(slp.formatted())
-plt.figure()
-plt.scatter(traces["step_1"], traces["step_3"], alpha=0.1, s=1)
-plt.xlabel("step_1")
-plt.ylabel("step_3")
-plt.title(slp.formatted())
-plt.show()
-
-
-plot_histogram_by_slp(result, "start")
-plot_histogram_by_slp(result, "step_1")
-plot_histogram_by_slp(result, "step_2")
-plt.show()
-
-
 gt_xs = jnp.load("evaluation_final/pedestrian/gt_xs.npy")
 gt_cdf = jnp.load("evaluation_final/pedestrian/gt_cdf.npy")
 gt_pdf = jnp.load("evaluation_final/pedestrian/gt_pdf.npy")
 
-plot_histogram(result, "start")
-fig = plt.gcf()
-ax = fig.axes[0]
-ax.plot(gt_xs, gt_pdf)
-plt.show()
+show_plots = False
+if show_plots:
+    slp = result.get_slp(lambda slp: find_t_max(slp) == 2)
+    assert slp is not None
+    traces, _ = result.get_samples_for_slp(slp).unstack().get()
 
-start_weighted_samples, _ = result.get_samples_for_address("start")
+    plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
+    plt.xlabel("step_1")
+    plt.ylabel("step_2")
+    plt.title(slp.formatted())
+
+    slp = result.get_slp(lambda slp: find_t_max(slp) == 3)
+    assert slp is not None
+    traces, _ = result.get_samples_for_slp(slp).unstack().get()
+
+    plt.figure()
+    plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
+    plt.xlabel("step_1")
+    plt.ylabel("step_2")
+    plt.title(slp.formatted())
+    plt.figure()
+    plt.scatter(traces["step_2"], traces["step_3"], alpha=0.1, s=1)
+    plt.xlabel("step_2")
+    plt.ylabel("step_3")
+    plt.title(slp.formatted())
+    plt.figure()
+    plt.scatter(traces["step_1"], traces["step_3"], alpha=0.1, s=1)
+    plt.xlabel("step_1")
+    plt.ylabel("step_3")
+    plt.title(slp.formatted())
+    plt.show()
+
+
+    plot_histogram_by_slp(result, "start")
+    plot_histogram_by_slp(result, "step_1")
+    plot_histogram_by_slp(result, "step_2")
+    plt.show()
+
+    plot_histogram(result, "start")
+    fig = plt.gcf()
+    ax = fig.axes[0]
+    ax.plot(gt_xs, gt_pdf)
+    plt.show()
+
+#%%
+start_weighted_samples, _ = result.get_samples_for_address("start", sample_ixs=slice(5000,None)) # burn-in
 assert start_weighted_samples is not None
 start_samples, start_weights = start_weighted_samples.get()
 
+#%%
 @jax.jit
 def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
     def _cdf_estimate(q):
@@ -189,3 +192,4 @@ print(title)
 plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
 plt.title(title)
 plt.show()
+# %%
