@@ -1,6 +1,6 @@
 
 import numpyro.distributions as numpyro_dists
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, Optional
 import jax
 from ..types import *
 
@@ -20,6 +20,11 @@ class Distribution(Generic[DIST_SUPPORT,DIST_SUPPORT_LIKE]):
 class Normal(Distribution[FloatArray,FloatArrayLike]):
     def __init__(self, loc: FloatArrayLike, scale: FloatArrayLike) -> None:
         super().__init__(numpyro_dists.Normal(loc, scale)) # type: ignore
+
+
+class MultivariateNormal(Distribution[FloatArray,FloatArrayLike]):
+    def __init__(self, loc: FloatArrayLike = 0, covariance_matrix: Optional[FloatArrayLike] = None, precision_matrix: Optional[FloatArrayLike] = None, scale_tril: Optional[FloatArrayLike] = None) -> None:
+        super().__init__(numpyro_dists.MultivariateNormal(loc, covariance_matrix, precision_matrix, scale_tril)) # type: ignore
         
 class Uniform(Distribution[FloatArray,FloatArrayLike]):
     def __init__(self, low: FloatArrayLike = 0., high: FloatArrayLike = 1.):
