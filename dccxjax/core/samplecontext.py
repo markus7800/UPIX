@@ -84,6 +84,22 @@ class LogprobCtx(SampleContext):
         return value
     def logfactor(self, lf: FloatArrayLike) -> None:
         self.log_likelihood += lf
+
+class LogprobTraceCtx(SampleContext):
+    def __init__(self, X: Trace) -> None:
+        super().__init__()
+        self.X = X
+        self.log_probs: Dict[str,FloatArray] = dict()
+    def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
+        if observed is not None:
+            self.log_probs[address] = distribution.log_prob(observed).sum()
+            return cast(DIST_SUPPORT, observed)
+        assert distribution.numpyro_base._validate_args
+        value = cast(DIST_SUPPORT, self.X[address])
+        self.log_probs[address] = distribution.log_prob(value).sum()
+        return value
+    def logfactor(self, lf: FloatArrayLike) -> None:
+        self.log_probs["__factor__"] = self.log_probs.get("__factor__", jnp.array(0.,float)) + lf
     
 
 class ReplayCtx(SampleContext):

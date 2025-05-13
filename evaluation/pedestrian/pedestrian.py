@@ -82,9 +82,9 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         pprint_mcmc_regime(regime, slp)
         return regime
     
-    def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
+    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
         _active_slps: List[SLP] = []
-        super().initialise_active_slps(_active_slps, rng_key)
+        super().initialise_active_slps(_active_slps, inactive_slps, rng_key)
         # we assume that we know that with increasing steps eventually we have unlikely SLPs
         _active_slps.sort(key=self.model.slp_sort_key)
         log_Z_max = -jnp.inf

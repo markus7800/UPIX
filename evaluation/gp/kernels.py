@@ -17,6 +17,9 @@ class GPKernel(ABC):
     @abstractmethod
     def depth(self) -> int:
         raise NotImplementedError
+    @abstractmethod
+    def name(self) -> str:
+        raise NotImplementedError
     
 class PrimitiveGPKernel(GPKernel):
     def size(self) -> int:
@@ -33,6 +36,10 @@ class Constant(PrimitiveGPKernel):
         return (t1 == t2) * self.value
     def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
         return (ts.reshape(-1,1) == ts.reshape(1,-1)) * self.value
+    def __repr__(self) -> str:
+        return "Const"
+    def name(self) -> str:
+        return "Constant"
  
 @dataclass
 class Linear(PrimitiveGPKernel):
@@ -46,6 +53,10 @@ class Linear(PrimitiveGPKernel):
         ts = ts - self.intercept
         c = (ts.reshape(-1,1) * ts.reshape(1,-1))
         return self.bias + self.amplitude * c
+    def __repr__(self) -> str:
+        return "Lin"
+    def name(self) -> str:
+        return "Linear"
     
 @dataclass
 class SquaredExponential(PrimitiveGPKernel):
@@ -58,6 +69,10 @@ class SquaredExponential(PrimitiveGPKernel):
         dt = ts.reshape(-1,1) - ts.reshape(1,-1)
         c = jax.lax.exp(-0.5 * dt * dt / jax.lax.square(self.lengthscale))
         return self.amplitude * c
+    def __repr__(self) -> str:
+        return "SqExp"
+    def name(self) -> str:
+        return "SquaredExponential"
 
 @dataclass
 class GammaExponential(PrimitiveGPKernel):
@@ -72,6 +87,10 @@ class GammaExponential(PrimitiveGPKernel):
         dt = jax.lax.abs(ts.reshape(-1,1) - ts.reshape(1,-1))
         c = jax.lax.exp(- (dt/self.lengthscale)**self.gamma)
         return self.amplitude * c
+    def __repr__(self) -> str:
+        return "GamExp"
+    def name(self) -> str:
+        return "GammaExponential"
 
 @dataclass
 class Periodic(PrimitiveGPKernel):
@@ -88,6 +107,10 @@ class Periodic(PrimitiveGPKernel):
         dt = jax.lax.abs(ts.reshape(-1,1) - ts.reshape(1,-1))
         c = jax.lax.exp((-2/jax.lax.square(self.lengthscale)) * jax.lax.square(jax.lax.sin(freq * dt)))
         return self.amplitude * c
+    def __repr__(self) -> str:
+        return "Per"
+    def name(self) -> str:
+        return "Periodic"
 
 @dataclass
 class Plus(CompositiveGPKernel):
@@ -101,6 +124,10 @@ class Plus(CompositiveGPKernel):
         return 1 + self.left.size() + self.right.size()
     def depth(self) -> int:
         return 1 + max(self.left.depth(), self.right.depth())
+    def __repr__(self) -> str:
+        return f"({self.left} + {self.right})"
+    def name(self) -> str:
+        return "Plus"
    
 @dataclass 
 class Times(CompositiveGPKernel):
@@ -114,6 +141,10 @@ class Times(CompositiveGPKernel):
         return 1 + self.left.size() + self.right.size()
     def depth(self) -> int:
         return 1 + max(self.left.depth(), self.right.depth())
+    def __repr__(self) -> str:
+        return f"({self.left} * {self.right})"
+    def name(self) -> str:
+        return "Times"
     
 
 
@@ -131,8 +162,19 @@ def transform_param(field: str, z: FloatArrayLike):
     if field == "gamma":
         return transform_logit_normal(z, 2, 0, 1)
     else:
-        return transform_log_normal(z, -1.5, 1.)
+        return transform_log_normal(z, -1.5, 1.) # if z is Normal(0,1) then param is LogNormal(-1.5, 1.)
     
+
+# z = jax.random.normal(jax.random.PRNGKey(0), (10_000_000,))
+# param = transform_param("", z)
+# param = param[param < 5]
+# plt.hist(param, density=True, bins=100)
+# xs = jnp.linspace(0, 5, 1000)
+# ps = jnp.exp(numpyro_dist.LogNormal(-1.5, 1.0).log_prob(xs))
+# plt.plot(xs, ps)
+# plt.show()
+
+
 def untransform_param(field: str, param: FloatArrayLike):
     if field == "gamma":
         return untransform_logit_normal(param, 2, 0, 1)

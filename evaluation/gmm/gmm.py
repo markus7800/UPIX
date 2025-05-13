@@ -107,7 +107,7 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
             MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
         )
     
-    def initialise_active_slps(self, active_slps: List[SLP], rng_key: jax.Array):
+    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
         rng_key, generate_key = jax.random.split(rng_key)
         trace, _ = self.model.generate(generate_key, {"K": jnp.array(0,int)})
         slp = slp_from_decision_representative(self.model, trace)

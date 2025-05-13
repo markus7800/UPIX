@@ -7,6 +7,8 @@ __all__ = [
     "SingleVariable",
     "VariableSet",
     "PrefixSelector",
+    "SuffixSelector",
+    "RegexSelector",
     "PredicateSelector"
 ]
 
@@ -44,6 +46,23 @@ class PrefixSelector(VariableSelector):
         return variable.startswith(self.prefix)
     def __repr__(self) -> str:
         return f"<{self.prefix}.*>"
+    
+class SuffixSelector(VariableSelector):
+    def __init__(self, suffix: str) -> None:
+        self.suffix = suffix
+    def contains(self, variable: str) -> bool:
+        return variable.endswith(self.suffix)
+    def __repr__(self) -> str:
+        return f"<.*{self.suffix}>"
+    
+import re
+class RegexSelector(VariableSelector):
+    def __init__(self, pattern: str | re.Pattern[str]) -> None:
+        self.pattern = pattern
+    def contains(self, variable: str) -> bool:
+        return re.match(self.pattern, variable) is not None
+    def __repr__(self) -> str:
+        return f"<r\"{self.pattern}\">"
     
 class PredicateSelector(VariableSelector):
     def __init__(self, predicate: Callable[[str], bool]) -> None:

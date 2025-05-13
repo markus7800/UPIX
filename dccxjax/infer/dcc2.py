@@ -76,7 +76,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         self.verbose = verbose
 
     @abstractmethod
-    def initialise_active_slps(self, active_slps: List[SLP], rng_key: PRNGKey):
+    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
         raise NotImplementedError
     
     @abstractmethod
@@ -131,7 +131,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         self.log_weight_estimates: Dict[SLP, List[LogWeightEstimate]] = dict()        
 
         rng_key, init_key = jax.random.split(rng_key)
-        self.initialise_active_slps(self.active_slps, init_key)
+        self.initialise_active_slps(self.active_slps, self.inactive_slps, init_key)
 
         self.iteration_counter = 0
 
@@ -315,7 +315,7 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
 
 
     # should populate active_slps
-    def initialise_active_slps(self, active_slps: List[SLP], rng_key: PRNGKey):
+    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
         if self.verbose >= 2:
             tqdm.write("Initialise active SLPS.")
         discovered_slps: List[SLP] = []

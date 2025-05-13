@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from typing import Callable, Optional, Any, Set, Tuple, Dict, TypeVar
-from .samplecontext import LogprobCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
+from .samplecontext import LogprobCtx, LogprobTraceCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx
 from ..types import Trace, PRNGKey, to_shaped_array_trace, FloatArray, BoolArray
 from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays
 from .branching_tracer import BranchingDecisions, trace_branching, retrace_branching
@@ -38,6 +38,11 @@ class Model:
         with LogprobCtx(X) as ctx:
             self()
             return ctx.log_likelihood + ctx.log_prior
+        
+    def log_prob_trace(self, X: Trace) -> Dict[str, FloatArray]:
+        with LogprobTraceCtx(X) as ctx:
+            self()
+            return ctx.log_probs
         
     def generate(self, rng_key: PRNGKey, Y: Trace = dict()):
         with GenerateCtx(rng_key, Y) as ctx:
