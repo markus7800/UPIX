@@ -92,7 +92,7 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
                 active_slps.append(slp)
                 kernel_key.add(k_key) # deduplicate using commutativity of + and * kernel
                 log_prob_trace = self.model.log_prob_trace(slp.decision_representative)
-                log_path_prior: FloatArray = sum((log_prob for addr, log_prob in log_prob_trace.items() if SuffixSelector("node_type").contains(addr)), start=jnp.array(0,float))
+                log_path_prior: FloatArray = sum((log_prob for addr, (log_prob, _) in log_prob_trace.items() if SuffixSelector("node_type").contains(addr)), start=jnp.array(0,float))
                 tqdm.write(f"Activate {k_key} with log_path_prior={log_path_prior.item():.4f}")
         active_slps.sort(key=self.model.slp_sort_key)
         print(f"{len(active_slps)=}")

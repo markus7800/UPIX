@@ -5,4 +5,5 @@ from .gibbs_model import *
 from .mcmc import *
 from .metropolis import *
 from .hmc import *
+from .lmh_global import *
 from .variable_selector import *

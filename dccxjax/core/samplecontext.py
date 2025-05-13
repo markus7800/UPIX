@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from dccxjax.distributions import Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE
 import numpyro.distributions as numpyro_dists
-from typing import Any, Optional, Dict, Callable, cast
+from typing import Any, Optional, Dict, Callable, cast, Tuple
 from abc import ABC, abstractmethod
 from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike
 
@@ -89,17 +89,17 @@ class LogprobTraceCtx(SampleContext):
     def __init__(self, X: Trace) -> None:
         super().__init__()
         self.X = X
-        self.log_probs: Dict[str,FloatArray] = dict()
+        self.log_probs: Dict[str,Tuple[FloatArray,bool]] = dict()
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
-            self.log_probs[address] = distribution.log_prob(observed).sum()
+            self.log_probs[address] = (distribution.log_prob(observed).sum(), True)
             return cast(DIST_SUPPORT, observed)
         assert distribution.numpyro_base._validate_args
         value = cast(DIST_SUPPORT, self.X[address])
-        self.log_probs[address] = distribution.log_prob(value).sum()
+        self.log_probs[address] = (distribution.log_prob(value).sum(), False)
         return value
     def logfactor(self, lf: FloatArrayLike) -> None:
-        self.log_probs["__factor__"] = self.log_probs.get("__factor__", jnp.array(0.,float)) + lf
+        self.log_probs["__factor__"] = (self.log_probs.get("__factor__", jnp.array(0.,float))[0] + lf, True)
     
 
 class ReplayCtx(SampleContext):

@@ -39,7 +39,12 @@ class Model:
             self()
             return ctx.log_likelihood + ctx.log_prior
         
-    def log_prob_trace(self, X: Trace) -> Dict[str, FloatArray]:
+    def log_prior(self, X: Trace) -> FloatArray:
+        with LogprobCtx(X) as ctx:
+            self()
+            return ctx.log_prior
+        
+    def log_prob_trace(self, X: Trace) -> Dict[str, Tuple[FloatArray,bool]]:
         with LogprobTraceCtx(X) as ctx:
             self()
             return ctx.log_probs
@@ -47,7 +52,7 @@ class Model:
     def generate(self, rng_key: PRNGKey, Y: Trace = dict()):
         with GenerateCtx(rng_key, Y) as ctx:
             self()
-            return ctx.X, ctx.log_likelihood + ctx.log_prior
+            return ctx.X, ctx.log_likelihood + ctx.log_prior # TODO: maybe chang to return only log_likelihood like Gen
 
     def __repr__(self) -> str:
         return f"Model({self.f.__name__}, {self.args}, {self.kwargs})"
