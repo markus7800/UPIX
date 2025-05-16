@@ -110,5 +110,5 @@ function main()
     end
     display(weights)
 end
-
+# ~130s for 10 * 25_000 samples
 @time main()

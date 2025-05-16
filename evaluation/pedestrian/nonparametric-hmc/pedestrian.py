@@ -112,6 +112,7 @@ if __name__ == "__main__":
 
     elif sys.argv[1] == "NP-DHMC":
         if len(sys.argv) > 2 and sys.argv[2] == "parallel":
+            # takes ~ 2:30s for 10 * 1_000 samples
             processes = []
             for rep in range(repetitions):
                 p = mp.Process(target=target_NP_DHMC, args=(rep,rep))

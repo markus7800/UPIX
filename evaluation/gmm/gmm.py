@@ -114,7 +114,7 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         active_slps.append(slp)
         tqdm.write(f"Make SLP {slp.formatted()} active.")
 
-    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
+    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         last_slp = active_slps.pop()
         inactive_slps.append(last_slp)
         estimates = self.get_log_weight_estimates(last_slp)
@@ -199,7 +199,7 @@ dcc_obj = DCCConfig(m, verbose=2,
               mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=1000)
 
-
+# takes ~185s for 10 * 25_000 * 11 samples
 t0 = time()
 
 result = dcc_obj.run(jax.random.PRNGKey(0))

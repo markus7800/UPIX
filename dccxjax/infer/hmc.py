@@ -251,7 +251,7 @@ def dhmc_kernel(
     
     (x, u, _, p), _ = jax.lax.scan(
         leapfrog_step,
-        DiscontLeapfrogState(x, -log_prob_fn(x), -grad_log_prob_fn(x), p),
+        DiscontLeapfrogState(x, -log_prob_fn(x), -grad_log_prob_fn(x) if not all_discontinuous else jnp.array(0,float), p),
         jax.random.split(permute_key,L))
     
     # leapfrog finished

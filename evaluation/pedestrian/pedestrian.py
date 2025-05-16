@@ -77,8 +77,8 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         #     MCMCStep(SingleVariable("start"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), 0., 3.)))
         # )
         # regime = MCMCStep(AllVariables(), HMC(10, 0.05, unconstrained=True))
-        regime = MCMCStep(AllVariables(), DHMC(10, 0.05, 0.15, unconstrained=False)) # this is very good W1 = 0.01796, L_inf = 0.0008
-        # regime = MCMCStep(AllVariables(), DHMC(50, 0.05, 0.15, unconstrained=False)) # W1 = 0.01503, L_inf = 0.001072
+        # regime = MCMCStep(AllVariables(), DHMC(10, 0.05, 0.15, unconstrained=False)) # this is very good W1 = 0.01796, L_inf = 0.0008
+        regime = MCMCStep(AllVariables(), DHMC(50, 0.05, 0.15, unconstrained=False)) # W1 = 0.01503, L_inf = 0.001072 for comparison takes ~90s for 25_000 * 10 * 6 samples
         pprint_mcmc_regime(regime, slp)
         return regime
     
@@ -109,6 +109,7 @@ dcc_obj = DCCConfig(m, verbose=2,
               mcmc_n_samples_per_chain=25_000,
               mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=10_000_000,
+              max_iterations=1,
             #   return_map=lambda trace: {"start": trace["start"]}
 )
 
@@ -123,11 +124,11 @@ print(f"Total time: {t1-t0:.3f}s")
 comp_time = compilation_time_tracker.get_total_compilation_time_secs()
 print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
 
-gt_xs = jnp.load("pedestrian/gt_xs.npy")
-gt_cdf = jnp.load("pedestrian/gt_cdf.npy")
-gt_pdf = jnp.load("pedestrian/gt_pdf.npy")
+gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
+gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
+gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf.npy")
 
-show_plots = False
+show_plots = True
 if show_plots:
     slp = result.get_slp(lambda slp: find_t_max(slp) == 2)
     assert slp is not None
@@ -169,6 +170,7 @@ if show_plots:
     fig = plt.gcf()
     ax = fig.axes[0]
     ax.plot(gt_xs, gt_pdf)
+    plt.savefig("evaluation/pedestrian/result_dccxjax.pdf")
     plt.show()
 
 #%%

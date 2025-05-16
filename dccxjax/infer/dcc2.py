@@ -12,6 +12,8 @@ from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from ..utils import broadcast_jaxtree
 from functools import reduce
+from .lmh_global import lmh
+from .variable_selector import AllVariables, VariableSelector
 
 class InferenceResult(ABC):
     @abstractmethod
@@ -88,7 +90,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         raise NotImplementedError
     
     @abstractmethod
-    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
+    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         raise NotImplementedError
     
     @abstractmethod
@@ -151,7 +153,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 self.add_to_log_weight_estimates(slp, log_weight_estimate)
 
             rng_key, update_key = jax.random.split(rng_key)
-            self.update_active_slps(self.active_slps, self.inactive_slps, update_key)
+            self.update_active_slps(self.active_slps, self.inactive_slps, self.inference_results, self.log_weight_estimates, update_key)
         
         combined_result = self.combine_results(self.inference_results, self.log_weight_estimates)
         # t1 = time()
@@ -313,6 +315,11 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
 
         self.estimate_weight_n_samples: int = self.config.get("estimate_weight_n_samples", 1_000_000)
 
+        self.n_lmh_update_samples: int = self.config.get("n_lmh_update_samples", 1_000)
+        self.lmh_variable_selector: VariableSelector = self.config.get("lmh_variable_selector", AllVariables())
+
+        self.max_iterations: int = self.config.get("max_iterations", 10)
+
 
     # should populate active_slps
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
@@ -403,12 +410,64 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
             tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():,.0f})")
         return LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, self.estimate_weight_n_samples)
 
-    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
-        # TODO: replace default with LMH
+    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         inactive_slps.extend(active_slps)
         active_slps.clear()
 
-    
+        if self.iteration_counter == self.max_iterations:
+            return
+
+        assert not self.mcmc_optimise_memory_with_early_return_map
+
+
+        combined_inference_results: Dict[SLP, InferenceResult] = {slp: reduce(lambda x, y: x.concatentate(y), results) for slp, results in inference_results.items()}
+        combined_log_weight_estimates: Dict[SLP, LogWeightEstimate] = {slp: reduce(lambda x, y: x.combine_estimate(y), results) for slp, results in log_weight_estimates.items()}
+
+        self.combined_inference_results = {slp: [combined_result] for slp, combined_result in combined_inference_results.items()} # small optimisation to avoid repeated combination
+        self.log_weight_estimates = {slp: [combined_estimate] for slp, combined_estimate in combined_log_weight_estimates.items()} # small optimisation to avoid repeated combination
+
+        slp_log_weights = self.compute_slp_log_weight(combined_log_weight_estimates)
+        slps: List[SLP] = []
+        log_weight_list: List[FloatArray] = []
+        for slp, log_weight in slp_log_weights.items():
+            slps.append(slp)
+            log_weight_list.append(log_weight)
+        log_weights = jnp.array(log_weight_list)
+        
+        slp_to_proposal_prob: Dict[SLP, FloatArray] = dict()
+        for _ in tqdm(range(self.n_lmh_update_samples), desc="Determining new active SLPs with LMH"):
+            rng_key, select_key, select_chain_key, select_sample_key, lmh_key = jax.random.split(rng_key, 5)
+            slp = slps[jax.random.categorical(select_key, log_weights)]
+            slp_results = combined_inference_results[slp]
+            assert isinstance(slp_results, MCMCInferenceResult)
+            assert isinstance(slp_results.value_tree, dict) # trace
+            chain = jax.random.randint(select_chain_key, (), 0, slp_results.n_chains)
+            sample_ix = jax.random.randint(select_sample_key, (), 0, slp_results.n_samples_per_chain)
+            trace: Trace = jax.tree.map(lambda v: v[sample_ix, chain, ...], slp_results.value_tree)
+            trace_proposed, acceptance_log_prob = lmh(self.model, self.lmh_variable_selector, trace, lmh_key)
+
+            matched_slp = next(filter(lambda _slp: _slp.path_indicator(trace_proposed) != 0, inactive_slps), None)
+            if matched_slp is None:
+                matched_slp = slp_from_decision_representative(self.model, trace_proposed)
+                if self.verbose >= 2:
+                    tqdm.write(f"Discovered SLP {matched_slp.formatted()}.")
+                inactive_slps.append(matched_slp)
+
+            slp_to_proposal_prob[matched_slp] = slp_to_proposal_prob.get(matched_slp, 0.) + jnp.exp(acceptance_log_prob)
+            slp_to_proposal_prob[slp] = slp_to_proposal_prob.get(slp, 0.) + (1 - jnp.exp(acceptance_log_prob))
+
+        # jnp.exp(jax.scipy.special.logsumexp(jnp.array(slp_to_proposal_log_prob.values()))) == self.n_lmh_update_samples
+        # proportional to budget that should be spent on slps
+
+        # for slp, acceptance_log_prob_sum in slp_to_proposal_log_prob.items():
+        #     acceptance_log_prob = acceptance_log_prob - jnp.log()
+        #     rng_key, accept_key = jax.random.split(rng_key)
+        #     if jax.lax.log(jax.random.uniform(accept_key)) < acceptance_log_prob:
+        #         active_slps.append(slp)
+        #         inactive_slps.remove(slp)            
+        
+
+
     def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
         log_Zs: List[FloatArray] = []
         for estimate in log_weight_estimates.values():

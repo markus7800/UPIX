@@ -2,12 +2,12 @@ import pickle
 
 from eval_utils import *
 
-# file_template = "samples_produced/walk_model{i}__count1000_eps0.1_leapfrogsteps50.pickle"
-# method = "hmc"
+file_template = "samples_produced/walk_model{i}__count1000_eps0.1_leapfrogsteps50.pickle"
+method = "hmc"
 
-file_template = "lookahead_samples/walk_model_{i}__count1000_eps0.1_L5_alpha0.1_K2.pickle"
-config = (5, 0.1, 2)
-method = ("npladhmc-persistent", config)
+# file_template = "lookahead_samples/walk_model_{i}__count1000_eps0.1_L5_alpha0.1_K2.pickle"
+# config = (5, 0.1, 2)
+# method = ("npladhmc-persistent", config)
 
 runs = []
 num_chains = 10
@@ -77,5 +77,6 @@ plot = sns.displot(
 )
 plot.set_ylabels(label="posterior density")
 plt.plot(gt_xs, gt_pdf, color="tab:orange", label="ground truth")
+plt.savefig("result_nonparametric-hmc.pdf")
 plt.show()
 

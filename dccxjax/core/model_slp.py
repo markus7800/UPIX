@@ -28,8 +28,9 @@ class Model:
         self._jitted_log_prob = False
         self.slp_formatter: Optional[Callable[["SLP"],str]] = None
         self.slp_sort_key: Callable[["SLP"],SupportsRichComparison] = lambda slp: slp.short_repr()
-        # self._log_prob = self.make_model_logprob()
 
+        self.slp_equivalence_class_id_gen: Optional[Callable[[Trace], str]] = None
+        self.slp_equivalence_class_element_id_gen: Optional[Callable[[Trace], str]] = None
     def __call__(self) -> Any:
         return self.f(*self.args, **self.kwargs)
     
@@ -66,6 +67,18 @@ class Model:
     def set_slp_sort_key(self, key: Callable[["SLP"],SupportsRichComparison]):
         self.slp_sort_key = key
 
+    def set_slp_equivalence_class_id_gen(self, class_id_gen: Callable[[Trace], str], element_id_gen: Callable[[Trace], str]):
+        self.slp_equivalence_class_id_gen = class_id_gen
+        self.slp_equivalence_class_element_id_gen = element_id_gen
+
+    def get_equivalence_class_id(self, X: Trace) -> str:
+        assert self.slp_equivalence_class_id_gen is not None
+        return self.slp_equivalence_class_id_gen(X)
+    
+    def get_equivalence_class_element_id(self, X: Trace) -> str:
+        assert self.slp_equivalence_class_element_id_gen is not None
+        return self.slp_equivalence_class_element_id_gen(X)
+    
 def model(f:Callable) -> Callable[..., Model]:
     def _f(*args, **kwargs):
         return Model(f, args, kwargs)
