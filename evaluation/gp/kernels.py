@@ -188,7 +188,6 @@ class Times(CompositiveGPKernel):
         return "Times"
     
 
-
 def transform_log_normal(z: FloatArrayLike, mu: FloatArrayLike, sigma: FloatArrayLike):
     return jax.lax.exp(mu + sigma*z)
 def untransform_log_normal(param: FloatArrayLike, mu: FloatArrayLike, sigma: FloatArrayLike):
@@ -204,8 +203,15 @@ def transform_param(field: str, z: FloatArrayLike):
         return transform_logit_normal(z, 2, 0, 1)
     else:
         return transform_log_normal(z, -1.5, 1.) # if z is Normal(0,1) then param is LogNormal(-1.5, 1.)
-    
 
+def untransform_param(field: str, param: FloatArrayLike):
+    if field == "gamma":
+        return untransform_logit_normal(param, 2, 0, 1)
+    else:
+        return untransform_log_normal(param, -1.5, 1.)
+
+# import numpyro.distributions as numpyro_dist
+# import matplotlib.pyplot as plt
 # z = jax.random.normal(jax.random.PRNGKey(0), (10_000_000,))
 # param = transform_param("", z)
 # param = param[param < 5]
@@ -215,10 +221,3 @@ def transform_param(field: str, z: FloatArrayLike):
 # plt.plot(xs, ps)
 # plt.show()
 
-
-def untransform_param(field: str, param: FloatArrayLike):
-    if field == "gamma":
-        return untransform_logit_normal(param, 2, 0, 1)
-    else:
-        return untransform_log_normal(param, -1.5, 1.)
-    

@@ -286,7 +286,10 @@ def get_mcmc_kernel(
                 # for some reason this is significantly faster
                 # re-compilation time for different number of chains should be okay since sub-kernels are always cached
                 t = state.log_prob.shape[0]
-                kernel_keys = jax.random.split(kernel_key, t)
+                if t == 1:
+                    kernel_keys = jax.lax.broadcast(kernel_key, (1,))
+                else:
+                    kernel_keys = jax.random.split(kernel_key, t)
                 new_kernel_state = jax.vmap(kernel, in_axes=(0,None,0))(kernel_keys, state.temperature, kernel_state) # (1)
             else:
                 new_kernel_state = kernel(kernel_key, state.temperature, kernel_state) # (2)

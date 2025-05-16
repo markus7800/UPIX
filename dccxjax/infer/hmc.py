@@ -144,6 +144,7 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
         @jax.jit
         def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
+            # jax.debug.print("key={k}", k=rng_key)
             
             X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, state)
 

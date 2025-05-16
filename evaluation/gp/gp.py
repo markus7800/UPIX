@@ -52,7 +52,10 @@ def gaussian_process(xs: jax.Array, ts: jax.Array):
     noise = transform_param("noise", noise) + 1e-5
     cov_matrix = kernel.eval_cov_vec(xs) + noise * jnp.eye(xs.size)
     # MultivariateNormal does cholesky internally
-    sample("obs", dist.MultivariateNormal(covariance_matrix=cov_matrix), observed=ts)
+    sample("obs", dist.MultivariateNormal(jnp.zeros_like(xs), covariance_matrix=cov_matrix), observed=ts)
+    # llik = jax.scipy.stats.multivariate_normal.logpdf(ts, jnp.zeros_like(xs), cov_matrix)
+    # logfactor(llik)
+    # sample("obs", dist.Normal(jnp.mean(cov_matrix), noise), observed=ts)
 
 def _get_gp_kernel(trace: Trace, idx: int) -> GPKernel:
     node_type = trace[f"{idx}_node_type"]
@@ -95,9 +98,10 @@ X, lp = m.generate(
 slp = slp_from_decision_representative(m, X)
 
 if True:
-    N_samples = 500
+    N_samples = 10_000
     print(f"{N_samples=}")
 
+    do_vmap_step = True
     @jax.jit
     def _is(rng_key: PRNGKey):
         res, _ = retrace_branching(lambda key: m.generate(key, Y={"1_node_type": jnp.array(3,int)}), slp.branching_decisions)(rng_key)
@@ -105,7 +109,14 @@ if True:
     keys = jax.random.split(jax.random.PRNGKey(0), N_samples)
     t0 = time()
     # traces, lps = jax.vmap(jax.jit(_is))(keys)
-    _, (traces, lps) = jax.lax.scan(lambda _, rng_key: (None, _is(rng_key)), None, keys)
+    def _f(_, rng_key):
+        return (None, _is(rng_key))
+    if do_vmap_step:
+        _, (traces, lps) = jax.lax.scan(jax.vmap(_f), None, keys.reshape(N_samples,1,2))
+    else:
+        # fast
+        _, (traces, lps) = jax.lax.scan(_f, None, keys)
+    # slow-ish
     lps.block_until_ready()
     t1 = time()
     print(f"Finished IS in {t1-t0:.3f} s")
@@ -120,82 +131,136 @@ if True:
         g = jax.grad(lambda x: slp.log_prob(x | {"1_node_type": jnp.array(3,int)}))(trace)
         return (acc + g["noise"]) / 2, g # force sequential computation
     # _, grads = jax.lax.scan(lambda _, trace: (None, jax.grad(lambda x: slp.log_prob(x | {"1_node_type": jnp.array(3,int)}))(trace)), None, traces)
-    _, grads = jax.lax.scan(_f_grad, jnp.array(0,float), traces)
-    grads["noise"].block_until_ready()
+    if do_vmap_step:
+    # slow
+        acc, grads = jax.lax.scan(jax.vmap(_f_grad), jnp.array([0],float), traces)#jax.tree.map(lambda v: v.reshape(v.shape[0],1,*v.shape[1:]), traces))
+    else:
+        # fast
+        acc, grads = jax.lax.scan(_f_grad, jnp.array(0,float), traces)
+    acc.block_until_ready()
     t1 = time()
+    print(acc)
     print(f"Finished Grad in {t1-t0:.3f} s")
     traces["1_node_type"] = node_type
+    exit()
 
     hmc_kernel = HMC(10, 0.02).make_kernel(
         GibbsModel(slp, PredicateSelector(lambda addr: not addr.endswith("node_type")), {"1_node_type": jnp.array(3,int)}),
         0,
         False
     )
+    
     from dccxjax.infer.mcmc import KernelState, CarryStats
     def hmc_step(state: KernelState, rng_key: PRNGKey):
         rng_key, _ = jax.random.split(rng_key)
         new_state = hmc_kernel(rng_key, jnp.array(1.,float), state)
         return new_state, new_state.carry_stats["position"]
     initial_kernel_state = KernelState(CarryStats(position=X, log_prob=lp), None)
-    t0 = time()
-    last_state, positions = jax.lax.scan(hmc_step, initial_kernel_state, keys)
-    last_state.carry_stats["log_prob"].block_until_ready()
-    print(positions["noise"].shape)
-    t1 = time()
-    print(f"Finished HMC seq in {t1-t0:.3f} s")
+
+    # t0 = time()
+    # slow
+    # last_state, positions = jax.lax.scan(jax.vmap(hmc_step), broadcast_jaxtree(initial_kernel_state, (1,)), keys.reshape(N_samples,1,2))
+    # fast
+    # last_state, positions = jax.lax.scan(hmc_step, initial_kernel_state, keys)
+    # last_state.carry_stats["log_prob"].block_until_ready()
+    # print(last_state.carry_stats["log_prob"])
+    # t1 = time()
+    # print(f"Finished HMC seq in {t1-t0:.3f} s")
     # plt.plot(positions["noise"])
     # plt.plot(positions["1_amplitude"])
     # plt.plot(positions["1_gamma"])
     # plt.plot(positions["1_lengthscale"])
     # plt.show()
 
+    from dccxjax.infer.mcmc import get_mcmc_kernel
+    # problems for both
+    # regime = MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), RW(gaussian_random_walk(0.02))),
+    regime = MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), HMC(10, 0.02))
 
-    # n_chains = N_samples
-    # n_samples_per_chain = 1
-    # mcmc_obj = MCMC(
-    #     slp,
-    #     # MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), RW(gaussian_random_walk(0.02))),
-    #     MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), HMC(10, 0.02)),
-    #     n_chains,
-    #     collect_inference_info=True, progress_bar=False, return_map= lambda x: x
-    # )
+    # slow
+    kernel_step, _ = get_mcmc_kernel(slp, regime, return_map=lambda x: x.position, vectorised=True)
+    initial_mcmc_state = MCMCState(jnp.array(0,int), jnp.array(1.,float), broadcast_jaxtree(X, (1,)), broadcast_jaxtree(lp, (1,)), CarryStats(), None)
 
-    # t0 = time()
-    # last_state, r = mcmc_obj.run(jax.random.PRNGKey(0), StackedTrace(traces, n_chains), n_samples_per_chain=n_samples_per_chain)
-    # for info in last_state.infos:
-    #     print(summarise_mcmc_info(info, n_samples_per_chain))
-    # t1 = time()
-    # print(f"Finished HMC vec in {t1-t0:.3f} s")
+    
+    t0 = time()
+    last_state, positions = jax.lax.scan(kernel_step, initial_mcmc_state, keys)
+    last_state.log_prob.block_until_ready()
+    print(last_state.log_prob)
+    t1 = time()
+    print(f"Finished HMC seq 1 in {t1-t0:.3f} s")
+
+    # fast
+    kernel_step, _ = get_mcmc_kernel(slp, regime, return_map=lambda x: x.position, vectorised=False)
+    initial_mcmc_state = MCMCState(jnp.array(0,int), jnp.array(1.,float), X, lp, CarryStats(), None)
+    
+    t0 = time()
+    last_state, positions = jax.lax.scan(kernel_step, initial_mcmc_state, keys)
+    last_state.log_prob.block_until_ready()
+    print(last_state.log_prob)
+    t1 = time()
+    print(f"Finished HMC seq 2 in {t1-t0:.3f} s")
+
+    exit()
 
 
     n_chains = 1
-    n_samples_per_chain = 500
+    n_samples_per_chain = N_samples
     mcmc_obj = MCMC(
         slp,
-        # MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), RW(gaussian_random_walk(0.02))),
-        MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), HMC(10, 0.02)),
+        regime,
         n_chains,
-        collect_inference_info=True, progress_bar=False, return_map=lambda x: x
-    ) # 3.5 times slower than Gen :(
+        collect_inference_info=False, progress_bar=False, return_map=lambda x: x
+    )
     pprint_mcmc_regime(mcmc_obj.regime, slp)
     t0 = time()
     last_state, r = mcmc_obj.run(jax.random.PRNGKey(0), StackedTrace(broadcast_jaxtree(X, (n_chains,)), n_chains), n_samples_per_chain=n_samples_per_chain)
     print(last_state.log_prob)
     t1 = time()
     print(f"Finished HMC MCMC in {t1-t0:.3f} s")
-    for info in last_state.infos:
-        print(summarise_mcmc_info(info, n_samples_per_chain))
+    # for info in last_state.infos:
+    #     print(summarise_mcmc_info(info, n_samples_per_chain))
 
     exit()
 
     # from pprint import pprint
     # pprint(m.log_prob_trace(X))
+
+@jax.jit
+def mycholesky(A: jax.Array):
+    def body_fun(i: int, L: jax.Array):
+        print(L, i)
+        jax.debug.print("i={i}", i=i)
+        Lii = jnp.sqrt(A[i,i] - jnp.dot(L[:i,i], L[:i,i]))
+        L_ = A[i,i:] - jnp.matmul(L[:i,i], L[:i,i:])
+        return L.at[i,i].set(Lii).at[i,i:].set(L_ / Lii)
+    return jax.lax.fori_loop(0, A.shape[0], body_fun, jnp.zeros_like(A))
+
+if False:
     k = get_gp_kernel(X)
     print(k.__repr__(True))
     noise = transform_param("noise", X["noise"])
     print(noise)
-    print(k.eval_cov_vec(xs) + (1e-5+noise)*jnp.eye(xs.shape[0]))
+    cov_matrix = k.eval_cov_vec(xs) + (1e-5+noise)*jnp.eye(xs.shape[0])
+    print(cov_matrix)
+    L = jnp.linalg.cholesky(cov_matrix, upper=False)
+    print("L =")
+    print(L)
+    L1 = L
 
+    L = mycholesky(cov_matrix)
+    print(L)
+    print(jnp.isclose(L1, L).all())
+
+    # A = cov_matrix
+    # L = jnp.zeros_like(A)
+    # for i in range(A.shape[0]):
+    #     Lii = jnp.sqrt(A[i,i] - jnp.dot(L[:i,i], L[:i,i]))
+    #     L = L.at[i,i].set(Lii)
+    #     L_ = A[i,i:] - jnp.matmul(L[:i,i], L[:i,i:])
+    #     L = L.at[i,i:].set(L_ / Lii)
+    # print("L2 =")
+    # print(L)
+    # print(jnp.isclose(L1, L).all())
 
     xs_pred = jnp.concatenate((xs,xs_val))
     pp = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
