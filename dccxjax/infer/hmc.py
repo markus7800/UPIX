@@ -142,11 +142,11 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
 
         jit_tracker = JitVariationTracker(f"_hmc_kernel for Inference step {step_number}: <HMC at {hex(id(self))}>")
         @jax.jit
-        def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
+        def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: Dict[str,BoolArray], state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
             # jax.debug.print("key={k}", k=rng_key)
             
-            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, state)
+            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
 
             proposed_X, proposed_log_prob, accept, diverged = hmc_kernel(rng_key, X_flat, log_prob, target_fn, self.L, self.eps)
             next_X_flat, next_log_prob = jax.lax.cond(accept, lambda _: (proposed_X, proposed_log_prob), lambda _: (X_flat, log_prob), operand=None)
@@ -311,10 +311,10 @@ class DiscontinuousHamiltonianMonteCarlo(MCMCInferenceAlgorithm):
 
         jit_tracker = JitVariationTracker(f"_dhmc_kernel for Inference step {step_number}: <DHMC at {hex(id(self))}>")
         @jax.jit
-        def _dhmc_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
+        def _dhmc_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: Dict[str,BoolArray], state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
             
-            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, state)
+            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
 
             proposed_X, proposed_log_prob, accept, diverged = dhmc_kernel(
                 rng_key, X_flat, log_prob, target_fn, self.L, self.eps_min, self.eps_max,

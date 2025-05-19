@@ -21,23 +21,24 @@ def run_ais(slp: SLP, config: AISConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
     prior_key, tempering_key = jax.random.split(seed)
     
     if config.n_prior_mcmc_steps > 0:
-        prior_kernel_init = MCMCState(jnp.array(0,int), jnp.array(0.,float), xs, lp, CarryStats(), None)
+        prior_kernel_init = MCMCState(jnp.array(0,int), jnp.array(0.,float), dict(), xs, lp, CarryStats(), None)
         prior_keys = jax.random.split(prior_key, config.n_prior_mcmc_steps)
         last_prior_state, _ = jax.lax.scan(config.prior_kernel, prior_kernel_init, prior_keys)
     else:
-        last_prior_state = MCMCState(jnp.array(0,int), jnp.array(0.,float), xs, lp, CarryStats(), None)
+        last_prior_state = MCMCState(jnp.array(0,int), jnp.array(0.,float), dict(), xs, lp, CarryStats(), None)
 
     def tempering_step(carry: Tuple[MCMCState,FloatArray], tempering: Tuple[PRNGKey,FloatArray]) -> Tuple[Tuple[MCMCState,FloatArray], None]:
         inference_carry_from_prev_kernel, current_log_weight = carry
         tempering_key, temperature = tempering
 
         # log weights with respect to current tempering
-        log_prior_before, log_likelihood_before, _ = jax.vmap(slp._log_prior_likeli_pathcond)(inference_carry_from_prev_kernel.position)
+        log_prior_before, log_likelihood_before, _ = jax.vmap(slp._log_prior_likeli_pathcond)(inference_carry_from_prev_kernel.position, dict())
         tempered_log_prob_before_step = log_prior_before + temperature * log_likelihood_before
 
         current_inference_carry = MCMCState(
             inference_carry_from_prev_kernel.iteration,
             temperature,
+            dict(),
             inference_carry_from_prev_kernel.position,
             tempered_log_prob_before_step,
             CarryStats(),
@@ -108,7 +109,7 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
     prior_key, tempering_key = jax.random.split(seed)
 
     init_state = SMCCarry(
-        MCMCState(jnp.array(0,int), jnp.array(0.,float), xs, lp, CarryStats(), None),
+        MCMCState(jnp.array(0,int), jnp.array(0.,float), dict(), xs, lp, CarryStats(), None),
         jnp.zeros((N,), float),
     )
 
@@ -121,12 +122,13 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
         tempering_key, resample_key = jax.random.split(key)
 
         # log weights with respect to current tempering
-        log_prior_before, log_likelihood_before, _ = jax.vmap(slp._log_prior_likeli_pathcond)(inference_state_from_prev_kernel.position)
+        log_prior_before, log_likelihood_before, _ = jax.vmap(slp._log_prior_likeli_pathcond)(inference_state_from_prev_kernel.position, dict())
         tempered_log_prob_current_position = log_prior_before + temperature * log_likelihood_before # p_k(phi_{k-1})
 
         current_inference_state = MCMCState(
             inference_state_from_prev_kernel.iteration,
             temperature,
+            dict(),
             inference_state_from_prev_kernel.position,
             tempered_log_prob_current_position,
             CarryStats(),
@@ -151,7 +153,7 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
                 resample_ixs = multinomial(resample_key, jax.lax.exp(log_particle_weight - log_particle_weight_sum), N)
                 # resample_ixs = systematic_or_stratified(resample_key, jax.lax.exp(log_particle_weight - log_particle_weight_sum), N, False)
             
-                next_inference_state = MCMCState(next_inference_state.iteration, next_inference_state.temperature,
+                next_inference_state = MCMCState(next_inference_state.iteration, next_inference_state.temperature, dict(),
                     jax.tree.map(lambda v: v[resample_ixs,...], next_inference_state.position),
                     next_inference_state.log_prob[resample_ixs],
                     CarryStats(),

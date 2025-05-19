@@ -18,7 +18,7 @@ class MixtureProposer:
         vars_bij = dist.biject_to(dist.InverseGamma(jnp.full((K+1,), alpha), jnp.full((K+1,), beta)).support)
         
         n = dist.DiscreteUniform(0,self.N).sample(select_key)
-        center = jax.tree_map(lambda v: v[n,...], self.centers)
+        center = jax.tree.map(lambda v: v[n,...], self.centers)
 
         w = dist.TransformedDistribution(dist.Normal(w_bij.inv(center["w"]),self.sigma), w_bij).sample(w_key)
         mus = dist.Normal(center["mus"],self.sigma).sample(mu_key)
@@ -114,7 +114,7 @@ def get_posterior(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains).unstack()
 
     # ixs = jax.random.randint(jax.random.PRNGKey(0), (10_000,), 0, result_positions.n_samples())
-    # centers = jax.tree_map(lambda v: v[ixs,...], result_positions.data)
+    # centers = jax.tree.map(lambda v: v[ixs,...], result_positions.data)
 
     # plt.scatter(centers["mus"], centers["vars"], alpha=0.1, s=1.)
     # plt.xlabel("mu")
@@ -154,7 +154,7 @@ def do_mixture_is(N = 1_000_000, n_chains:int = 10, n_samples_per_chain: int = 1
         print(f"{K=}")
         traces = get_posterior(K, n_chains, n_samples_per_chain)
         ixs = jax.random.randint(jax.random.PRNGKey(0), (n_components,), 0, traces.n_samples())
-        centers = jax.tree_map(lambda v: v[ixs,...], traces.data)
+        centers = jax.tree.map(lambda v: v[ixs,...], traces.data)
         proposer = MixtureProposer(centers, n_components, sigma, K)
 
         r = IS(get_is_log_weight(K, proposer), K, N, batch_method=1)

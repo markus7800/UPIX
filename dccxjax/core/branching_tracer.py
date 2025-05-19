@@ -1,6 +1,5 @@
 import jax
 import jax._src.core as jax_core
-from jax.tree_util import tree_flatten, tree_unflatten
 from typing import List, Tuple, Any, Optional, Callable, TypeVar
 from .sexpr import SExpr, SConstant, SOp, primitive_name
 
@@ -150,16 +149,16 @@ class BranchingTrace(jax_core.Trace):
 RET_TYPE = TypeVar("RET_TYPE")
 def execute_tracing_with_trace(trace: BranchingTrace, f: Callable[..., RET_TYPE], args) -> RET_TYPE:
     with jax_core.set_current_trace(trace):
-        in_flat, in_tree = tree_flatten(args)
+        in_flat, in_tree = jax.tree.flatten(args)
         in_flat = map(lambda x: maybe_branching_tracer(trace, x), in_flat)
         # print("in_tree =", in_tree)
         # print("in_flat =", in_flat)
-        in_tracers = tree_unflatten(in_tree, in_flat)
+        in_tracers = jax.tree.unflatten(in_tree, in_flat)
         out = f(*in_tracers)
-        out_flat, out_tree = tree_flatten(out)
+        out_flat, out_tree = jax.tree.flatten(out)
         out_flat = list(map(lambda x: x.val if isinstance(x, BranchingTracer) else x, out_flat))
         # print("out_flat =", out_flat)
-        out_unflat = tree_unflatten(out_tree, out_flat)
+        out_unflat = jax.tree.unflatten(out_tree, out_flat)
         return out_unflat
 
 def retrace_branching(f: Callable[..., RET_TYPE], branching_decisions: BranchingDecisions):

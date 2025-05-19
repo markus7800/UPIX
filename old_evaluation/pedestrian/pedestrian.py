@@ -172,7 +172,7 @@ for i, slp in enumerate(active_slps):
     last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
     last_state.iteration.block_until_ready()
     last_positions = last_state.state.position
-    acceptance_rates = jax.tree_map(lambda v: jnp.mean(v) / n_samples_per_chain, last_state.infos)
+    acceptance_rates = jax.tree.map(lambda v: jnp.mean(v) / n_samples_per_chain, last_state.infos)
     print(acceptance_rates)
 
 

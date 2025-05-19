@@ -198,10 +198,10 @@ class RandomWalk(MCMCInferenceAlgorithm):
 
         jit_tracker = JitVariationTracker(f"_rw_kernel for Inference step {step_number}: <RandomWalk at {hex(id(self))}>")
         @jax.jit
-        def _rw_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
-            maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
+        def _rw_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: Dict[str,BoolArray], state: KernelState) -> KernelState:
+            maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, data_annealing, state))))
             
-            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, state)
+            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
 
             if not self.elementwise:
                 if self.sparse:
@@ -274,7 +274,7 @@ class MetropolisHastings(MCMCInferenceAlgorithm):
     def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
         jit_tracker = JitVariationTracker(f"_mh_kernel for Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>")
         @jax.jit
-        def _mh_kernel(rng_key: PRNGKey, temperature: FloatArray, state: KernelState) -> KernelState:
+        def _mh_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: Dict[str,BoolArray], state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
             assert "position" in state.carry_stats
             assert "log_prob" in state.carry_stats
@@ -284,7 +284,7 @@ class MetropolisHastings(MCMCInferenceAlgorithm):
             
             log_prob = state.carry_stats["log_prob"]
             
-            next_X, next_log_prob, accepted = mh_kernel(rng_key, X, log_prob, gibbs_model.tempered_log_prob(temperature), self.proposal, gibbs_model.Y)
+            next_X, next_log_prob, accepted = mh_kernel(rng_key, X, log_prob, gibbs_model.tempered_log_prob(temperature, data_annealing), self.proposal, gibbs_model.Y)
 
             mh_info = state.info
             if collect_inferenence_info:

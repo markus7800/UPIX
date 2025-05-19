@@ -1,10 +1,10 @@
 import jax
 import jax.numpy as jnp
-from dccxjax.distributions import Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE
+from dccxjax.distributions import Transform, Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE, TransformedDistribution
 import numpyro.distributions as numpyro_dists
 from typing import Any, Optional, Dict, Callable, cast, Tuple
 from abc import ABC, abstractmethod
-from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike
+from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike, BoolArray
 
 __all__ = [
     "sample",
@@ -68,35 +68,49 @@ class GenerateCtx(SampleContext):
     def logfactor(self, lf: FloatArrayLike) -> None:
         self.log_likelihood += lf
         
+
+def maybe_annealed_log_prob(address:str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], value: DIST_SUPPORT, annealing_masks: Dict[str,BoolArray]):
+    if address in annealing_masks:
+        mask = annealing_masks[address]
+        return distribution.log_prob(value)[mask].sum()
+    else:
+        return distribution.log_prob(value).sum()
+    
 class LogprobCtx(SampleContext):
-    def __init__(self, X: Trace) -> None:
+    def __init__(self, X: Trace, annealing_masks: Dict[str,BoolArray] = dict()) -> None:
         super().__init__()
         self.X = X
         self.log_likelihood: FloatArray = jnp.array(0.,float)
         self.log_prior: FloatArray = jnp.array(0.,float)
+        self.annealing_masks: Dict[str,BoolArray] = annealing_masks
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
-            self.log_likelihood += distribution.log_prob(observed).sum()
-            return cast(DIST_SUPPORT, observed)
+            _observed = cast(DIST_SUPPORT, observed)
+            self.log_likelihood += maybe_annealed_log_prob(address, distribution, _observed, self.annealing_masks)
+            return _observed
         assert distribution.numpyro_base._validate_args
         value = cast(DIST_SUPPORT, self.X[address])
-        self.log_prior += distribution.log_prob(value).sum()
+
+        self.log_prior +=  maybe_annealed_log_prob(address, distribution, value, self.annealing_masks)
+
         return value
     def logfactor(self, lf: FloatArrayLike) -> None:
         self.log_likelihood += lf
 
 class LogprobTraceCtx(SampleContext):
-    def __init__(self, X: Trace) -> None:
+    def __init__(self, X: Trace, annealing_masks: Dict[str,BoolArray] = dict()) -> None:
         super().__init__()
         self.X = X
         self.log_probs: Dict[str,Tuple[FloatArray,bool]] = dict()
+        self.annealing_masks: Dict[str,BoolArray] = annealing_masks
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
-            self.log_probs[address] = (distribution.log_prob(observed).sum(), True)
-            return cast(DIST_SUPPORT, observed)
+            _observed = cast(DIST_SUPPORT, observed)
+            self.log_probs[address] = (maybe_annealed_log_prob(address, distribution, _observed, self.annealing_masks), True)
+            return _observed
         assert distribution.numpyro_base._validate_args
         value = cast(DIST_SUPPORT, self.X[address])
-        self.log_probs[address] = (distribution.log_prob(value).sum(), False)
+        self.log_probs[address] = (maybe_annealed_log_prob(address, distribution, value, self.annealing_masks), False)
         return value
     def logfactor(self, lf: FloatArrayLike) -> None:
         self.log_probs["__factor__"] = (self.log_probs.get("__factor__", jnp.array(0.,float))[0] + lf, True)
@@ -130,34 +144,36 @@ class CollectDistributionTypesCtx(SampleContext):
 
 
 class UnconstrainedLogprobCtx(SampleContext):
-    def __init__(self, X_unconstrained: Trace) -> None:
+    def __init__(self, X_unconstrained: Trace, annealing_masks: Dict[str,BoolArray] = dict()) -> None:
         super().__init__()
         self.X_unconstrained = X_unconstrained
         self.X_constrained: Trace = dict()
         self.log_prior: FloatArray = jnp.array(0.,float)
         self.log_likelihood: FloatArray = jnp.array(0.,float)
+        self.annealing_masks: Dict[str,BoolArray] = annealing_masks
     
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
-            self.log_likelihood += distribution.log_prob(observed).sum()
-            return cast(DIST_SUPPORT, observed)
+            _observed = cast(DIST_SUPPORT, observed)
+            self.log_likelihood += maybe_annealed_log_prob(address, distribution, _observed, self.annealing_masks)
+            return _observed
         assert distribution.numpyro_base._validate_args
 
-        unconstrained_value = self.X_unconstrained[address]
+        unconstrained_value: FloatArray = self.X_unconstrained[address]
         
         if distribution.numpyro_base.is_discrete:
             constrained_value = cast(DIST_SUPPORT, unconstrained_value)
             self.X_constrained[address] = constrained_value
-            self.log_prior += distribution.log_prob(constrained_value).sum()
+            self.log_prior += maybe_annealed_log_prob(address, distribution, constrained_value, self.annealing_masks)
 
         else:
-            transform: numpyro_dists.transforms.Transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
+            transform: Transform[FloatArray, DIST_SUPPORT] = distribution.biject_so_support()
             constrained_value = cast(DIST_SUPPORT, transform(unconstrained_value))
             self.X_constrained[address] = constrained_value
 
-            unconstrained_distribution = numpyro_dists.TransformedDistribution(distribution.numpyro_base, transform.inv)
+            unconstrained_distribution = TransformedDistribution(distribution, transform.inv())
             self.log_prior += unconstrained_distribution.log_prob(unconstrained_value).sum()
-
+            maybe_annealed_log_prob(address, unconstrained_distribution, unconstrained_value, self.annealing_masks)
         return constrained_value
     
     def logfactor(self, lf: FloatArrayLike) -> None:
@@ -179,8 +195,8 @@ class TransformToUnconstrainedCtx(SampleContext):
         if distribution.numpyro_base.is_discrete:
             self.X_unconstrained[address] = constrained_value
         else:
-            transform: numpyro_dists.transforms.Transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
-            unconstrained_value = transform.inv(constrained_value)
+            transform_inv: Transform[DIST_SUPPORT, FloatArray] = distribution.biject_so_support().inv()
+            unconstrained_value = transform_inv(constrained_value)
             self.X_unconstrained[address] = unconstrained_value
 
         return constrained_value
@@ -198,13 +214,13 @@ class TransformToConstrainedCtx(SampleContext):
         if observed is not None:
             return cast(DIST_SUPPORT, observed)
         assert distribution.numpyro_base._validate_args
-        unconstrained_value = self.X_unconstrained[address]
+        unconstrained_value: FloatArray = self.X_unconstrained[address]
 
         if distribution.numpyro_base.is_discrete:
             constrained_value = cast(DIST_SUPPORT, unconstrained_value)
             self.X_constrained[address] = constrained_value
         else:
-            transform = numpyro_dists.biject_to(distribution.numpyro_base.support)
+            transform: Transform[FloatArray, DIST_SUPPORT] = distribution.biject_so_support()
             constrained_value = cast(DIST_SUPPORT, transform(unconstrained_value))
             self.X_constrained[address] = constrained_value
 

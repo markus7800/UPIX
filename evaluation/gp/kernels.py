@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
 from dccxjax import FloatArrayLike, FloatArray
 import dccxjax.distributions as dist
+from typing import List
 
 class GPKernel(ABC):
     @abstractmethod
@@ -22,7 +23,13 @@ class GPKernel(ABC):
     def name(self) -> str:
         raise NotImplementedError
     @abstractmethod
-    def __repr__(self, vals: bool = False) -> str:
+    def __repr__(self) -> str:
+        raise NotImplementedError
+    @abstractmethod
+    def key(self) -> str:
+        raise NotImplementedError
+    @abstractmethod
+    def pprint(self) -> str:
         raise NotImplementedError
     
     def posterior_predictive(self, xs: FloatArray, ys: FloatArray, noise: FloatArrayLike, xs_pred: FloatArray, noise_pred: FloatArrayLike) -> dist.MultivariateNormal:
@@ -45,8 +52,14 @@ class GPKernel(ABC):
         conditional_cov_matrix = conditional_cov_matrix + (noise_pred * jnp.eye(n_new))
 
         return dist.MultivariateNormal(conditional_mu, conditional_cov_matrix)
-
     
+
+def mvnormal_quantiles(distribution: dist.MultivariateNormal, quantiles: List[float]):
+    broadcasted_normal = dist.Normal(distribution.numpyro_base.mean, jnp.sqrt(distribution.numpyro_base.variance))
+    return [broadcasted_normal.numpyro_base.icdf(q) for q in quantiles]
+def mvnormal_quantile(distribution: dist.MultivariateNormal, quantile: float):
+    return mvnormal_quantiles(distribution, [quantile])[0]
+
 class PrimitiveGPKernel(GPKernel):
     def size(self) -> int:
         return 1
@@ -62,10 +75,11 @@ class Constant(PrimitiveGPKernel):
         return (t1 == t2) * self.value
     def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
         return (ts.reshape(-1,1) == ts.reshape(1,-1)) * self.value
-    def __repr__(self, vals: bool = False) -> str:
-        if vals:
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
             return f"Const({self.value.item():.2f})"
-        else:
+    def key(self) -> str:
             return "Const"
     def name(self) -> str:
         return "Constant"
@@ -82,10 +96,11 @@ class Linear(PrimitiveGPKernel):
         ts = ts - self.intercept
         c = (ts.reshape(-1,1) * ts.reshape(1,-1))
         return self.bias + self.amplitude * c
-    def __repr__(self, vals: bool = False) -> str:
-        if vals:
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
             return f"Lin({self.intercept.item():.2f}; {self.bias.item():.2f}, {self.amplitude.item():.2f})"
-        else:
+    def key(self) -> str:
             return "Lin"
     def name(self) -> str:
         return "Linear"
@@ -101,11 +116,12 @@ class SquaredExponential(PrimitiveGPKernel):
         dt = ts.reshape(-1,1) - ts.reshape(1,-1)
         c = jax.lax.exp(-0.5 * dt * dt / jax.lax.square(self.lengthscale))
         return self.amplitude * c
-    def __repr__(self, vals: bool = False) -> str:
-        if vals:
-            return f"SqExp({self.lengthscale.item():.2f}; {self.amplitude.item():.2f})"
-        else:
-            return "SqExp"
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
+        return f"SqExp({self.lengthscale.item():.2f}; {self.amplitude.item():.2f})"
+    def key(self) -> str:
+        return "SqExp"
     def name(self) -> str:
         return "SquaredExponential"
 
@@ -122,11 +138,12 @@ class GammaExponential(PrimitiveGPKernel):
         dt = jax.lax.abs(ts.reshape(-1,1) - ts.reshape(1,-1))
         c = jax.lax.exp(- (dt/self.lengthscale)**self.gamma)
         return self.amplitude * c
-    def __repr__(self, vals: bool = False) -> str:
-        if vals:
-            return f"GamExp({self.lengthscale.item():.2f}, {self.gamma.item():.2f}; {self.amplitude.item():.2f})"
-        else:
-            return "GamExp"
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
+        return f"GamExp({self.lengthscale.item():.2f}, {self.gamma.item():.2f}; {self.amplitude.item():.2f})"
+    def key(self) -> str:
+        return "GamExp"
     def name(self) -> str:
         return "GammaExponential"
 
@@ -145,11 +162,12 @@ class Periodic(PrimitiveGPKernel):
         dt = jax.lax.abs(ts.reshape(-1,1) - ts.reshape(1,-1))
         c = jax.lax.exp((-2/jax.lax.square(self.lengthscale)) * jax.lax.square(jax.lax.sin(freq * dt)))
         return self.amplitude * c
-    def __repr__(self, vals: bool = False) -> str:
-        if vals:
-            return f"Per({self.lengthscale.item():.2f}, {self.period.item():.2f}; {self.amplitude.item():.2f})"
-        else:
-            return "Per"
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
+        return f"Per({self.lengthscale.item():.2f}, {self.period.item():.2f}; {self.amplitude.item():.2f})"
+    def key(self) -> str:
+        return "Per"
     def name(self) -> str:
         return "Periodic"
 
@@ -165,8 +183,12 @@ class Plus(CompositiveGPKernel):
         return 1 + self.left.size() + self.right.size()
     def depth(self) -> int:
         return 1 + max(self.left.depth(), self.right.depth())
-    def __repr__(self, vals: bool = False) -> str:
-        return f"({self.left.__repr__(vals)} + {self.right.__repr__(vals)})"
+    def __repr__(self) -> str:
+        return f"({self.left.__repr__()} + {self.right.__repr__()})"
+    def pprint(self) -> str:
+        return f"({self.left.pprint()} + {self.right.pprint()})"
+    def key(self) -> str:
+        return f"({self.left.key()} + {self.right.key()})"
     def name(self) -> str:
         return "Plus"
    
@@ -182,8 +204,12 @@ class Times(CompositiveGPKernel):
         return 1 + self.left.size() + self.right.size()
     def depth(self) -> int:
         return 1 + max(self.left.depth(), self.right.depth())
-    def __repr__(self, vals: bool = False) -> str:
-        return f"({self.left.__repr__(vals)} * {self.right.__repr__(vals)})"
+    def __repr__(self) -> str:
+        return f"({self.left.__repr__()} * {self.right.__repr__()})"
+    def pprint(self) -> str:
+        return f"({self.left.pprint()} * {self.right.pprint()})"
+    def key(self) -> str:
+        return f"({self.left.key()} * {self.right.key()})"
     def name(self) -> str:
         return "Times"
     

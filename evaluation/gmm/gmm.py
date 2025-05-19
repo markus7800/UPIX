@@ -134,7 +134,7 @@ class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
         assert not self.config.get("mcmc_optimise_memory_with_early_return_map", False)
         traces: Trace = last_inference_result.value_tree[0]
         lps: FloatArray = last_inference_result.value_tree[1]
-        traces = jax.tree_util.tree_map(_unstack_sample_data, traces)
+        traces = jax.tree.map(_unstack_sample_data, traces)
         lps = _unstack_sample_data(lps)
 
         K = find_K(slp)

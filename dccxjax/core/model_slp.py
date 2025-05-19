@@ -28,9 +28,11 @@ class Model:
         self._jitted_log_prob = False
         self.slp_formatter: Optional[Callable[["SLP"],str]] = None
         self.slp_sort_key: Callable[["SLP"],SupportsRichComparison] = lambda slp: slp.short_repr()
-
+        
+        self.has_equivalence_relation = False
         self.slp_equivalence_class_id_gen: Optional[Callable[[Trace], str]] = None
         self.slp_equivalence_class_element_id_gen: Optional[Callable[[Trace], str]] = None
+
     def __call__(self) -> Any:
         return self.f(*self.args, **self.kwargs)
     
@@ -68,6 +70,7 @@ class Model:
         self.slp_sort_key = key
 
     def set_slp_equivalence_class_id_gen(self, class_id_gen: Callable[[Trace], str], element_id_gen: Callable[[Trace], str]):
+        self.has_equivalence_relation = True
         self.slp_equivalence_class_id_gen = class_id_gen
         self.slp_equivalence_class_element_id_gen = element_id_gen
 
@@ -99,19 +102,19 @@ def _make_slp_path_indicator(slp: "SLP",  model: Model, branching_decisions: Bra
 
     return _path_indicator
 
-def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Tuple[FloatArray,FloatArray,BoolArray]]:
+def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace,Dict[str,BoolArray]], Tuple[FloatArray,FloatArray,BoolArray]]:
     jit_tracker = JitVariationTracker(f"_slp_log_prob for {slp.short_repr()}")
     @jax.jit
-    def _log_prob(X: Trace):
-        maybe_jit_warning(jit_tracker, str(to_shaped_array_trace(X)))
+    def _log_prob(X: Trace, annealing_masks: Dict[str,BoolArray]):
+        maybe_jit_warning(jit_tracker, str(to_shaped_array_trace(X)) + " " + str(annealing_masks))
         
-        def _logprob(_X: Trace):
-            with LogprobCtx(_X) as ctx:
+        def _logprob(_X: Trace, _annealing_masks: Dict[str,BoolArray]):
+            with LogprobCtx(_X, _annealing_masks) as ctx:
                 model()
                 return ctx.log_prior, ctx.log_likelihood
             
         slp_model_logprob = retrace_branching(_logprob, branching_decisions)
-        (log_prior, log_likelihood), path_condition = slp_model_logprob(X)
+        (log_prior, log_likelihood), path_condition = slp_model_logprob(X, annealing_masks)
         return log_prior, log_likelihood, path_condition
 
     return _log_prob
@@ -125,20 +128,20 @@ def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_deci
 #         return jax.value_and_grad(slp._log_prob)(X)
 #     return _grad_log_prob
 
-def _make_slp_unconstrained_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace], Tuple[FloatArray,FloatArray,BoolArray,Trace]]:
+def _make_slp_unconstrained_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace,Dict[str,BoolArray]], Tuple[FloatArray,FloatArray,BoolArray,Trace]]:
     jit_tracker = JitVariationTracker(f"_slp_unconstrained_log_prob for {slp.short_repr()}")
     @jax.jit
-    def _unconstrained_log_prior_likeli_pathcond(X_unconstrained: Trace):
-        maybe_jit_warning(jit_tracker, str(to_shaped_array_trace(X_unconstrained)))
+    def _unconstrained_log_prior_likeli_pathcond(X_unconstrained: Trace, annealing_masks: Dict[str,BoolArray]):
+        maybe_jit_warning(jit_tracker, str(to_shaped_array_trace(X_unconstrained)) + " " + str(annealing_masks))
         
-        def _unconstrained_log_prior_likeli_pathcond_with_ctx(_X_unconstrained: Trace):
-            with UnconstrainedLogprobCtx(_X_unconstrained) as ctx:
+        def _unconstrained_log_prior_likeli_pathcond_with_ctx(_X_unconstrained: Trace, _annealing_masks: Dict[str,BoolArray]):
+            with UnconstrainedLogprobCtx(_X_unconstrained, _annealing_masks) as ctx:
                 model()
                 return ctx.log_prior, ctx.log_likelihood, ctx.X_constrained
 
         traced_f = retrace_branching(_unconstrained_log_prior_likeli_pathcond_with_ctx, branching_decisions)
         
-        (log_prior, log_likelihood, X_constrained), path_condition = traced_f(X_unconstrained)
+        (log_prior, log_likelihood, X_constrained), path_condition = traced_f(X_unconstrained, annealing_masks)
 
         return log_prior, log_likelihood, path_condition, X_constrained
 
@@ -245,29 +248,38 @@ class SLP:
                     return False
             return self._path_indicator(X)
 
-    def log_prior(self, X: Trace) -> FloatArray:
+    def log_prior(self, X: Trace, data_annealing: Dict[str,BoolArray] = dict()) -> FloatArray:
         assert self.decision_representative.keys() == X.keys()
-        log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X)
+        log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X, data_annealing)
         return jax.lax.select(path_condition, log_prior, jax.lax.full_like(log_prior, -jnp.inf))
     
-    def log_prob(self, X: Trace) -> FloatArray:
+    def log_likelihood(self, X: Trace, data_annealing: Dict[str,BoolArray] = dict()) -> FloatArray:
         assert self.decision_representative.keys() == X.keys()
-        log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X)
+        log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X, data_annealing)
+        return jax.lax.select(path_condition, log_likelihood, jax.lax.full_like(log_likelihood, -jnp.inf))
+    
+    def log_prob(self, X: Trace, data_annealing: Dict[str,BoolArray] = dict()) -> FloatArray:
+        assert self.decision_representative.keys() == X.keys()
+        log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X, data_annealing)
         lp = log_prior + log_likelihood
 
         # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
         # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
         return jax.lax.select(path_condition, lp, jax.lax.full_like(lp, -jnp.inf))
 
-    
-    def unconstrained_log_prior(self, X_unconstrained: Trace) -> Tuple[FloatArray, Trace]:
+    def unconstrained_log_prior(self, X_unconstrained: Trace, data_annealing: Dict[str,BoolArray] = dict()) -> Tuple[FloatArray, Trace]:
         assert self.decision_representative.keys() == X_unconstrained.keys()
-        log_prior, log_likelihood, path_condition, X_constrained = self._unconstrained_log_prior_likeli_pathcond(X_unconstrained)
+        log_prior, log_likelihood, path_condition, X_constrained = self._unconstrained_log_prior_likeli_pathcond(X_unconstrained, data_annealing)
         return jax.lax.select(path_condition, log_prior, jax.lax.full_like(log_prior, -jnp.inf)), X_constrained
     
-    def unconstrained_log_prob(self, X_unconstrained: Trace) -> Tuple[FloatArray, Trace]:
+    def unconstrained_log_likelihood_prior(self, X_unconstrained: Trace, data_annealing: Dict[str,BoolArray] = dict()) -> Tuple[FloatArray, Trace]:
         assert self.decision_representative.keys() == X_unconstrained.keys()
-        log_prior, log_likelihood, path_condition, X_constrained = self._unconstrained_log_prior_likeli_pathcond(X_unconstrained)
+        log_prior, log_likelihood, path_condition, X_constrained = self._unconstrained_log_prior_likeli_pathcond(X_unconstrained, data_annealing)
+        return jax.lax.select(path_condition, log_likelihood, jax.lax.full_like(log_likelihood, -jnp.inf)), X_constrained
+    
+    def unconstrained_log_prob(self, X_unconstrained: Trace, data_annealing: Dict[str,BoolArray] = dict()) -> Tuple[FloatArray, Trace]:
+        assert self.decision_representative.keys() == X_unconstrained.keys()
+        log_prior, log_likelihood, path_condition, X_constrained = self._unconstrained_log_prior_likeli_pathcond(X_unconstrained, data_annealing)
         lp = log_prior + log_likelihood
         return jax.lax.select(path_condition, lp, jax.lax.full_like(lp, -jnp.inf)), X_constrained
     

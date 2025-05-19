@@ -35,7 +35,7 @@ class DCC_Result:
         #  (n_chain, dim(var)) if multi_chain=True and intermediate_states=False
         # if dim(var) == 1 dimension of trace entry is ommited, e.g. (n_samples_per_chain, n_chain) in the first case and () in the last case
         if not self.intermediate_states:
-            samples = jax.tree_map(lambda x: jax.lax.broadcast(x, (1,)), samples)
+            samples = jax.tree.map(lambda x: jax.lax.broadcast(x, (1,)), samples)
         if slp not in self.samples:
             self.samples[slp] = samples
             assert Z is not None
@@ -43,7 +43,7 @@ class DCC_Result:
         else:
             # samples have shape (n_samples_per_chain, n_chain, dim(var)) or (n_samples_per_chain, dim(var)) where n_samples_per_chain can be 1
             prev_samples = self.samples[slp]
-            self.samples[slp] = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), prev_samples, samples)
+            self.samples[slp] = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), prev_samples, samples)
             if Z is not None:
                 self.Zs[slp] = Z
 

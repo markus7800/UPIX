@@ -35,7 +35,7 @@ def coordinate_ascent(slp: SLP, scale: float, n_iter: int, n_chains: int, seed: 
 
     X = slp.decision_representative
     lp = slp._log_prob(slp.decision_representative)
-    first_state = CoordianteAscentState(jax.lax.broadcast(1., (n_chains,)), jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), X), jax.lax.broadcast(lp, (n_chains,)))
+    first_state = CoordianteAscentState(jax.lax.broadcast(1., (n_chains,)), jax.tree.map(lambda x: jax.lax.broadcast(x, (n_chains,)), X), jax.lax.broadcast(lp, (n_chains,)))
     last_state, result = jax.lax.scan(jax.vmap(step), first_state, keys)
 
     return last_state.position, last_state.log_prob, result
@@ -81,7 +81,7 @@ def simulated_annealing(slp: SLP, temp: float, n_iter: int, n_chains: int, seed:
     
 
     first_state = SimulatedAnnealingState(1, temp, flat_X, lp, flat_X, lp) # type: ignore
-    first_states = jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), first_state)
+    first_states = jax.tree.map(lambda x: jax.lax.broadcast(x, (n_chains,)), first_state)
     
     keys = jax.random.split(seed, (n_iter, n_chains))
     last_state, result = jax.lax.scan(jax.vmap(step), first_states, keys)
@@ -114,7 +114,7 @@ def sparse_coordinate_ascent(slp: SLP, scale: float, p: float, n_iter: int, n_ch
     
 
     first_state = SparseCoordianteAscentState(flat_X, lp) # type: ignore
-    first_states = jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), first_state)
+    first_states = jax.tree.map(lambda x: jax.lax.broadcast(x, (n_chains,)), first_state)
     
     keys = jax.random.split(seed, (n_iter * int(jax.lax.ceil(1. / p)), n_chains))
     last_state, result = jax.lax.scan(jax.vmap(step), first_states, keys)
@@ -176,7 +176,7 @@ def sparse_coordinate_ascent2(slp: SLP, scale: float, p: float, n_iter: int, n_c
     
 
     first_state = SparseCoordianteAscentState2(X, lp) # type: ignore
-    first_states = jax.tree_map(lambda x: jax.lax.broadcast(x, (n_chains,)), first_state)
+    first_states = jax.tree.map(lambda x: jax.lax.broadcast(x, (n_chains,)), first_state)
     
     keys = jax.random.split(seed, (n_iter * int(jax.lax.ceil(1. / p)), n_chains))
     last_state, result = jax.lax.scan(jax.vmap(step), first_states, keys)

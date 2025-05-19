@@ -1,8 +1,8 @@
 import jax.experimental
-from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace
+from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, BoolArray
 import jax
 import jax.numpy as jnp
-from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar, Generic, TypedDict, Set
+from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar, Generic, TypedDict, Set, Dict
 from .gibbs_model import GibbsModel
 from .variable_selector import VariableSelector
 from abc import ABC, abstractmethod
@@ -41,21 +41,21 @@ class CarryStats(TypedDict, total=False):
     unconstrained_position: Trace
     unconstrained_log_prob: FloatArray
 
-def map_carry_stats(carry_stats: CarryStats, gibbs_model: GibbsModel, temperature: FloatArray, new_stats: Set[str]):
+def map_carry_stats(carry_stats: CarryStats, gibbs_model: GibbsModel, temperature: FloatArray, data_annealing: Dict[str,BoolArray], new_stats: Set[str]):
     new_carry_stats = CarryStats()
     if "position" in new_stats and "position" not in carry_stats:
         assert "unconstrained_position" in carry_stats 
         new_carry_stats["position"] = gibbs_model.slp.transform_to_constrained(carry_stats["unconstrained_position"])
     if "log_prob" in new_stats and "log_prob" not in carry_stats:
         assert "position" in new_carry_stats 
-        new_carry_stats["log_prob"] = gibbs_model.tempered_log_prob(temperature)(new_carry_stats["position"])
+        new_carry_stats["log_prob"] = gibbs_model.tempered_log_prob(temperature, data_annealing)(new_carry_stats["position"])
 
     if "unconstrained_position" in new_stats and "unconstrained_position" not in carry_stats:
         assert "position" in carry_stats 
         new_carry_stats["unconstrained_position"] = gibbs_model.slp.transform_to_unconstrained(carry_stats["position"])
     if "unconstrained_log_prob" in new_stats and "unconstrained_log_prob" not in carry_stats:
         assert "unconstrained_position" in new_carry_stats 
-        new_carry_stats["unconstrained_log_prob"] = gibbs_model.tempered_unconstrained_log_prob(temperature)(new_carry_stats["unconstrained_position"])
+        new_carry_stats["unconstrained_log_prob"] = gibbs_model.tempered_unconstrained_log_prob(temperature, data_annealing)(new_carry_stats["unconstrained_position"])
 
     for stat in new_stats:
         if stat not in new_carry_stats:
@@ -71,12 +71,13 @@ class KernelState(NamedTuple):
     carry_stats: CarryStats
     info: Optional[InferenceInfo]
     
-Kernel = Callable[[PRNGKey,FloatArray,KernelState],KernelState]
+Kernel = Callable[[PRNGKey,FloatArray,Dict[str,BoolArray],KernelState],KernelState]
 
 
 class MCMCState(NamedTuple):
     iteration: IntArray # scalar
     temperature: FloatArray # scalar 0 ... prior, 1 ... joint
+    data_annealing: Dict[str, BoolArray]
     position: Trace
     log_prob: FloatArray
     carry_stats: CarryStats
@@ -100,7 +101,7 @@ class MCMCInferenceAlgorithm(ABC):
     def provides_stats(self) -> Set[str]:
         return {"unconstrained_position", "unconstrained_log_prob"} if self.unconstrained else {"position", "log_prob"}
     
-    def default_preprocess_to_flat(self, gibbs_model: GibbsModel, temperature: FloatArray, state: KernelState):
+    def default_preprocess_to_flat(self, gibbs_model: GibbsModel, temperature: FloatArray, data_annealing: Dict[str,BoolArray], state: KernelState):
         if self.unconstrained:
             assert "unconstrained_position" in state.carry_stats
             assert "unconstrained_log_prob" in state.carry_stats
@@ -118,9 +119,9 @@ class MCMCInferenceAlgorithm(ABC):
         X_flat, unravel_fn = ravel_pytree(X)
 
         if self.unconstrained:
-            _tempered_log_prob_fn = gibbs_model.unraveled_unconstrained_tempered_log_prob(temperature, unravel_fn)
+            _tempered_log_prob_fn = gibbs_model.unraveled_unconstrained_tempered_log_prob(temperature, data_annealing, unravel_fn)
         else:
-            _tempered_log_prob_fn = gibbs_model.unraveled_tempered_log_prob(temperature, unravel_fn)
+            _tempered_log_prob_fn = gibbs_model.unraveled_tempered_log_prob(temperature, data_annealing, unravel_fn)
 
         return X_flat, log_prob, unravel_fn, _tempered_log_prob_fn
     
@@ -273,12 +274,12 @@ def get_mcmc_kernel(
 
         infos = state.infos
 
-        _map_carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None)) if vectorised else map_carry_stats
+        _map_carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None,None)) if vectorised else map_carry_stats
 
         for i, (step, kernel) in enumerate(zip(regime_steps, kernels)):
             rng_key, kernel_key = jax.random.split(rng_key)
 
-            carry_stats = _map_carry_stats(carry_stats, full_model, state.temperature, step.algo.requires_stats())
+            carry_stats = _map_carry_stats(carry_stats, full_model, state.temperature, state.data_annealing, step.algo.requires_stats())
             assert step.algo.requires_stats() <= carry_stats.keys()
             kernel_state = KernelState(carry_stats, infos[i] if collect_inference_info and infos is not None else None)
 
@@ -290,9 +291,9 @@ def get_mcmc_kernel(
                     kernel_keys = jax.lax.broadcast(kernel_key, (1,))
                 else:
                     kernel_keys = jax.random.split(kernel_key, t)
-                new_kernel_state = jax.vmap(kernel, in_axes=(0,None,0))(kernel_keys, state.temperature, kernel_state) # (1)
+                new_kernel_state = jax.vmap(kernel, in_axes=(0,None,None,0))(kernel_keys, state.temperature, state.data_annealing, kernel_state) # (1)
             else:
-                new_kernel_state = kernel(kernel_key, state.temperature, kernel_state) # (2)
+                new_kernel_state = kernel(kernel_key, state.temperature, state.data_annealing, kernel_state) # (2)
 
             carry_stats = new_kernel_state.carry_stats
             assert carry_stats.keys() <= step.algo.provides_stats()
@@ -301,7 +302,7 @@ def get_mcmc_kernel(
                 assert infos is not None and new_kernel_state.info is not None
                 infos[i] = new_kernel_state.info
 
-        carry_stats = _map_carry_stats(carry_stats, full_model, state.temperature, {"position", "log_prob"} | carry_stats.keys())
+        carry_stats = _map_carry_stats(carry_stats, full_model, state.temperature, state.data_annealing, {"position", "log_prob"} | carry_stats.keys())
         assert "position" in carry_stats and "log_prob" in carry_stats
         position = carry_stats["position"]
         log_prob = carry_stats["log_prob"]
@@ -312,7 +313,7 @@ def get_mcmc_kernel(
                 next_carry_stats[stat] = carry
 
 
-        return MCMCState(state.iteration + 1, state.temperature, position, log_prob, next_carry_stats, infos), return_map(state)
+        return MCMCState(state.iteration + 1, state.temperature, state.data_annealing, position, log_prob, next_carry_stats, infos), return_map(state)
 
     return _one_step, mcmc_carry_stat_names
 
@@ -326,7 +327,7 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
         n_chains = state.log_prob.shape[0]
         maybe_jit_warning(jit_tracker, f"n_chains={n_chains}")
         chain_keys = jax.random.split(rng_key, n_chains)
-        axes = (MCMCState(None,None,0,0,0,0),0) # type: ignore
+        axes = (MCMCState(None,None,None,0,0,0,0),0) # type: ignore
         # can use the same for in and out, but once refers to rng_keys and once to mcmc collect object
         return jax.vmap(kernel, in_axes=axes, out_axes=axes)(state, chain_keys)
     return _vectorised_kernel
@@ -409,9 +410,9 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
 
         carry_stats = CarryStats(position=init_positions.data, log_prob=log_prob)
 
-        carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None))(carry_stats, GibbsModel(self.slp, AllVariables()), jnp.array(1.0), self.init_carry_stat_names)
+        carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None,None))(carry_stats, GibbsModel(self.slp, AllVariables()), jnp.array(1.0), dict(), self.init_carry_stat_names)
 
-        initial_state = MCMCState(jnp.array(0, int), jnp.array(1.0), init_positions.data, log_prob, carry_stats, infos)
+        initial_state = MCMCState(jnp.array(0, int), jnp.array(1.0), dict(), init_positions.data, log_prob, carry_stats, infos)
 
         return self.continue_run(rng_key, initial_state, n_samples_per_chain=n_samples_per_chain)
         
@@ -419,7 +420,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         keys = jax.random.split(rng_key, n_samples_per_chain)
         if reset_info:
             infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
-            state = MCMCState(jnp.array(0, int), jnp.array(1.0), state.position, state.log_prob, state.carry_stats, infos)
+            state = MCMCState(jnp.array(0, int), jnp.array(1.0), dict(), state.position, state.log_prob, state.carry_stats, infos)
 
         if self.progress_bar:
             progress_bar_mngr, kernel = add_progress_bar(self.kernel, self.slp.formatted(), n_samples_per_chain)

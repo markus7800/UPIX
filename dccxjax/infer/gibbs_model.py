@@ -1,6 +1,6 @@
 from dccxjax.core import SLP
 from .variable_selector import VariableSelector
-from typing import Set, Optional, Tuple, Callable
+from typing import Set, Optional, Tuple, Callable, Dict
 import jax
 from ..types import Trace, FloatArray, BoolArray
 import jax.numpy as jnp
@@ -49,47 +49,47 @@ class GibbsModel:
     def _check_variables(self, X: Trace):
         assert X.keys() == self.variables, f"Attempted to evaluate GibbsModel with variables {self.variables} at {X}"
     # methods should not be called on batched traces -> use vmap instead
-    def log_prior_likeli_pathcond(self, X: Trace) -> Tuple[FloatArray,FloatArray,BoolArray]:
+    def log_prior_likeli_pathcond(self, X: Trace, data_annealing: Dict[str,BoolArray]) -> Tuple[FloatArray,FloatArray,BoolArray]:
         self._check_variables(X)
-        return self.slp._log_prior_likeli_pathcond(X | self.Y)
+        return self.slp._log_prior_likeli_pathcond(X | self.Y, data_annealing)
     
-    def tempered_log_prob(self, temperature: FloatArray) -> Callable[[Trace], FloatArray]:
+    def tempered_log_prob(self, temperature: FloatArray, data_annealing: Dict[str,BoolArray]) -> Callable[[Trace], FloatArray]:
         def _log_prob(X: Trace) -> FloatArray:
             self._check_variables(X)
-            log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X)
+            log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X, data_annealing)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
         return _log_prob
     
-    def unraveled_tempered_log_prob(self, temperature: FloatArray, unravel_fn: Optional[Callable[[jax.Array],Trace]] = None) -> Callable[[jax.Array], FloatArray]:
+    def unraveled_tempered_log_prob(self, temperature: FloatArray, data_annealing: Dict[str,BoolArray], unravel_fn: Optional[Callable[[jax.Array],Trace]] = None) -> Callable[[jax.Array], FloatArray]:
         if unravel_fn is None:
             _, unravel_fn = ravel_pytree(self.X_representative)
 
         def _log_prob(X_flat: jax.Array) -> FloatArray:
             X = unravel_fn(X_flat)
             self._check_variables(X)
-            log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X)
+            log_prior, log_likelihood, path_condition = self.log_prior_likeli_pathcond(X, data_annealing)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
         return _log_prob
     
 
-    def unconstrained_log_prior_likeli_pathcond(self, X: Trace) -> Tuple[FloatArray,FloatArray,BoolArray, Trace]:
+    def unconstrained_log_prior_likeli_pathcond(self, X: Trace, data_annealing: Dict[str,BoolArray]) -> Tuple[FloatArray,FloatArray,BoolArray, Trace]:
         self._check_variables(X)
-        return self.slp._unconstrained_log_prior_likeli_pathcond(X | self.Y)
+        return self.slp._unconstrained_log_prior_likeli_pathcond(X | self.Y, data_annealing)
 
-    def tempered_unconstrained_log_prob(self, temperature: FloatArray) -> Callable[[Trace], FloatArray]:
+    def tempered_unconstrained_log_prob(self, temperature: FloatArray, data_annealing: Dict[str,BoolArray]) -> Callable[[Trace], FloatArray]:
         def _log_prob(X: Trace) -> FloatArray:
             self._check_variables(X)
-            log_prior, log_likelihood, path_condition, X_constrained = self.unconstrained_log_prior_likeli_pathcond(X)
+            log_prior, log_likelihood, path_condition, X_constrained = self.unconstrained_log_prior_likeli_pathcond(X, data_annealing)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
         return _log_prob
     
-    def unraveled_unconstrained_tempered_log_prob(self, temperature: FloatArray, unravel_fn: Optional[Callable[[jax.Array],Trace]] = None) -> Callable[[jax.Array], FloatArray]:
+    def unraveled_unconstrained_tempered_log_prob(self, temperature: FloatArray, data_annealing: Dict[str,BoolArray], unravel_fn: Optional[Callable[[jax.Array],Trace]] = None) -> Callable[[jax.Array], FloatArray]:
         if unravel_fn is None:
             _, unravel_fn = ravel_pytree(self.X_representative)
 
         def _log_prob(X_flat: jax.Array) -> FloatArray:
             X = unravel_fn(X_flat)
             self._check_variables(X)
-            log_prior, log_likelihood, path_condition, X_constrained = self.unconstrained_log_prior_likeli_pathcond(X)
+            log_prior, log_likelihood, path_condition, X_constrained = self.unconstrained_log_prior_likeli_pathcond(X, data_annealing)
             return jax.lax.select(path_condition, log_prior + temperature * log_likelihood, -jnp.inf)
         return _log_prob

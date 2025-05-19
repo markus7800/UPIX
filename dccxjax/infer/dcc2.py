@@ -36,10 +36,10 @@ class MCMCInferenceResult(InferenceResult):
             value_tree = None
         else:
             assert other.value_tree is not None
-            value_tree = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), self.value_tree, other.value_tree)
+            value_tree = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), self.value_tree, other.value_tree)
 
         
-        last_state = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), self.value_tree, other.value_tree)
+        last_state = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), self.value_tree, other.value_tree)
         return MCMCInferenceResult(value_tree, last_state, self.n_chains, self.n_samples_per_chain + other.n_samples_per_chain)
     
 class LogWeightEstimate(ABC):
@@ -272,8 +272,8 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
                     values = slp_values
                     weights = slp_weights
                 else:
-                    values = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), values, slp_values)
-                    weights = jax.tree_map(lambda x, y: jax.lax.concatenate((x, y), 0), weights, slp_weights)
+                    values = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), values, slp_values)
+                    weights = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), weights, slp_weights)
 
         if values is not None:
             assert weights is not None
@@ -505,7 +505,7 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
                 assert inference_result.value_tree is None
                 n_mcmc = inference_result.last_state.iteration.size
                 n_chains = inference_result.n_chains
-                values = jax.tree_map(lambda v: v.reshape((n_mcmc,n_chains) + v.shape[1:]), inference_result.last_state.position)
+                values = jax.tree.map(lambda v: v.reshape((n_mcmc,n_chains) + v.shape[1:]), inference_result.last_state.position)
                 weighted_samples = WeightedSample(
                     StackedSampleValues(values, n_mcmc, n_chains),
                     jnp.zeros((n_mcmc,n_chains), float)
