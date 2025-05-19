@@ -333,7 +333,7 @@ from dccxjax.infer.mcmc import get_mcmc_kernel, MCMCState
 import dccxjax.distributions as dist
 
 import logging
-setup_logging(logging.DEBUG)
+setup_logging(logging.WARN)
 
 
 def normal():
@@ -433,7 +433,7 @@ tempering_schedule.block_until_ready()
 
 
 N = 1_000_000
-tempering_schedule = sigmoid(jnp.linspace(-25,25,1000))
+tempering_schedule = sigmoid(jnp.linspace(-25,25,10))
 tempering_schedule = tempering_schedule.at[-1].set(1.)
 
 config = SMCConfig(kernel, tempering_schedule)
@@ -466,7 +466,8 @@ smc_obj = SMC(
     ReweightingType.BootstrapStaticPrior,
     MultinomialResampling(ResampleType.Adaptive, ResampleTime.BeforeMove),
     MCMCStep(SingleVariable("x"), RW(gaussian_random_walk(1.))),
-    collect_inference_info=True
+    collect_inference_info=True,
+    progress_bar=True
 )
 particles = {"x": sample_prior(jax.random.PRNGKey(0), n_particles)}
 last_state, ess = smc_obj.run(jax.random.PRNGKey(0), StackedTrace(particles, n_particles))

@@ -2,7 +2,7 @@ import jax
 from typing import NamedTuple, Tuple, Set, Dict, Callable, Optional
 from ..types import PRNGKey, Trace, FloatArray, IntArray, StackedTrace, BoolArray
 from ..core.model_slp import SLP
-from .mcmc import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains
+from .mcmc import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains, _add_progress_bar, ProgressbarManager
 from ..utils import broadcast_jaxtree
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
@@ -73,6 +73,7 @@ class TemperetureSchedule(NamedTuple):
     n_steps: int
 
 class SMCState(NamedTuple):
+    iteration: IntArray
     particles: Trace
     log_particle_weights: FloatArray
     ta_log_likelihood: FloatArray | None
@@ -168,9 +169,14 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
 
         ta_log_likelihood = jax.vmap(slp.log_likelihood, in_axes=(0,None))(particles, step_data.data_annealing) if reweighting_type == ReweightingType.Bootstrap else None
 
-        return SMCState(particles, log_particle_weights, ta_log_likelihood, ta_log_prob, next_mcmc_state.infos), jax.lax.exp(log_ess)
+        return SMCState(smc_state.iteration+1, particles, log_particle_weights, ta_log_likelihood, ta_log_prob, next_mcmc_state.infos), jax.lax.exp(log_ess)
 
     return smc_step
+
+
+def add_progress_bar_to_smc_kernel(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]], slp_name: str, num_samples: int) -> Tuple[ProgressbarManager, Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]]:
+    return _add_progress_bar(kernel, slp_name, num_samples)
+
 
 class SMC:
     def __init__(self,
@@ -233,8 +239,15 @@ class SMC:
         mcmc_infos = init_inference_infos_for_chains(self.rejuvination_regime, n_particles) if self.collect_inference_info else None
 
         ta_log_likelihood = jax.lax.zeros_like_array(log_prob) if self.reweighting_type == ReweightingType.Bootstrap else None
-        last_state, ess = jax.lax.scan(self.smc_step,
-            SMCState(particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infos),
+
+        if self.progress_bar:
+            progressbar_mngr, smc_step = add_progress_bar_to_smc_kernel(self.smc_step, "SMC for "+self.slp.formatted(), self.n_steps)
+            progressbar_mngr.start_progress()
+        else:
+            smc_step = self.smc_step
+
+        last_state, ess = jax.lax.scan(smc_step,
+            SMCState(jnp.array(0,int), particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infos),
             SMCStepData(smc_keys, self.tempereture_schedule.temperature, self.data_annealing_schedule.data_annealing)
         )
 
