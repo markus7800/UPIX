@@ -1,7 +1,7 @@
 
 import logging
 import jax
-from jax.core import full_lower
+from jax._src.core import full_lower
 import contextlib
 from typing import Sequence, TypeVar, List
 

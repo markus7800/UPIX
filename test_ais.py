@@ -329,7 +329,7 @@ def sigmoid(z):
 
 from dccxjax import *
 from dccxjax.infer.ais import *
-from dccxjax.infer.mcmc import get_inference_regime_mcmc_step_for_slp, MCMCState
+from dccxjax.infer.mcmc import get_mcmc_kernel, MCMCState
 import dccxjax.distributions as dist
 
 import logging
@@ -348,11 +348,11 @@ tempering_schedule = sigmoid(jnp.linspace(-25,25,1000))
 tempering_schedule = tempering_schedule.at[0].set(0.)
 tempering_schedule = tempering_schedule.at[-1].set(1.)
 
-kernel = get_inference_regime_mcmc_step_for_slp(slp, MCMCStep(SingleVariable("x"), RW(gaussian_random_walk(1.))), vectorised=True)
+# kernel, _ = get_mcmc_kernel(slp, MCMCStep(SingleVariable("x"), RW(gaussian_random_walk(1.))), vectorised=True)
 
 # slower
-# kernel = get_inference_regime_mcmc_step_for_slp(slp, MCMCStep(SingleVariable("x"), RW(gaussian_random_walk(1.))), vectorised=False)
-# kernel = vectorise_kernel_over_chains(kernel)
+kernel, _ = get_mcmc_kernel(slp, MCMCStep(SingleVariable("x"), RW(gaussian_random_walk(1.))), vectorised=False)
+kernel = vectorise_kernel_over_chains(kernel)
 
 tempering_schedule.block_until_ready()
 

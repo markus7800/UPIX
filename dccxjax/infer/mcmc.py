@@ -326,7 +326,7 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
         n_chains = state.log_prob.shape[0]
         maybe_jit_warning(jit_tracker, f"n_chains={n_chains}")
         chain_keys = jax.random.split(rng_key, n_chains)
-        axes = (MCMCState(None,None,0,0,0),0) # type: ignore
+        axes = (MCMCState(None,None,0,0,0,0),0) # type: ignore
         # can use the same for in and out, but once refers to rng_keys and once to mcmc collect object
         return jax.vmap(kernel, in_axes=axes, out_axes=axes)(state, chain_keys)
     return _vectorised_kernel

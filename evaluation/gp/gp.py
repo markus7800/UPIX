@@ -97,8 +97,8 @@ X, lp = m.generate(
 )
 slp = slp_from_decision_representative(m, X)
 
-if True:
-    N_samples = 10_000
+if False:
+    N_samples = 500
     print(f"{N_samples=}")
 
     do_vmap_step = True
@@ -142,7 +142,7 @@ if True:
     print(acc)
     print(f"Finished Grad in {t1-t0:.3f} s")
     traces["1_node_type"] = node_type
-    exit()
+
 
     hmc_kernel = HMC(10, 0.02).make_kernel(
         GibbsModel(slp, PredicateSelector(lambda addr: not addr.endswith("node_type")), {"1_node_type": jnp.array(3,int)}),
@@ -200,8 +200,6 @@ if True:
     t1 = time()
     print(f"Finished HMC seq 2 in {t1-t0:.3f} s")
 
-    exit()
-
 
     n_chains = 1
     n_samples_per_chain = N_samples
@@ -209,7 +207,7 @@ if True:
         slp,
         regime,
         n_chains,
-        collect_inference_info=False, progress_bar=False, return_map=lambda x: x
+        collect_inference_info=True, progress_bar=True, return_map=lambda x: x
     )
     pprint_mcmc_regime(mcmc_obj.regime, slp)
     t0 = time()
@@ -217,8 +215,8 @@ if True:
     print(last_state.log_prob)
     t1 = time()
     print(f"Finished HMC MCMC in {t1-t0:.3f} s")
-    # for info in last_state.infos:
-    #     print(summarise_mcmc_info(info, n_samples_per_chain))
+    for info in last_state.infos:
+        print(summarise_mcmc_info(info, n_samples_per_chain))
 
     exit()
 
@@ -279,7 +277,7 @@ if False:
     #     plt.plot(xs_pred, posterior[i,:], color="gray", alpha=0.05)
     # plt.show()
 
-exit()
+# exit()
 
 
 class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):

@@ -3,7 +3,7 @@
 import jax
 import jax.numpy as jnp
 from time import time
-from evaluation.gp.kernels import *
+# from evaluation.gp.kernels import *
 
 xs = jnp.linspace(0,1,100)
 ts = jax.random.normal(jax.random.PRNGKey(0), xs.shape)
