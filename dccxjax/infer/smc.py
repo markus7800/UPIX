@@ -43,6 +43,9 @@ class ResampleType(Enum):
     Never = 0
     Adaptive = 1
     Always = 2
+class ResampleTime(Enum):
+    BeforeMove = 0
+    AfterMove = 1
 
 class ReweightingType(Enum):
     Bootstrap = 0
@@ -50,15 +53,16 @@ class ReweightingType(Enum):
     Guided = 2
 
 class SMCResampling(ABC):
-    def __init__(self, resample_fn: Callable[[PRNGKey, FloatArray, int], IntArray], resample_type: ResampleType) -> None:
+    def __init__(self, resample_fn: Callable[[PRNGKey, FloatArray, int], IntArray], resample_type: ResampleType, resample_time: ResampleTime) -> None:
         self.resample_fn = resample_fn
         self.resample_type = resample_type
+        self.resample_time = resample_time
     def resample(self, rng_key: PRNGKey, weights: FloatArray, num_samples: int):
         return self.resample_fn(rng_key, weights, num_samples)
 
-def MultinomialResampling(resample_type: ResampleType): return SMCResampling(resampling_multinomial, resample_type)
-def StratifiedResampling(resample_type: ResampleType): return SMCResampling(resampling_stratified, resample_type)
-def SystematicResampling(resample_type: ResampleType): return SMCResampling(resampling_systematic, resample_type)
+def MultinomialResampling(resample_type: ResampleType, resample_time: ResampleTime = ResampleTime.BeforeMove): return SMCResampling(resampling_multinomial, resample_type, resample_time)
+def StratifiedResampling(resample_type: ResampleType, resample_time: ResampleTime = ResampleTime.BeforeMove): return SMCResampling(resampling_stratified, resample_type, resample_time)
+def SystematicResampling(resample_type: ResampleType, resample_time: ResampleTime = ResampleTime.BeforeMove): return SMCResampling(resampling_systematic, resample_type, resample_time)
 
 class DataAnnealingSchedule(NamedTuple):
     data_annealing: Dict[str,BoolArray]
@@ -87,22 +91,34 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
         weights = jax.lax.exp(log_particle_weights - log_particle_weigths_sum)
         ixs = resampling.resample(rng_key, weights, n_particles)
         particles = jax.tree.map(lambda v: v[ixs,...], particles)
-        return particles, jax.lax.broadcast(log_particle_weigths_sum - jax.lax.log(float(n_particles)), (n_particles,)) # proper weighting
+        log_prob = log_prob[ixs]
+        return particles, log_prob, jax.lax.broadcast(log_particle_weigths_sum - jax.lax.log(float(n_particles)), (n_particles,)) # proper weighting
 
-    def no_resample_fn(particles: Trace, log_prob: FloatArray, log_weights: FloatArray, rng_key: PRNGKey):
-        return particles, log_prob
+    def no_resample_fn(particles: Trace, log_prob: FloatArray, log_particle_weights: FloatArray, rng_key: PRNGKey):
+        return particles, log_prob, log_particle_weights
+
+    def maybe_resample(particles: Trace, log_prob: FloatArray, log_particle_weights: FloatArray, log_ess: FloatArray, rng_key: PRNGKey):
+        if resampling.resample_type == ResampleType.Never:
+            return particles, log_prob, log_particle_weights
+        elif resampling.resample_type == ResampleType.Always:
+            return do_resample_fn(particles, log_prob, log_particle_weights, rng_key)
+        elif resampling.resample_type == ResampleType.Adaptive:
+            return jax.lax.cond(log_ess < jax.lax.log(n_particles / 2.0), do_resample_fn, no_resample_fn, particles, log_prob, log_particle_weights, rng_key)
+        else:
+            raise Exception
+
 
     @jax.jit
     def smc_step(smc_state: SMCState, step_data: SMCStepData) -> Tuple[SMCState, FloatArray]:
         rejuvinate_key, resample_key = jax.random.split(step_data.rng_key)
-       
+
         # density with respect to current tempering / annealing
         a_log_prior_current, a_log_likelihood_current, _ = jax.vmap(slp._log_prior_likeli_pathcond, in_axes=(0,None))(smc_state.particles, step_data.data_annealing)
         ta_log_likelihood_current = step_data.temperature * a_log_likelihood_current
         ta_log_prob_current = a_log_prior_current + ta_log_likelihood_current
         particles_current = smc_state.particles
 
-        # reweight
+        # reweight log_w_hat = log [ p_k(phi_{k-1}) / p_{k-1}(phi_{k-1}) ]
         # In bootstrapping, we compute
         # p(y_{1:k}, x_{1:k}) / (p(y_{1:k-1}, x_{1:k-1}) * p(x_k | x_{1:k-1})) = p(y_k | x_k)
         # i.e. when we increase latent dimension, we "instantiate" from prior (updating data annealing mask of latent variable)
@@ -118,17 +134,16 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
         else:
             raise NotImplementedError
         
-        log_w_hat = ta_log_prob_current - smc_state.ta_log_prob # log [ p_k(phi_{k-1}) / p_{k-1}(phi_{k-1}) ]
+
+        # jax.debug.print("{ls} ta_log_prob_current={a} smc_state.ta_log_prob={b} log_w_hat={c}", ls = jax.scipy.special.logsumexp(smc_state.log_particle_weights), a=ta_log_prob_current[:5], b=smc_state.ta_log_prob[:5], c=log_w_hat[:5])
+
         log_particle_weights = smc_state.log_particle_weights + log_w_hat
         
-        log_ess = jax.scipy.special.logsumexp(log_particle_weights)  * 2 - jax.scipy.special.logsumexp(log_particle_weights*2)
+        log_ess = jax.scipy.special.logsumexp(log_particle_weights) * 2 - jax.scipy.special.logsumexp(log_particle_weights*2)
 
-        # resample (only llorente2023 puts it after rejuvinate)
-        # if resampling.resample_type != ResampleType.Never:
-        #     if resampling.resample_type == ResampleType.Always:
-        #         particles_current, ta_log_prob_current = do_resample_fn(particles_current, ta_log_prob_current, log_particle_weights, resample_key)
-        #     elif resampling.resample_type == ResampleType.Adaptive:
-        #         particles_current, ta_log_prob_current = jax.lax.cond(log_ess < jax.lax.log(n_particles / 2.0), do_resample_fn, no_resample_fn, particles_current, ta_log_prob_current, log_particle_weights, resample_key)
+        # resample (imo preferrable because duplicated positions will be rejuvinated)
+        if resampling.resample_time == ResampleTime.BeforeMove:
+            particles_current, ta_log_prob_current, log_particle_weights = maybe_resample(particles_current, ta_log_prob_current, log_particle_weights, log_ess, resample_key)
 
         # rejuvinate
         current_mcmc_state = MCMCState(
@@ -143,14 +158,13 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
         next_mcmc_state, _ = rejuvinate_kernel(current_mcmc_state, rejuvinate_key)
         particles = next_mcmc_state.position
         ta_log_prob = next_mcmc_state.log_prob
+        # jax.debug.print("x={x} lp={a}", x=particles["x"][:5], a=ta_log_prob[:5])
+        # jax.debug.print("{ls} ta_log_prob_current={a} smc_state.ta_log_prob={b} log_w_hat={c} x={x} lp={d}", ls = jax.scipy.special.logsumexp(smc_state.log_particle_weights), a=ta_log_prob_current[:5], b=smc_state.ta_log_prob[:5], c=log_w_hat[:5], x=particles["x"][:5], d=ta_log_prob[:5])
+
 
         # resample (only llorente2023 puts it after rejuvinate)
-        if resampling.resample_type != ResampleType.Never:
-            if resampling.resample_type == ResampleType.Always:
-                particles, ta_log_prob = do_resample_fn(particles, ta_log_prob, log_particle_weights, resample_key)
-            elif resampling.resample_type == ResampleType.Adaptive:
-                particles, ta_log_prob = jax.lax.cond(log_ess < jax.lax.log(n_particles / 2.0), do_resample_fn, no_resample_fn, particles_current, ta_log_prob_current, log_particle_weights, resample_key)
-
+        if resampling.resample_time == ResampleTime.AfterMove:
+            particles, ta_log_prob, log_particle_weights = maybe_resample(particles, ta_log_prob, log_particle_weights, log_ess, resample_key)
 
         ta_log_likelihood = jax.vmap(slp.log_likelihood, in_axes=(0,None))(particles, step_data.data_annealing) if reweighting_type == ReweightingType.Bootstrap else None
 
@@ -208,6 +222,9 @@ class SMC:
             log_prob = log_prior
         else:
             log_particle_weights = log_prob
+
+        # print(log_particle_weights)
+        log_particle_weights = jax.lax.zeros_like_array(log_prob)
             
         n_particles = particles.n_samples()
 

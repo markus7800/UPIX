@@ -106,7 +106,8 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
     # assert config.tempering_schedule[0] == 0.  # log prior
     assert config.tempering_schedule[-1] == 1. # log joint
     
-    prior_key, tempering_key = jax.random.split(seed)
+    # prior_key, tempering_key = jax.random.split(seed)
+    tempering_key = seed
 
     init_state = SMCCarry(
         MCMCState(jnp.array(0,int), jnp.array(0.,float), dict(), xs, lp, CarryStats(), None),
@@ -125,6 +126,7 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
         log_prior_before, log_likelihood_before, _ = jax.vmap(slp._log_prior_likeli_pathcond)(inference_state_from_prev_kernel.position, dict())
         tempered_log_prob_current_position = log_prior_before + temperature * log_likelihood_before # p_k(phi_{k-1})
 
+
         current_inference_state = MCMCState(
             inference_state_from_prev_kernel.iteration,
             temperature,
@@ -140,6 +142,9 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
         log_w_hat = tempered_log_prob_current_position - inference_state_from_prev_kernel.log_prob # p_k(phi_{k-1}) / p_{k-1}(phi_{k-1})
         # log_Z = jax.scipy.special.logsumexp(log_w_hat + (current_log_particle_weight - jax.scipy.special.logsumexp(current_log_particle_weight)))
 
+        # jax.debug.print("{ls} tempered_log_prob_current_position={a} inference_state_from_prev_kernel.log_prob={b} log_w_hat={c}, x={x} lp={d}", ls = jax.scipy.special.logsumexp(carry.log_particle_weight), a=tempered_log_prob_current_position[:5], b=inference_state_from_prev_kernel.log_prob[:5], c=log_w_hat[:5], x=next_inference_state.position["x"][:5], d=next_inference_state.log_prob[:5])
+        # jax.debug.print("x={x} lp={a}", x=next_inference_state.position["x"][:5], a=next_inference_state.log_prob[:5])
+
         log_particle_weight = current_log_particle_weight + log_w_hat
         log_particle_weight_sum = jax.scipy.special.logsumexp(log_particle_weight)
         log_ess = log_particle_weight_sum * 2 - jax.scipy.special.logsumexp(log_particle_weight*2)
@@ -148,6 +153,7 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
         # resample_ixs = jax.random.categorical(resample_key, log_particle_weight, shape=(N,)) # uses gumbel reparametrisation trick
 
         if resampling != "never":
+            # jax.debug.print("log_ess={log_ess}", log_ess=log_ess)
 
             def do_resample(next_inference_state: MCMCState, log_particle_weight: FloatArray):
                 resample_ixs = multinomial(resample_key, jax.lax.exp(log_particle_weight - log_particle_weight_sum), N)
@@ -175,7 +181,7 @@ def run_smc(slp: SLP, config: SMCConfig, seed: PRNGKey, xs: Trace, lp: jax.Array
 
 
     tempering_keys = jax.random.split(tempering_key, config.tempering_schedule.size)
-
+    
     last_tempering_state, log_ess = jax.lax.scan(smc_tempering_step, init_state, (tempering_keys, config.tempering_schedule))
     # log_Z = log_Zs.sum()
     # print(f"{log_Z=} {jax.lax.exp(log_Z)=}")
