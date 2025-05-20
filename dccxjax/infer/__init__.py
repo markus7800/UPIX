@@ -9,3 +9,5 @@ from .lmh_global import *
 from .variable_selector import *
 from .mcdcc import *
 from .mcmcdcc import *
+from .smc import *
+from .smcdcc import *

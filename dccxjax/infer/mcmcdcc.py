@@ -141,7 +141,7 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
     def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
         log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.estimate_weight_n_samples, rng_key)
         if self.verbose >= 2:
-            tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():,.0f})")
+            tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():_.0f})")
         return LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, self.estimate_weight_n_samples)
 
     def run_inference(self, slp: SLP, rng_key: PRNGKey) -> InferenceResult:
@@ -151,12 +151,12 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             last_result = inference_results[-1]
             assert isinstance(last_result, MCMCInferenceResult)
             init_positions = StackedTrace(last_result.last_state.position, mcmc.n_chains)
-            log_prob = last_result.last_state.log_prob
+            init_log_prob = last_result.last_state.log_prob
         else:
             init_positions = StackedTrace(broadcast_jaxtree(slp.decision_representative, (mcmc.n_chains,)), mcmc.n_chains)
-            log_prob = broadcast_jaxtree(slp.log_prob(slp.decision_representative), (mcmc.n_chains,))
+            init_log_prob = broadcast_jaxtree(slp.log_prob(slp.decision_representative), (mcmc.n_chains,))
         
-        last_state, return_result = mcmc.run(rng_key, init_positions, log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
+        last_state, return_result = mcmc.run(rng_key, init_positions, init_log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
         if self.verbose >= 2 and self.mcmc_collect_inference_info:
             assert last_state.infos is not None
             info_str = "MCMC Infos:"

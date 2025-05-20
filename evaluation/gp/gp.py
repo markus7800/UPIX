@@ -103,7 +103,6 @@ class DCCConfig(MCMCDCC[T]):
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
         _active_slps: List[SLP] = []
         super().initialise_active_slps(_active_slps, inactive_slps, rng_key)
-        # we assume that we know that with increasing steps eventually we have unlikely SLPs
         _active_slps.sort(key=self.model.slp_sort_key)
         kernel_key: Set[str] = set()
         for slp in _active_slps:
@@ -127,14 +126,55 @@ dcc_obj = DCCConfig(m, verbose=2,
               mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=100,
               max_iterations = 1
-            #   return_map=lambda trace: {"start": trace["start"]}
 )
 
 
-t0 = time()
-result = dcc_obj.run(jax.random.PRNGKey(0))
-result.pprint()
+# t0 = time()
+# result = dcc_obj.run(jax.random.PRNGKey(0))
+# result.pprint()
+# t1 = time()
 
+
+class SMCDCCConfig(SMCDCC[T]):
+
+    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
+        _active_slps: List[SLP] = []
+        super().initialise_active_slps(_active_slps, inactive_slps, rng_key)
+        _active_slps.sort(key=self.model.slp_sort_key)
+        kernel_key: Set[str] = set()
+        for slp in _active_slps:
+            k = get_gp_kernel(slp.decision_representative)
+            k_key = k.key()
+            if k.depth() < 2 and k_key not in kernel_key:
+                active_slps.append(slp)
+                kernel_key.add(k_key) # deduplicate using commutativity of + and * kernel
+                log_prob_trace = self.model.log_prob_trace(slp.decision_representative)
+                log_path_prior: FloatArray = sum((log_prob for addr, (log_prob, _) in log_prob_trace.items() if SuffixSelector("node_type").contains(addr)), start=jnp.array(0,float))
+                tqdm.write(f"Activate {k_key} with log_path_prior={log_path_prior.item():.4f}")
+        active_slps.sort(key=self.model.slp_sort_key)
+        print(f"{len(active_slps)=}")
+
+    def get_SMC_rejuvination_kernel(self, slp: SLP) -> MCMCRegime:
+        regime = MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), HMC(10, 0.02))
+        # pprint_mcmc_regime(regime, slp)
+        return regime
+    
+    # def get_SMC_data_annealing_schedule(self, slp: SLP) -> Optional[DataAnnealingSchedule]:
+    #     step = round(len(ys)*0.1)
+    #     return data_annealing_schedule_from_range({"obs": range(step,len(ys),step)})
+    
+    def get_SMC_tempering_schedule(self, slp: SLP) -> Optional[TemperetureSchedule]:
+        return tempering_schedule_from_sigmoid(jnp.linspace(-15,15,10))
+
+smc_dcc_obj = SMCDCCConfig(m, verbose=2,
+    smc_n_particles=100,
+    smc_prior_mcmc_n_steps=1,
+    smc_collect_inference_info=True,
+)
+
+t0 = time()
+result = smc_dcc_obj.run(jax.random.PRNGKey(0))
+result.pprint()
 t1 = time()
 
 print(f"Total time: {t1-t0:.3f}s")

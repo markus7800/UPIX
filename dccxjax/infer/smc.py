@@ -9,6 +9,25 @@ from abc import ABC, abstractmethod
 from jax.flatten_util import ravel_pytree
 import jax.experimental
 
+__all__ = [
+    "ResampleType",
+    "ResampleTime",
+    "ReweightingType",
+    "SMCResampling",
+    "MultinomialResampling",
+    "StratifiedResampling",
+    "SystematicResampling",
+    "DataAnnealingSchedule",
+    "data_annealing_schedule_from_range",
+    "TemperetureSchedule",
+    "tempering_schedule_from_array",
+    "tempering_schedule_from_sigmoid",
+    "SMC",
+    "get_log_Z_ESS",
+    "get_Z_ESS",
+    "normalise_log_weights"
+]
+
 # from blackjax/smc/resampling.py
 def sorted_uniforms(rng_key: PRNGKey, n) -> FloatArray:
     # Credit goes to Nicolas Chopin
@@ -69,6 +88,13 @@ def SystematicResampling(resample_type: ResampleType, resample_time: ResampleTim
 class DataAnnealingSchedule(NamedTuple):
     data_annealing: AnnealingMask
     n_steps: int
+    def prior_mask(self) -> AnnealingMask:
+        prior_data_annealing: AnnealingMask = dict()
+        if len(self.data_annealing) > 0:
+            prior_data_annealing = jax.tree.map(lambda v: jax.lax.zeros_like_array(v[0,...]), self.data_annealing)
+            masks, _ = ravel_pytree(prior_data_annealing)
+            assert not masks.any()
+        return prior_data_annealing
 
 def data_annealing_schedule_from_range(addr_to_range: Dict[str,range]) -> DataAnnealingSchedule:
     data_annealing: AnnealingMask = dict()
@@ -109,14 +135,14 @@ class SMCState(NamedTuple):
     log_particle_weights: FloatArray
     ta_log_likelihood: FloatArray | None
     ta_log_prob: FloatArray # tempered / annealed log prob
-    mcmc_info: InferenceInfos | None
+    mcmc_infos: InferenceInfos | None
 
 class SMCStepData(NamedTuple):
     rng_key: PRNGKey
     temperature: FloatArray
     data_annealing: AnnealingMask
 
-def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None]):
+def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None]) -> Callable[[SMCState, SMCStepData],Tuple[SMCState,FloatArray]]:
 
     def do_resample_fn(particles: Trace, log_prob: FloatArray, log_particle_weights: FloatArray, rng_key: PRNGKey):
         log_particle_weigths_sum = jax.scipy.special.logsumexp(log_particle_weights)
@@ -185,7 +211,7 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
             particles_current,
             ta_log_prob_current,
             CarryStats(), # to support carry stats we would have to recompute here (e.g. unconstrained_log_prob)
-            smc_state.mcmc_info
+            smc_state.mcmc_infos
         )
         next_mcmc_state, _ = rejuvinate_kernel(current_mcmc_state, rejuvinate_key)
         particles = next_mcmc_state.position
@@ -237,8 +263,10 @@ class SMC:
 
         self.rejuvination_regime = rejuvination_regime
         self.rejuvination_kernel: MCMCKernel[None] = rejuvination_kernel
+        self.rejuvination_kernel_init_carry_stat_names = rejuv_init_carry_stat_names
         self.collect_inference_info = collect_inference_info
 
+        assert tempereture_schedule is not None or data_annealing_schedule is not None
         if tempereture_schedule is None:
             assert data_annealing_schedule is not None
             self.tempereture_schedule = TemperetureSchedule(jnp.ones((data_annealing_schedule.n_steps,), float), data_annealing_schedule.n_steps)
@@ -260,11 +288,7 @@ class SMC:
     def run(self, rng_key: PRNGKey, particles: StackedTrace, log_prob: Optional[FloatArray] = None):
         # no tempering / annealing weights, we require that this is proper weighting for input particles
         if log_prob is None:
-            first_data_annealing = dict()
-            if len(self.data_annealing_schedule.data_annealing) > 0:
-                first_data_annealing = jax.tree.map(lambda v: v[0,...], self.data_annealing_schedule.data_annealing)
-                masks, _ = ravel_pytree(first_data_annealing)
-                assert not masks.any()
+            first_data_annealing = self.data_annealing_schedule.prior_mask()
             log_prior, _, path_condition = jax.vmap(self.slp._log_prior_likeli_pathcond, in_axes=(0,None))(particles.data, first_data_annealing)
             log_particle_weights = jax.lax.select(path_condition, log_prior, jax.lax.zeros_like_array(log_prior))
             log_prob = log_prior
@@ -276,11 +300,11 @@ class SMC:
 
         smc_keys = jax.random.split(rng_key, self.n_steps)
 
-        mcmc_infos = init_inference_infos_for_chains(self.rejuvination_regime, n_particles) if self.collect_inference_info else None
+        mcmc_infoss = init_inference_infos_for_chains(self.rejuvination_regime, n_particles) if self.collect_inference_info else None
 
         ta_log_likelihood = jax.lax.zeros_like_array(log_prob) if self.reweighting_type == ReweightingType.Bootstrap else None
 
-        init_state = SMCState(jnp.array(0,int), particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infos)
+        init_state = SMCState(jnp.array(0,int), particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infoss)
         smc_data = SMCStepData(smc_keys, self.tempereture_schedule.temperature, self.data_annealing_schedule.data_annealing)
         if self.progress_bar:
             scan_with_pbar = add_progress_bar_to_smc_kernel(self.smc_step, "SMC for "+self.slp.formatted(), self.n_steps)

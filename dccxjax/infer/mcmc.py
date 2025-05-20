@@ -387,6 +387,10 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         collect_inference_info: bool = False,
         vectorised: bool = True,
         return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None,
+        temperature: FloatArray = jnp.array(1.0),
+        data_annealing: AnnealingMask = dict(),
+        reuse_kernel: Optional[MCMCKernel[MCMC_COLLECT_TYPE]] = None,
+        reuse_kernel_init_carry_stat_names: Set[str] = set(),
         progress_bar: bool = False) -> None:
         
         self.slp = slp
@@ -394,10 +398,17 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         self.n_chains = n_chains
         self.progress_bar = progress_bar
 
+        self.temperature = temperature
+        self.data_annealing = data_annealing
+
         self.collect_inference_info = collect_inference_info
         self.vectorised = vectorised
 
-        kernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, collect_inference_info=collect_inference_info, vectorised=vectorised, return_map=return_map)
+        if reuse_kernel is not None:
+            kernel = reuse_kernel
+            init_carry_stat_names = reuse_kernel_init_carry_stat_names
+        else:
+            kernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, collect_inference_info=collect_inference_info, vectorised=vectorised, return_map=return_map)
 
         self.kernel: MCMCKernel[MCMC_COLLECT_TYPE] = kernel
         self.init_carry_stat_names: Set[str] = init_carry_stat_names
@@ -413,9 +424,9 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
 
         carry_stats = CarryStats(position=init_positions.data, log_prob=log_prob)
 
-        carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None,None))(carry_stats, GibbsModel(self.slp, AllVariables()), jnp.array(1.0), dict(), self.init_carry_stat_names)
+        carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None,None))(carry_stats, GibbsModel(self.slp, AllVariables()), self.temperature, self.data_annealing, self.init_carry_stat_names)
 
-        initial_state = MCMCState(jnp.array(0, int), jnp.array(1.0), dict(), init_positions.data, log_prob, carry_stats, infos)
+        initial_state = MCMCState(jnp.array(0, int), self.temperature, self.data_annealing, init_positions.data, log_prob, carry_stats, infos)
 
         return self.continue_run(rng_key, initial_state, n_samples_per_chain=n_samples_per_chain)
         
@@ -423,7 +434,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         keys = jax.random.split(rng_key, n_samples_per_chain)
         if reset_info:
             infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
-            state = MCMCState(jnp.array(0, int), jnp.array(1.0), dict(), state.position, state.log_prob, state.carry_stats, infos)
+            state = MCMCState(jnp.array(0, int), self.temperature, self.data_annealing, state.position, state.log_prob, state.carry_stats, infos)
 
         if self.progress_bar:
             scan_with_pbar = add_progress_bar_to_mcmc_kernel(self.kernel, "MCMC for "+self.slp.formatted(), n_samples_per_chain)
