@@ -20,9 +20,6 @@ __all__ = [
     "MCDCC",
     "DCC_COLLECT_TYPE",
     "T",
-    "MCMCInferenceResult",
-    "LogWeightEstimateFromPrior",
-    "MCMCDCC",
 ]
 
 T = TypeVar("T")
@@ -46,72 +43,6 @@ class MCLogWeightEstimate(LogWeightEstimate, ABC):
     @abstractmethod
     def get_estimate(self):
         raise NotImplementedError
-
-@dataclass
-class MCMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
-    value_tree: None | Tuple[Trace,FloatArray] | DCC_COLLECT_TYPE # either None or Pytree with leading axes (n_samples_per_chain, n_chains,...)
-    last_state: MCMCState
-    n_chains: int
-    n_samples_per_chain: int
-    optimised_memory_with_early_return_map: bool
-    def combine(self, other: InferenceResult) -> "MCMCInferenceResult":
-        if not isinstance(other, MCMCInferenceResult):
-            raise TypeError
-        assert self.n_chains == other.n_chains
-        if self.value_tree is None:
-            assert other.value_tree is None
-            value_tree = None
-        else:
-            assert other.value_tree is not None
-            value_tree = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), self.value_tree, other.value_tree)
-        last_state = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), self.value_tree, other.value_tree)
-        assert self.optimised_memory_with_early_return_map == other.optimised_memory_with_early_return_map
-        return MCMCInferenceResult(value_tree, last_state, self.n_chains, self.n_samples_per_chain + other.n_samples_per_chain, self.optimised_memory_with_early_return_map)
-    
-    def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> WeightedSample[DCC_COLLECT_TYPE]:
-        if self.value_tree is not None:
-            if self.optimised_memory_with_early_return_map:
-                # assert isinstance(inference_result.value_tree, DCC_COLLECT_TYPE)
-                values: DCC_COLLECT_TYPE = cast(DCC_COLLECT_TYPE, self.value_tree)
-            else:
-                # assert isinstance(inference_result.value_tree, Trace)
-                values = return_map(cast(Tuple[Trace,FloatArray], self.value_tree)[0])
-
-            weighted_samples = WeightedSample(
-                StackedSampleValues(values, self.n_samples_per_chain, self.n_chains),
-                jnp.zeros((self.n_samples_per_chain, self.n_chains), float)
-            )
-        else:
-            # number of samples per chain = number of times MCMC was performed for SLP
-            # because we only stored last state
-            n_mcmc = self.last_state.iteration.size # number of individual MCMCInferenceResults that were combined, could be 1 (no concatenation of last_state yet)
-            n_chains = self.n_chains
-            traces: Trace = jax.tree.map(lambda v: v.reshape((n_mcmc,n_chains) + v.shape[1:]), self.last_state.position)
-            values = return_map(traces)
-            weighted_samples = WeightedSample(
-                StackedSampleValues(values, n_mcmc, n_chains),
-                jnp.zeros((n_mcmc,n_chains), float)
-            )
-        return weighted_samples
-
-@dataclass
-class LogWeightEstimateFromPrior(MCLogWeightEstimate):
-    log_Z: FloatArray
-    ESS: IntArray
-    frac_in_support: FloatArray
-    n_samples: int
-    def combine(self, other: LogWeightEstimate) -> "LogWeightEstimateFromPrior":
-        assert isinstance(other, LogWeightEstimateFromPrior)
-        n_combined_samples = self.n_samples + other.n_samples
-        a = self.n_samples / n_combined_samples
-        
-        log_Z = jax.numpy.logaddexp(self.log_Z + jax.lax.log(a), other.log_Z + jax.lax.log(1 - a))
-        frac_in_support = self.frac_in_support * a + other.frac_in_support * (1 - a)
-
-        return LogWeightEstimateFromPrior(log_Z, self.ESS + other.ESS, frac_in_support, n_combined_samples)
-    
-    def get_estimate(self):
-        return self.log_Z
 
 @dataclass
 class MCDCCResult(Generic[DCC_COLLECT_TYPE]):
@@ -273,11 +204,6 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
                 discovered_slps.append(slp)
         active_slps.extend(discovered_slps)
     
-    def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
-        log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.estimate_weight_n_samples, rng_key)
-        if self.verbose >= 2:
-            tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():,.0f})")
-        return LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, self.estimate_weight_n_samples)
 
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         inactive_slps.extend(active_slps)
@@ -300,27 +226,28 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
             log_weight_list.append(log_weight)
         log_weights = jnp.array(log_weight_list)
         
-        slp_to_proposal_prob: Dict[SLP, FloatArray] = dict()
-        for _ in tqdm(range(self.n_lmh_update_samples), desc="Determining new active SLPs with LMH"):
-            rng_key, select_key, select_chain_key, select_sample_key, lmh_key = jax.random.split(rng_key, 5)
-            slp = slps[jax.random.categorical(select_key, log_weights)]
-            slp_results = combined_inference_results[slp]
-            assert isinstance(slp_results, MCMCInferenceResult)
-            assert isinstance(slp_results.value_tree, dict) # trace
-            chain = jax.random.randint(select_chain_key, (), 0, slp_results.n_chains)
-            sample_ix = jax.random.randint(select_sample_key, (), 0, slp_results.n_samples_per_chain)
-            trace: Trace = jax.tree.map(lambda v: v[sample_ix, chain, ...], slp_results.value_tree)
-            trace_proposed, acceptance_log_prob = lmh(self.model, self.lmh_variable_selector, trace, lmh_key)
+        # TODO
+        # slp_to_proposal_prob: Dict[SLP, FloatArray] = dict()
+        # for _ in tqdm(range(self.n_lmh_update_samples), desc="Determining new active SLPs with LMH"):
+        #     rng_key, select_key, select_chain_key, select_sample_key, lmh_key = jax.random.split(rng_key, 5)
+        #     slp = slps[jax.random.categorical(select_key, log_weights)]
+        #     slp_results = combined_inference_results[slp]
+        #     assert isinstance(slp_results, MCMCInferenceResult)
+        #     assert isinstance(slp_results.value_tree, dict) # trace
+        #     chain = jax.random.randint(select_chain_key, (), 0, slp_results.n_chains)
+        #     sample_ix = jax.random.randint(select_sample_key, (), 0, slp_results.n_samples_per_chain)
+        #     trace: Trace = jax.tree.map(lambda v: v[sample_ix, chain, ...], slp_results.value_tree)
+        #     trace_proposed, acceptance_log_prob = lmh(self.model, self.lmh_variable_selector, trace, lmh_key)
 
-            matched_slp = next(filter(lambda _slp: _slp.path_indicator(trace_proposed) != 0, inactive_slps), None)
-            if matched_slp is None:
-                matched_slp = slp_from_decision_representative(self.model, trace_proposed)
-                if self.verbose >= 2:
-                    tqdm.write(f"Discovered SLP {matched_slp.formatted()}.")
-                inactive_slps.append(matched_slp)
+        #     matched_slp = next(filter(lambda _slp: _slp.path_indicator(trace_proposed) != 0, inactive_slps), None)
+        #     if matched_slp is None:
+        #         matched_slp = slp_from_decision_representative(self.model, trace_proposed)
+        #         if self.verbose >= 2:
+        #             tqdm.write(f"Discovered SLP {matched_slp.formatted()}.")
+        #         inactive_slps.append(matched_slp)
 
-            slp_to_proposal_prob[matched_slp] = slp_to_proposal_prob.get(matched_slp, 0.) + jnp.exp(acceptance_log_prob)
-            slp_to_proposal_prob[slp] = slp_to_proposal_prob.get(slp, 0.) + (1 - jnp.exp(acceptance_log_prob))
+        #     slp_to_proposal_prob[matched_slp] = slp_to_proposal_prob.get(matched_slp, 0.) + jnp.exp(acceptance_log_prob)
+        #     slp_to_proposal_prob[slp] = slp_to_proposal_prob.get(slp, 0.) + (1 - jnp.exp(acceptance_log_prob))
 
         # jnp.exp(jax.scipy.special.logsumexp(jnp.array(slp_to_proposal_log_prob.values()))) == self.n_lmh_update_samples
         # proportional to budget that should be spent on slps
@@ -364,70 +291,3 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
 
         return MCDCCResult(slp_log_weights, slp_weighted_samples)
     
-
-class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
-    def __init__(self, model: Model, return_map: Callable[[Trace], DCC_COLLECT_TYPE] = lambda trace: trace, *ignore, verbose=0, **config_kwargs) -> None:
-        super().__init__(model, return_map, *ignore, verbose=verbose, **config_kwargs)
-
-        self.mcmc_collect_inference_info: bool = self.config.get("mcmc_collect_inference_info", True)
-        self.mcmc_collect_for_all_traces: bool = self.config.get("mcmc_collect_for_all_traces", True)
-        self.mcmc_optimise_memory_with_early_return_map: bool = self.config.get("mcmc_optimise_memory_with_early_return_map", False)
-        self.mcmc_n_chains: int = self.config.get("mcmc_n_chains", 4)
-        self.mcmc_n_samples_per_chain: int = self.config.get("mcmc_n_samples_per_chain", 1_000)
-
-    @abstractmethod
-    def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
-        raise NotImplementedError
-
-    def get_MCMC(self, slp: SLP) -> MCMC:
-        if slp in self.inference_method_cache:
-            mcmc = self.inference_method_cache[slp]
-            assert isinstance(mcmc, MCMC)
-            return mcmc
-        regime = self.get_MCMC_inference_regime(slp)
-        def mcmc_return_map(state: MCMCState):
-            if self.mcmc_collect_for_all_traces:
-                if self.mcmc_optimise_memory_with_early_return_map:
-                    return self.return_map(state.position)
-                else:
-                    return (state.position, state.log_prob)
-            else:
-                return None
-        mcmc = MCMC(slp, regime, self.mcmc_n_chains,
-                    collect_inference_info=self.mcmc_collect_inference_info,
-                    return_map=mcmc_return_map,
-                    progress_bar=self.verbose >= 1)
-        self.inference_method_cache[slp] = mcmc
-        return mcmc
-    
-    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
-        if self.iteration_counter < self.max_iterations:
-            assert not self.mcmc_optimise_memory_with_early_return_map
-        return super().update_active_slps(active_slps, inactive_slps, inference_results, log_weight_estimates, rng_key)
-
-
-    def run_inference(self, slp: SLP, rng_key: PRNGKey) -> InferenceResult:
-        mcmc = self.get_MCMC(slp)
-        inference_results = self.inference_results.get(slp, [])
-        if len(inference_results) > 0:
-            last_result = inference_results[-1]
-            assert isinstance(last_result, MCMCInferenceResult)
-            init_positions = StackedTrace(last_result.last_state.position, mcmc.n_chains)
-            log_prob = last_result.last_state.log_prob
-        else:
-            init_positions = StackedTrace(broadcast_jaxtree(slp.decision_representative, (mcmc.n_chains,)), mcmc.n_chains)
-            log_prob = broadcast_jaxtree(slp.log_prob(slp.decision_representative), (mcmc.n_chains,))
-        
-        last_state, return_result = mcmc.run(rng_key, init_positions, log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
-        if self.verbose >= 2 and self.mcmc_collect_inference_info:
-            assert last_state.infos is not None
-            info_str = "MCMC Infos:"
-            for step, info in enumerate(last_state.infos):
-                info_str += f"\n\t Step {step}: {summarise_mcmc_info(info, self.mcmc_n_samples_per_chain)}"
-            tqdm.write(info_str)
-        
-        # TODO: only run MCMC on gpu and handle all result data on CPU
-        cpu = jax.devices("cpu")[0]
-        return_result = jax.device_put(return_result, cpu)
-        # we do not apply return map here, because we want to be able to continue mcmc chain from last state
-        return MCMCInferenceResult(return_result, last_state, mcmc.n_chains, self.mcmc_n_samples_per_chain, self.mcmc_optimise_memory_with_early_return_map)
