@@ -4,7 +4,7 @@ from dccxjax.distributions import Transform, Distribution, DIST_SUPPORT, DIST_SU
 import numpyro.distributions as numpyro_dists
 from typing import Any, Optional, Dict, Callable, cast, Tuple
 from abc import ABC, abstractmethod
-from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike, BoolArray
+from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike, BoolArray, IntArray
 
 __all__ = [
     "sample",
@@ -69,20 +69,24 @@ class GenerateCtx(SampleContext):
         self.log_likelihood += lf
         
 
-def maybe_annealed_log_prob(address:str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], value: DIST_SUPPORT, annealing_masks: Dict[str,BoolArray]):
+AnnealingMask = Dict[str,BoolArray]
+
+def maybe_annealed_log_prob(address:str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], value: DIST_SUPPORT, annealing_masks: AnnealingMask):
     if address in annealing_masks:
         mask = annealing_masks[address]
-        return distribution.log_prob(value)[mask].sum()
+        lp = distribution.log_prob(value)
+        return jax.lax.select(mask, lp, jax.lax.zeros_like_array(lp)).sum()
     else:
         return distribution.log_prob(value).sum()
-    
+
+
 class LogprobCtx(SampleContext):
-    def __init__(self, X: Trace, annealing_masks: Dict[str,BoolArray] = dict()) -> None:
+    def __init__(self, X: Trace, annealing_masks: AnnealingMask = dict()) -> None:
         super().__init__()
         self.X = X
         self.log_likelihood: FloatArray = jnp.array(0.,float)
         self.log_prior: FloatArray = jnp.array(0.,float)
-        self.annealing_masks: Dict[str,BoolArray] = annealing_masks
+        self.annealing_masks: AnnealingMask = annealing_masks
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
             _observed = cast(DIST_SUPPORT, observed)
@@ -98,11 +102,11 @@ class LogprobCtx(SampleContext):
         self.log_likelihood += lf
 
 class LogprobTraceCtx(SampleContext):
-    def __init__(self, X: Trace, annealing_masks: Dict[str,BoolArray] = dict()) -> None:
+    def __init__(self, X: Trace, annealing_masks: AnnealingMask = dict()) -> None:
         super().__init__()
         self.X = X
         self.log_probs: Dict[str,Tuple[FloatArray,bool]] = dict()
-        self.annealing_masks: Dict[str,BoolArray] = annealing_masks
+        self.annealing_masks: AnnealingMask = annealing_masks
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
             _observed = cast(DIST_SUPPORT, observed)
@@ -144,13 +148,13 @@ class CollectDistributionTypesCtx(SampleContext):
 
 
 class UnconstrainedLogprobCtx(SampleContext):
-    def __init__(self, X_unconstrained: Trace, annealing_masks: Dict[str,BoolArray] = dict()) -> None:
+    def __init__(self, X_unconstrained: Trace, annealing_masks: AnnealingMask = dict()) -> None:
         super().__init__()
         self.X_unconstrained = X_unconstrained
         self.X_constrained: Trace = dict()
         self.log_prior: FloatArray = jnp.array(0.,float)
         self.log_likelihood: FloatArray = jnp.array(0.,float)
-        self.annealing_masks: Dict[str,BoolArray] = annealing_masks
+        self.annealing_masks: AnnealingMask = annealing_masks
     
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:

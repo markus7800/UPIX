@@ -1,11 +1,12 @@
 import jax
 from typing import NamedTuple, Tuple, Set, Dict, Callable, Optional
 from ..types import PRNGKey, Trace, FloatArray, IntArray, StackedTrace, BoolArray
-from ..core.model_slp import SLP
+from ..core.model_slp import SLP, AnnealingMask
 from .mcmc import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains, _add_progress_bar, ProgressbarManager
 from ..utils import broadcast_jaxtree
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
+from jax.flatten_util import ravel_pytree
 
 # from blackjax/smc/resampling.py
 def sorted_uniforms(rng_key: PRNGKey, n) -> FloatArray:
@@ -65,12 +66,41 @@ def StratifiedResampling(resample_type: ResampleType, resample_time: ResampleTim
 def SystematicResampling(resample_type: ResampleType, resample_time: ResampleTime = ResampleTime.BeforeMove): return SMCResampling(resampling_systematic, resample_type, resample_time)
 
 class DataAnnealingSchedule(NamedTuple):
-    data_annealing: Dict[str,BoolArray]
+    data_annealing: AnnealingMask
     n_steps: int
+
+def data_annealing_schedule_from_range(addr_to_range: Dict[str,range]) -> DataAnnealingSchedule:
+    data_annealing: AnnealingMask = dict()
+    n_steps = 0
+    for addr, r in addr_to_range.items():
+        ixs = jnp.arange(0, r.stop)
+        masks = []
+        for i in r:
+            masks.append(ixs < i)
+        if max(r) != r.stop:
+            masks.append(jnp.full((r.stop,), True))
+        data_annealing[addr] = jnp.vstack(masks, bool)
+        if n_steps == 0:
+            n_steps = len(masks)
+        else:
+            assert n_steps == len(masks)
+    assert n_steps > 0
+    return DataAnnealingSchedule(data_annealing, n_steps)
 
 class TemperetureSchedule(NamedTuple):
     temperature: FloatArray
     n_steps: int
+
+
+def sigmoid(z):
+    return 1/(1 + jnp.exp(-z))
+def tempering_schedule_from_array(arr: FloatArray):
+    assert len(arr.shape) == 1
+    return TemperetureSchedule(arr, arr.shape[0])
+
+def tempering_schedule_from_sigmoid(linspace: FloatArray):
+    arr = sigmoid(linspace)
+    return tempering_schedule_from_array(arr)
 
 class SMCState(NamedTuple):
     iteration: IntArray
@@ -83,7 +113,7 @@ class SMCState(NamedTuple):
 class SMCStepData(NamedTuple):
     rng_key: PRNGKey
     temperature: FloatArray
-    data_annealing: Dict[str, BoolArray]
+    data_annealing: AnnealingMask
 
 def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None]):
 
@@ -223,11 +253,14 @@ class SMC:
     def run(self, rng_key: PRNGKey, particles: StackedTrace, log_prob: Optional[FloatArray] = None):
         # no tempering / annealing weights, we require that this is proper weighting for input particles
         if log_prob is None:
-            log_prior, _, path_condition = jax.vmap(self.slp._log_prior_likeli_pathcond, in_axes=(0,None))(particles.data, dict())
+            first_data_annealing = dict()
+            if len(self.data_annealing_schedule.data_annealing) > 0:
+                first_data_annealing = jax.tree.map(lambda v: v[0,...], self.data_annealing_schedule.data_annealing)
+                masks, _ = ravel_pytree(first_data_annealing)
+                assert not masks.any()
+            log_prior, _, path_condition = jax.vmap(self.slp._log_prior_likeli_pathcond, in_axes=(0,None))(particles.data, first_data_annealing)
             log_particle_weights = jax.lax.select(path_condition, log_prior, jax.lax.zeros_like_array(log_prior))
             log_prob = log_prior
-        else:
-            log_particle_weights = log_prob
 
         # print(log_particle_weights)
         log_particle_weights = jax.lax.zeros_like_array(log_prob)
@@ -252,3 +285,19 @@ class SMC:
         )
 
         return last_state, ess 
+    
+
+
+
+def get_log_Z_ESS(log_weights: FloatArray):
+    log_Z = jax.scipy.special.logsumexp(log_weights) - jnp.log(log_weights.size)
+    ESS = jnp.exp(jax.scipy.special.logsumexp(log_weights)*2 - jax.scipy.special.logsumexp(log_weights*2))
+    return log_Z, ESS
+
+def get_Z_ESS(log_weights: FloatArray):
+    Z = jnp.exp(jax.scipy.special.logsumexp(log_weights)) / log_weights.size
+    ESS = jnp.exp(jax.scipy.special.logsumexp(log_weights)*2 - jax.scipy.special.logsumexp(log_weights*2))
+    return Z, ESS
+
+def normalise_log_weights(log_weights: FloatArray):
+    return log_weights - jax.scipy.special.logsumexp(log_weights)

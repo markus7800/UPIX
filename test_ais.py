@@ -436,18 +436,18 @@ N = 1_000_000
 tempering_schedule = sigmoid(jnp.linspace(-25,25,10))
 tempering_schedule = tempering_schedule.at[-1].set(1.)
 
-config = SMCConfig(kernel, tempering_schedule)
-xs = {"x": sample_prior(jax.random.PRNGKey(0), N)}
-lp = jax.vmap(slp.log_prior)(xs)
-lp.block_until_ready()
-t0 = time()
-log_weights, position, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), xs, lp, N, resampling="adaptive")
-log_weights.block_until_ready()
-t1 = time()
-# print(log_weights)
-print(get_Z_ESS(log_weights))
-print(f"Finished SMC in {t1-t0:.3f}s")
-plt.plot(jnp.exp(log_ess))
+# config = SMCConfig(kernel, tempering_schedule)
+# xs = {"x": sample_prior(jax.random.PRNGKey(0), N)}
+# lp = jax.vmap(slp.log_prior)(xs)
+# lp.block_until_ready()
+# t0 = time()
+# log_weights, position, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), xs, lp, N, resampling="adaptive")
+# log_weights.block_until_ready()
+# t1 = time()
+# # print(log_weights)
+# print(get_Z_ESS(log_weights))
+# print(f"Finished SMC in {t1-t0:.3f}s")
+# plt.plot(jnp.exp(log_ess))
 # plt.show()
 # # plt.hist(position["x"], weights=jnp.exp(log_weights), density=True, bins=100)
 # plt.hist(position["x"], density=True, bins=100)
@@ -472,5 +472,9 @@ smc_obj = SMC(
 particles = {"x": sample_prior(jax.random.PRNGKey(0), n_particles)}
 last_state, ess = smc_obj.run(jax.random.PRNGKey(0), StackedTrace(particles, n_particles))
 
-plt.plot(ess)
-plt.show()
+# plt.plot(ess)
+# plt.show()
+
+data_annealing_schedule = data_annealing_schedule_from_range({"y": range(0,10,3)})
+print(data_annealing_schedule)
+print(data_annealing_schedule.data_annealing["y"][2,:])

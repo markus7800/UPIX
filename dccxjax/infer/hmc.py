@@ -3,11 +3,11 @@ import jax.numpy as jnp
 from typing import Callable, Dict, Optional, Tuple, NamedTuple
 from ..types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
 import dccxjax.distributions as dist
-from .mcmc import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel
+from .mcmc import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, AnnealingMask
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
 from .gibbs_model import GibbsModel, SLP
-from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays
+from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays_str_short
 from .variable_selector import VariableSelector, AllVariables
 
 __all__ = [
@@ -142,8 +142,8 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
 
         jit_tracker = JitVariationTracker(f"_hmc_kernel for Inference step {step_number}: <HMC at {hex(id(self))}>")
         @jax.jit
-        def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: Dict[str,BoolArray], state: KernelState) -> KernelState:
-            maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
+        def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
+            maybe_jit_warning(jit_tracker, str(to_shaped_arrays_str_short((temperature, state))))
             # jax.debug.print("key={k}", k=rng_key)
             
             X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
@@ -311,8 +311,8 @@ class DiscontinuousHamiltonianMonteCarlo(MCMCInferenceAlgorithm):
 
         jit_tracker = JitVariationTracker(f"_dhmc_kernel for Inference step {step_number}: <DHMC at {hex(id(self))}>")
         @jax.jit
-        def _dhmc_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: Dict[str,BoolArray], state: KernelState) -> KernelState:
-            maybe_jit_warning(jit_tracker, str(to_shaped_arrays((temperature, state))))
+        def _dhmc_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
+            maybe_jit_warning(jit_tracker, str(to_shaped_arrays_str_short((temperature, state))))
             
             X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
 

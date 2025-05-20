@@ -7,8 +7,8 @@ from .gibbs_model import GibbsModel
 from .variable_selector import VariableSelector
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from dccxjax.core import SLP
-from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays, broadcast_jaxtree
+from dccxjax.core.model_slp import SLP, AnnealingMask
+from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays_str_short, broadcast_jaxtree
 from time import time
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
@@ -41,7 +41,7 @@ class CarryStats(TypedDict, total=False):
     unconstrained_position: Trace
     unconstrained_log_prob: FloatArray
 
-def map_carry_stats(carry_stats: CarryStats, gibbs_model: GibbsModel, temperature: FloatArray, data_annealing: Dict[str,BoolArray], new_stats: Set[str]):
+def map_carry_stats(carry_stats: CarryStats, gibbs_model: GibbsModel, temperature: FloatArray, data_annealing: AnnealingMask, new_stats: Set[str]):
     new_carry_stats = CarryStats()
     if "position" in new_stats and "position" not in carry_stats:
         assert "unconstrained_position" in carry_stats 
@@ -71,13 +71,13 @@ class KernelState(NamedTuple):
     carry_stats: CarryStats
     info: Optional[InferenceInfo]
     
-Kernel = Callable[[PRNGKey,FloatArray,Dict[str,BoolArray],KernelState],KernelState]
+Kernel = Callable[[PRNGKey,FloatArray,AnnealingMask,KernelState],KernelState]
 
 
 class MCMCState(NamedTuple):
     iteration: IntArray # scalar
     temperature: FloatArray # scalar 0 ... prior, 1 ... joint
-    data_annealing: Dict[str, BoolArray]
+    data_annealing: AnnealingMask
     position: Trace
     log_prob: FloatArray
     carry_stats: CarryStats
@@ -101,7 +101,7 @@ class MCMCInferenceAlgorithm(ABC):
     def provides_stats(self) -> Set[str]:
         return {"unconstrained_position", "unconstrained_log_prob"} if self.unconstrained else {"position", "log_prob"}
     
-    def default_preprocess_to_flat(self, gibbs_model: GibbsModel, temperature: FloatArray, data_annealing: Dict[str,BoolArray], state: KernelState):
+    def default_preprocess_to_flat(self, gibbs_model: GibbsModel, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState):
         if self.unconstrained:
             assert "unconstrained_position" in state.carry_stats
             assert "unconstrained_log_prob" in state.carry_stats
@@ -261,7 +261,7 @@ def get_mcmc_kernel(
     jit_tracker = JitVariationTracker(f"_mcmc_step for {slp.short_repr()}")
     @jax.jit
     def _one_step(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
-        maybe_jit_warning(jit_tracker, str(to_shaped_arrays(state)))
+        maybe_jit_warning(jit_tracker, str(to_shaped_arrays_str_short(state)))
         
         # rng_key = state.rng_key
         position = state.position
