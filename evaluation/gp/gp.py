@@ -86,7 +86,7 @@ m.set_slp_formatter(lambda slp: str(get_gp_kernel(slp.decision_representative)))
 m.set_slp_sort_key(lambda slp: get_gp_kernel(slp.decision_representative).size())
 m.set_slp_equivalence_class_id_gen(lambda X: get_gp_kernel(X, ordered=True).key(), lambda X: get_gp_kernel(X, ordered=False).key())
 
-class DCCConfig(MCDCC[T]):
+class DCCConfig(MCMCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         # HMC L=10 eps=0.02
         regime = MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), HMC(10, 0.02))

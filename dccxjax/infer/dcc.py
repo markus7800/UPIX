@@ -16,13 +16,13 @@ __all__ = [
 
 class InferenceResult(ABC):
     @abstractmethod
-    def concatentate(self, other: "InferenceResult") -> "InferenceResult":
+    def combine(self, other: "InferenceResult") -> "InferenceResult":
         # fold left
         raise NotImplementedError
 
 class LogWeightEstimate(ABC):
     @abstractmethod
-    def combine_estimate(self, other: "LogWeightEstimate") -> "LogWeightEstimate":
+    def combine(self, other: "LogWeightEstimate") -> "LogWeightEstimate":
         raise NotImplementedError
     
 

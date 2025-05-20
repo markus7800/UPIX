@@ -8,7 +8,7 @@ from .variable_selector import VariableSelector
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from dccxjax.core.model_slp import SLP, AnnealingMask
-from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays_str_short, broadcast_jaxtree
+from ..utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree, broadcast_jaxtree
 from time import time
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
@@ -267,7 +267,7 @@ def get_mcmc_kernel(
     jit_tracker = JitVariationTracker(f"_mcmc_step for {slp.short_repr()}")
     @jax.jit
     def _one_step(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
-        maybe_jit_warning(jit_tracker, str(to_shaped_arrays_str_short(state)))
+        maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree(state)))
         
         # rng_key = state.rng_key
         position = state.position

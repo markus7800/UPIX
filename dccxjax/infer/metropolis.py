@@ -7,7 +7,7 @@ from .mcmc import InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, Ca
 from dataclasses import dataclass
 import math
 from jax.flatten_util import ravel_pytree
-from ..utils import JitVariationTracker, maybe_jit_warning, to_shaped_arrays_str_short
+from ..utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
 from .gibbs_model import GibbsModel
 from abc import ABC, abstractmethod
 from multipledispatch import dispatch
@@ -199,7 +199,7 @@ class RandomWalk(MCMCInferenceAlgorithm):
         jit_tracker = JitVariationTracker(f"_rw_kernel for Inference step {step_number}: <RandomWalk at {hex(id(self))}>")
         @jax.jit
         def _rw_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
-            maybe_jit_warning(jit_tracker, str(to_shaped_arrays_str_short((temperature, data_annealing, state))))
+            maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree((temperature, data_annealing, state))))
             
             X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
 
@@ -275,7 +275,7 @@ class MetropolisHastings(MCMCInferenceAlgorithm):
         jit_tracker = JitVariationTracker(f"_mh_kernel for Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>")
         @jax.jit
         def _mh_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
-            maybe_jit_warning(jit_tracker, str(to_shaped_arrays_str_short((temperature, state))))
+            maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree((temperature, state))))
             assert "position" in state.carry_stats
             assert "log_prob" in state.carry_stats
 

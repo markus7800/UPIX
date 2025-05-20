@@ -73,6 +73,7 @@ AnnealingMask = Dict[str,BoolArray]
 
 def maybe_annealed_log_prob(address:str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], value: DIST_SUPPORT, annealing_masks: AnnealingMask):
     if address in annealing_masks:
+        assert distribution.numpyro_base.event_dim == 0, "Data-annealing only supported for univariate distributions"
         mask = annealing_masks[address]
         lp = distribution.log_prob(value)
         return jax.lax.select(mask, lp, jax.lax.zeros_like_array(lp)).sum()

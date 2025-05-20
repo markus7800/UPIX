@@ -69,7 +69,7 @@ def formatter(slp: SLP):
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_t_max)
 
-class DCCConfig(MCDCC[T]):
+class DCCConfig(MCMCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         # regime = MCMCSteps(
         #     MCMCStep(PrefixSelector("step"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),
@@ -106,10 +106,11 @@ dcc_obj = DCCConfig(m, verbose=2,
               init_estimate_weight_n_samples=1_000_000,
               mcmc_n_chains=10,
               mcmc_n_samples_per_chain=25_000,
-              mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=10_000_000,
               max_iterations=1,
-            #   return_map=lambda trace: {"start": trace["start"]}
+              mcmc_collect_for_all_traces=True,
+              mcmc_optimise_memory_with_early_return_map=True,
+              return_map=lambda trace: {"start": trace["start"]}
 )
 
 t0 = time()
@@ -127,7 +128,7 @@ gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
 gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
 gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf.npy")
 
-show_plots = True
+show_plots = False
 if show_plots:
     slp = result.get_slp(lambda slp: find_t_max(slp) == 2)
     assert slp is not None
@@ -173,7 +174,7 @@ if show_plots:
     plt.show()
 
 #%%
-start_weighted_samples, _ = result.get_samples_for_address("start", sample_ixs=slice(5000,None)) # burn-in
+start_weighted_samples, _ = result.get_samples_for_address("start", sample_ixs=slice(1000,None)) # burn-in
 assert start_weighted_samples is not None
 start_samples, start_weights = start_weighted_samples.get()
 

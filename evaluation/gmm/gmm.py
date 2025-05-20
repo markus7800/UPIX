@@ -85,7 +85,7 @@ m.set_slp_sort_key(find_K)
 class RJMCMCTransitionProbEstimate(LogWeightEstimate):
     transition_log_probs: Dict[Any, FloatArray]
     n_samples: int
-    def combine_estimate(self, other: LogWeightEstimate) -> "RJMCMCTransitionProbEstimate":
+    def combine(self, other: LogWeightEstimate) -> "RJMCMCTransitionProbEstimate":
         assert isinstance(other, RJMCMCTransitionProbEstimate)
 
         n_combined_samples = self.n_samples + other.n_samples
@@ -99,7 +99,7 @@ class RJMCMCTransitionProbEstimate(LogWeightEstimate):
 
         return RJMCMCTransitionProbEstimate(new_transition_log_probs, n_combined_samples)
 
-class DCCConfig(MCDCC[T]):
+class DCCConfig(MCMCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         return MCMCSteps(
             MCMCStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
@@ -133,6 +133,7 @@ class DCCConfig(MCDCC[T]):
         last_inference_result = self.inference_results[slp][-1]
         assert isinstance(last_inference_result, MCMCInferenceResult)
         assert not self.config.get("mcmc_optimise_memory_with_early_return_map", False)
+        assert last_inference_result.value_tree is not None
         traces: Trace = last_inference_result.value_tree[0]
         lps: FloatArray = last_inference_result.value_tree[1]
         traces = jax.tree.map(_unstack_sample_data, traces)

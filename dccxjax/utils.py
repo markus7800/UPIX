@@ -42,11 +42,22 @@ def maybe_jit_warning(tracker: JitVariationTracker, input: str):
             logger.debug(msg)
     tracker.add_variation(input)
 
-def to_shaped_arrays(tree):
-    return jax.tree.map(lambda v: full_lower(v).aval, tree)
+# def to_shaped_arrays(tree):
+#     return jax.tree.map(lambda v: full_lower(v).aval, tree)
+
+# def to_shaped_arrays_str_short(tree):
+#     return jax.tree.map(lambda v: full_lower(v).str_short(), tree)
+
+def pprint_dtype_shape_of_tree(tree):
+    def _dtype_shape(v):
+        v = full_lower(v)
+        shape_str = ",".join(f"{d:_}" for d in v.shape)
+        return f"{v.dtype}[{shape_str}]"
+    s = repr(jax.tree.map(_dtype_shape, tree))
+    return s.replace("'", "")
 
 def to_shaped_arrays_str_short(tree):
-    return jax.tree.map(lambda v: full_lower(v).str_short(), tree)
+    return pprint_dtype_shape_of_tree(tree)
 
 JAX_TREE = TypeVar("JAX_TREE")
 def broadcast_jaxtree(tree: JAX_TREE, sizes: Sequence[int]) -> JAX_TREE:
