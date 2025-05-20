@@ -99,6 +99,13 @@ class DCCConfig(MCMCDCC[T]):
             else:
                 # we are so far past maximum likely SLP that we can safely break
                 break
+    
+    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
+        if self.iteration_counter == self.max_iterations:
+            inactive_slps.extend(active_slps)
+            active_slps.clear()
+        else:
+            assert not self.mcmc_optimise_memory_with_early_return_map
 
 
 dcc_obj = DCCConfig(m, verbose=2,
