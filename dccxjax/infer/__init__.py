@@ -7,3 +7,4 @@ from .metropolis import *
 from .hmc import *
 from .lmh_global import *
 from .variable_selector import *
+from .mcdcc import *

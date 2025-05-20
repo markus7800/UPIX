@@ -1,4 +1,4 @@
-from dccxjax.infer.dcc2 import MCMCDCCResult
+from dccxjax.infer.mcdcc import MCDCCResult
 import matplotlib.pyplot as plt
 import jax
 from typing import Optional
@@ -9,7 +9,7 @@ __all__ = [
     "plot_trace",
 ]
 
-def plot_histogram(result: MCMCDCCResult, address: str):
+def plot_histogram(result: MCDCCResult, address: str):
     weighted_samples, undef_prob = result.get_samples_for_address(address)
 
     fig, axs = plt.subplots(1,2,sharey="all",width_ratios=[0.9,0.1])
@@ -30,7 +30,7 @@ def plot_histogram(result: MCMCDCCResult, address: str):
 
     return fig
 
-def plot_histogram_by_slp(result: MCMCDCCResult, address: str, N: Optional[int] = None):
+def plot_histogram_by_slp(result: MCDCCResult, address: str, N: Optional[int] = None):
 
     slps = result.get_slps_where_address_exists(address)
     slps = sorted(slps, key=lambda slp: slp.sort_key())
@@ -84,7 +84,7 @@ def plot_histogram_by_slp(result: MCMCDCCResult, address: str, N: Optional[int] 
     return fig
 
 
-def plot_trace(result: MCMCDCCResult, address: str):
+def plot_trace(result: MCDCCResult, address: str):
     slps = result.get_slps_where_address_exists(address)
     slps = sorted(slps, key=lambda slp: slp.sort_key())
     Z = result.get_log_weight_normaliser()

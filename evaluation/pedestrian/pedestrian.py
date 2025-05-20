@@ -16,7 +16,6 @@ from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List
 from time import time
-from dccxjax.infer.dcc2 import *
 
 import logging
 setup_logging(logging.WARNING)
@@ -70,7 +69,7 @@ def formatter(slp: SLP):
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_t_max)
 
-class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
+class DCCConfig(MCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         # regime = MCMCSteps(
         #     MCMCStep(PrefixSelector("step"), RandomWalk(lambda x: dist.TwoSidedTruncatedDistribution(dist.Normal(x, 0.2), -1.,1.), sparse_numvar=2)),

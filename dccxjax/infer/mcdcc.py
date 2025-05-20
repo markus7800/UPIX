@@ -14,12 +14,17 @@ from ..utils import broadcast_jaxtree
 from functools import reduce
 from .lmh_global import lmh
 from .variable_selector import AllVariables, VariableSelector
+from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC
 
-class InferenceResult(ABC):
-    @abstractmethod
-    def concatentate(self, other: "InferenceResult") -> "InferenceResult":
-        # fold left
-        raise NotImplementedError
+__all__ = [
+    "MCDCC",
+    "DCC_COLLECT_TYPE",
+    "T",
+    "MCMCInferenceResult",
+    "LogWeightEstimateFromPrior",
+]
+
+T = TypeVar("T")
 
 @dataclass
 class MCMCInferenceResult(InferenceResult):
@@ -42,11 +47,7 @@ class MCMCInferenceResult(InferenceResult):
         last_state = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), self.value_tree, other.value_tree)
         return MCMCInferenceResult(value_tree, last_state, self.n_chains, self.n_samples_per_chain + other.n_samples_per_chain)
     
-class LogWeightEstimate(ABC):
-    @abstractmethod
-    def combine_estimate(self, other: "LogWeightEstimate") -> "LogWeightEstimate":
-        raise NotImplementedError
-    
+
 
 @dataclass
 class LogWeightEstimateFromPrior(LogWeightEstimate):
@@ -65,102 +66,6 @@ class LogWeightEstimateFromPrior(LogWeightEstimate):
         return LogWeightEstimateFromPrior(log_Z, self.ESS + other.ESS, frac_in_support, n_combined_samples)
 
 
-DCC_RESULT_TYPE = TypeVar("DCC_RESULT_TYPE")            
-
-class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
-    def __init__(self, model: Model, *ignore, verbose=0, **config_kwargs) -> None:
-        if ignore:
-            raise TypeError
-        
-        self.model = model
-        self.config: Dict[str, Any] = config_kwargs
-
-        self.verbose = verbose
-
-    @abstractmethod
-    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
-        raise NotImplementedError
-    
-    @abstractmethod
-    def run_inference(self, slp: SLP, rng_key: PRNGKey) -> InferenceResult:
-        raise NotImplementedError
-    
-    @abstractmethod
-    def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
-        raise NotImplementedError
-    
-    @abstractmethod
-    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
-        raise NotImplementedError
-    
-    @abstractmethod
-    def combine_results(self, inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]]) -> DCC_RESULT_TYPE:
-        pass
-
-
-    def add_to_inference_results(self, slp: SLP, inference_result: InferenceResult):
-        if slp not in self.inference_results:
-            self.inference_results[slp] = []
-        self.inference_results[slp].append(inference_result)
-
-    def get_inference_results(self, slp: SLP):
-        if slp not in self.inference_results:
-            self.inference_results[slp] = []
-        return self.inference_results[slp]
-
-    def add_to_log_weight_estimates(self, slp: SLP, log_weight_estimate: LogWeightEstimate):
-        if slp not in self.log_weight_estimates:
-            self.log_weight_estimates[slp] = []
-        self.log_weight_estimates[slp].append(log_weight_estimate)
-
-    def get_log_weight_estimates(self, slp: SLP):
-        if slp not in self.log_weight_estimates:
-            self.log_weight_estimates[slp] = []
-        return self.log_weight_estimates[slp]
-        
-    
-    def run(self, rng_key: PRNGKey):
-        # t0 = time()
-        if self.verbose >= 2:
-            tqdm.write("Start DCC:")
-
-        self.active_slps: List[SLP] = []
-        self.inactive_slps: List[SLP] = []
-
-        self.inference_method_cache: Dict[SLP, Any] = dict()
-
-        self.inference_results: Dict[SLP, List[InferenceResult]] = dict()
-        self.log_weight_estimates: Dict[SLP, List[LogWeightEstimate]] = dict()        
-
-        rng_key, init_key = jax.random.split(rng_key)
-        self.initialise_active_slps(self.active_slps, self.inactive_slps, init_key)
-
-        self.iteration_counter = 0
-
-        while len(self.active_slps) > 0:
-            self.iteration_counter += 1
-            if self.verbose >= 2:
-                tqdm.write(f"Iteration {self.iteration_counter}:")
-
-            for slp in self.active_slps:
-
-                rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
-                
-                inference_result = self.run_inference(slp, slp_inference_key)
-                self.add_to_inference_results(slp, inference_result)
-
-                log_weight_estimate = self.estimate_log_weight(slp, slp_weight_estimate_key)
-                self.add_to_log_weight_estimates(slp, log_weight_estimate)
-
-            rng_key, update_key = jax.random.split(rng_key)
-            self.update_active_slps(self.active_slps, self.inactive_slps, self.inference_results, self.log_weight_estimates, update_key)
-        
-        combined_result = self.combine_results(self.inference_results, self.log_weight_estimates)
-        # t1 = time()
-        # if self.verbose >= 2:
-        #     tqdm.write(f"Finished in {t1-t0:.3f}s")
-        return combined_result
-
 DCC_COLLECT_TYPE = TypeVar("DCC_COLLECT_TYPE")
 DCC_RESULT_QUERY_TYPE = TypeVar("DCC_RESULT_QUERY_TYPE")
 
@@ -172,16 +77,16 @@ class WeightedSample(Generic[DCC_COLLECT_TYPE]):
         return f"WeightedSample({self.values})"
 
 @dataclass
-class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
+class MCDCCResult(Generic[DCC_COLLECT_TYPE]):
     slp_log_weights: Dict[SLP, FloatArray]
     slp_weighted_samples: Dict[SLP, WeightedSample[DCC_COLLECT_TYPE]]
 
     def __repr__(self) -> str:
-        return f"MCMC-DCCResult({len(self.slp_log_weights)} SLPs)"
+        return f"MC-DCCResult({len(self.slp_log_weights)} SLPs)"
     
     def pprint(self):
         log_Z_normaliser = self.get_log_weight_normaliser()
-        print("MCMC-DCCResult {")
+        print("MC-DCCResult {")
         for slp, log_weight in self.slp_log_weights.items():
             weighted_sample = self.slp_weighted_samples[slp]
             print(f"\t{slp.formatted()}: {weighted_sample.values} with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
@@ -299,8 +204,7 @@ class MCMCDCCResult(Generic[DCC_COLLECT_TYPE]):
             lambda x: x[sample_ixs,chain_ixs]
         )
     
-
-class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_TYPE]):
+class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
     def __init__(self, model: Model, return_map: Callable[[Trace], DCC_COLLECT_TYPE] = lambda trace: trace, *ignore, verbose=0, **config_kwargs) -> None:
         super().__init__(model, verbose=verbose, *ignore, **config_kwargs)
         self.return_map = return_map
@@ -516,12 +420,11 @@ class MCMCDCC(AbstractDCC[MCMCDCCResult[DCC_COLLECT_TYPE]], Generic[DCC_COLLECT_
 
         return slp_weighted_samples
 
-    def combine_results(self, inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]]) -> MCMCDCCResult[DCC_COLLECT_TYPE]:
+    def combine_results(self, inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]]) -> MCDCCResult[DCC_COLLECT_TYPE]:
         combined_inference_results: Dict[SLP, InferenceResult] = {slp: reduce(lambda x, y: x.concatentate(y), results) for slp, results in inference_results.items()}
         combined_log_weight_estimates: Dict[SLP, LogWeightEstimate] = {slp: reduce(lambda x, y: x.combine_estimate(y), results) for slp, results in log_weight_estimates.items()}
 
         slp_log_weights = self.compute_slp_log_weight(combined_log_weight_estimates)
         slp_weighted_samples = self.get_slp_weighted_samples(combined_inference_results)
 
-        return MCMCDCCResult(slp_log_weights, slp_weighted_samples)
-    
+        return MCDCCResult(slp_log_weights, slp_weighted_samples)

@@ -10,8 +10,9 @@ from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List
 from time import time
-from dccxjax.infer.dcc2 import *
 from dccxjax.types import _unstack_sample_data
+from typing import Any
+from dataclasses import dataclass
 
 from gibbs_proposals import *
 from reversible_jumps import *
@@ -98,7 +99,7 @@ class RJMCMCTransitionProbEstimate(LogWeightEstimate):
 
         return RJMCMCTransitionProbEstimate(new_transition_log_probs, n_combined_samples)
 
-class DCCConfig(MCMCDCC[DCC_COLLECT_TYPE]):
+class DCCConfig(MCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         return MCMCSteps(
             MCMCStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),

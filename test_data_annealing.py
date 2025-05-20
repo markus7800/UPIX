@@ -33,11 +33,11 @@ print(log_Z, jnp.trapezoid(posterior, x_range))
 # plt.plot(x_range, posterior)
 # plt.show()
 
-temering_schedule = tempering_schedule_from_sigmoid(jnp.linspace(-25,25,10))
-data_annealing_schedule = None
+# temering_schedule = tempering_schedule_from_sigmoid(jnp.linspace(-25,25,10))
+# data_annealing_schedule = None
 
-# temering_schedule = None
-# data_annealing_schedule = data_annealing_schedule_from_range({"y": range(0,len(obs),1)})
+temering_schedule = None
+data_annealing_schedule = data_annealing_schedule_from_range({"y": range(0,len(obs),1)})
 
 
 n_particles = 1_000_000
@@ -57,11 +57,11 @@ last_state, ess = smc_obj.run(jax.random.PRNGKey(0), StackedTrace(particles, n_p
 last_state.log_particle_weights.block_until_ready()
 print(get_log_Z_ESS(last_state.log_particle_weights))
 
-# plt.hist(last_state.particles["x"], weights=jnp.exp(normalise_log_weights(last_state.log_particle_weights)), density=True, bins=100)
-# plt.plot(x_range, posterior)
-# plt.show()
-# plt.plot(ess)
-# plt.show()
+plt.hist(last_state.particles["x"], weights=jnp.exp(normalise_log_weights(last_state.log_particle_weights)), density=True, bins=100)
+plt.plot(x_range, posterior)
+plt.show()
+plt.plot(ess)
+plt.show()
 
 # data_annealing_schedule = data_annealing_schedule_from_range({"y": range(0,10,3)})
 # print(data_annealing_schedule)
