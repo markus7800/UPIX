@@ -4,6 +4,7 @@ import jax
 from jax._src.core import full_lower
 import contextlib
 from typing import Sequence, TypeVar, List
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 __all__ = [
     "setup_logging",
@@ -31,13 +32,14 @@ class JitVariationTracker:
 
 def maybe_jit_warning(tracker: JitVariationTracker, input: str):
     msg = f"Compile {tracker.name} and for input: {input}"
-    if tracker.has_variation():
-        if logger.level <= logging.DEBUG:
-            tabs = " " * (len(msg) - len(input) + len("dccxjax - WARNING: ") - 9)
-            msg += "".join([f"\n{tabs}prev-input: {prev_input}" for prev_input in tracker.variations])
-        logger.warning("Re-" + msg)
-    else:
-        logger.debug(msg)
+    with logging_redirect_tqdm(loggers=[logger]):
+        if tracker.has_variation():
+            if logger.level <= logging.DEBUG:
+                tabs = " " * (len(msg) - len(input) + len("dccxjax - WARNING: ") - 9)
+                msg += "".join([f"\n{tabs}prev-input: {prev_input}" for prev_input in tracker.variations])
+            logger.warning("Re-" + msg)
+        else:
+            logger.debug(msg)
     tracker.add_variation(input)
 
 def to_shaped_arrays(tree):

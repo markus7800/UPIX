@@ -180,17 +180,23 @@ class ProgressbarManager:
             self.tqdm_bar.set_description(f"Running {self.desc}", refresh=True)
             self.tqdm_bar.update(increment)
 
-    def _update_tqdm(self, increment):
+    def _update_tqdm(self, iternum, increment, remainder):
         if self.tqdm_bar is not None:
+            iternum = int(iternum)
             increment = int(increment)
-            self.tqdm_bar.update(increment)
+            remainder = int(remainder)
+            # tqdm_auto.write(f"update tqdm {iternum} inc={increment}")
+            if iternum == self.num_samples:
+                if remainder == 0:
+                    # update and close event happen at same time
+                    self.tqdm_bar.update(increment)
+                else:
+                    self.tqdm_bar.update(remainder)
+                self.tqdm_bar.close()
+                self.tqdm_bar = None
+            else:
+                self.tqdm_bar.update(increment)
 
-    def _close_tqdm(self, increment):
-        if self.tqdm_bar is not None:
-            increment = int(increment)
-            self.tqdm_bar.update(increment)
-            self.tqdm_bar.close()
-            self.tqdm_bar = None
 
 
 MCMC_COLLECT_TYPE = TypeVar("MCMC_COLLECT_TYPE")
@@ -349,20 +355,8 @@ def _add_progress_bar(kernel: Callable, desc: str, num_samples: int) -> Tuple[Pr
         
         iter_num = iter_num + 1 # all chains are at the same iteration, init iteration=0
         _ = jax.lax.cond(
-            iter_num == 1,
-            lambda _: jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, print_rate),
-            lambda _: None,
-            operand=None,
-        )
-        _ = jax.lax.cond(
-            iter_num % print_rate == 0,
-            lambda _: jax.experimental.io_callback(progressbar_mngr._update_tqdm, None, print_rate),
-            lambda _: None,
-            operand=None,
-        )
-        _ = jax.lax.cond(
-            iter_num == num_samples,
-            lambda _: jax.experimental.io_callback(progressbar_mngr._close_tqdm, None, remainder),
+            (iter_num % print_rate == 0) | (iter_num == num_samples),
+            lambda _: jax.experimental.io_callback(progressbar_mngr._update_tqdm, None, iter_num, print_rate, remainder),
             lambda _: None,
             operand=None,
         )
@@ -374,8 +368,14 @@ def _add_progress_bar(kernel: Callable, desc: str, num_samples: int) -> Tuple[Pr
     
     return progressbar_mngr, wrapped_kernel
 
-def add_progress_bar_to_mcmc_kernel(kernel: MCMCKernel[MCMC_COLLECT_TYPE], slp_name: str, num_samples: int) -> Tuple[ProgressbarManager, MCMCKernel[MCMC_COLLECT_TYPE]]:
-    return _add_progress_bar(kernel, slp_name, num_samples)
+def add_progress_bar_to_mcmc_kernel(kernel: MCMCKernel[MCMC_COLLECT_TYPE], slp_name: str, num_samples: int) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
+    progressbar_mngr, kernel_with_bar = _add_progress_bar(kernel, slp_name, num_samples)
+    @jax.jit
+    def scan_with_bar(init: MCMCState, xs: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
+        progressbar_mngr.start_progress()
+        jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)
+        return jax.lax.scan(kernel_with_bar, init, xs)
+    return scan_with_bar
 
 
 class MCMC(Generic[MCMC_COLLECT_TYPE]):
@@ -426,11 +426,10 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             state = MCMCState(jnp.array(0, int), jnp.array(1.0), dict(), state.position, state.log_prob, state.carry_stats, infos)
 
         if self.progress_bar:
-            progress_bar_mngr, kernel = add_progress_bar_to_mcmc_kernel(self.kernel, "MCMC for "+self.slp.formatted(), n_samples_per_chain)
-            progress_bar_mngr.start_progress()
+            scan_with_pbar = add_progress_bar_to_mcmc_kernel(self.kernel, "MCMC for "+self.slp.formatted(), n_samples_per_chain)
+            last_state, return_values = scan_with_pbar(state, keys)
         else:
-            kernel = self.kernel
-        last_state, return_values = jax.lax.scan(kernel, state, keys)
+            last_state, return_values = jax.lax.scan(self.kernel, state, keys)
 
         return last_state, return_values
 

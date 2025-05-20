@@ -7,6 +7,7 @@ from ..utils import broadcast_jaxtree
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
 from jax.flatten_util import ravel_pytree
+import jax.experimental
 
 # from blackjax/smc/resampling.py
 def sorted_uniforms(rng_key: PRNGKey, n) -> FloatArray:
@@ -204,8 +205,14 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
     return smc_step
 
 
-def add_progress_bar_to_smc_kernel(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]], slp_name: str, num_samples: int) -> Tuple[ProgressbarManager, Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]]:
-    return _add_progress_bar(kernel, slp_name, num_samples)
+def add_progress_bar_to_smc_kernel(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]], slp_name: str, num_samples: int) -> Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]:
+    progressbar_mngr, kernel_with_bar = _add_progress_bar(kernel, slp_name, num_samples)
+    # @jax.jit
+    def scan_with_bar(init: SMCState, xs: SMCStepData) -> Tuple[SMCState,FloatArray]:
+        progressbar_mngr.start_progress()
+        jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)
+        return jax.lax.scan(kernel_with_bar, init, xs)
+    return scan_with_bar
 
 
 class SMC:
@@ -273,16 +280,13 @@ class SMC:
 
         ta_log_likelihood = jax.lax.zeros_like_array(log_prob) if self.reweighting_type == ReweightingType.Bootstrap else None
 
+        init_state = SMCState(jnp.array(0,int), particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infos)
+        smc_data = SMCStepData(smc_keys, self.tempereture_schedule.temperature, self.data_annealing_schedule.data_annealing)
         if self.progress_bar:
-            progressbar_mngr, smc_step = add_progress_bar_to_smc_kernel(self.smc_step, "SMC for "+self.slp.formatted(), self.n_steps)
-            progressbar_mngr.start_progress()
+            scan_with_pbar = add_progress_bar_to_smc_kernel(self.smc_step, "SMC for "+self.slp.formatted(), self.n_steps)
+            last_state, ess = scan_with_pbar(init_state, smc_data)
         else:
-            smc_step = self.smc_step
-
-        last_state, ess = jax.lax.scan(smc_step,
-            SMCState(jnp.array(0,int), particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infos),
-            SMCStepData(smc_keys, self.tempereture_schedule.temperature, self.data_annealing_schedule.data_annealing)
-        )
+            last_state, ess = jax.lax.scan(self.smc_step, init_state, smc_data)
 
         return last_state, ess 
     
