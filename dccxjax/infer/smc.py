@@ -126,7 +126,7 @@ def tempering_schedule_from_array(arr: FloatArray):
     return TemperetureSchedule(arr, arr.shape[0])
 
 def tempering_schedule_from_sigmoid(linspace: FloatArray):
-    arr = sigmoid(linspace)
+    arr = sigmoid(linspace).at[-1].set(1.)
     return tempering_schedule_from_array(arr)
 
 class SMCState(NamedTuple):
@@ -288,10 +288,8 @@ class SMC:
     def run(self, rng_key: PRNGKey, particles: StackedTrace, log_prob: Optional[FloatArray] = None):
         # no tempering / annealing weights, we require that this is proper weighting for input particles
         if log_prob is None:
-            first_data_annealing = self.data_annealing_schedule.prior_mask()
-            log_prior, _, path_condition = jax.vmap(self.slp._log_prior_likeli_pathcond, in_axes=(0,None))(particles.data, first_data_annealing)
-            log_particle_weights = jax.lax.select(path_condition, log_prior, jax.lax.zeros_like_array(log_prior))
-            log_prob = log_prior
+            prior_data_annealing = self.data_annealing_schedule.prior_mask()
+            log_prob = jax.vmap(self.slp.log_prob, in_axes=(0,None,None))(particles.data, jnp.array(0.,float), prior_data_annealing)
 
         # print(log_particle_weights)
         log_particle_weights = jax.lax.zeros_like_array(log_prob)
@@ -318,14 +316,13 @@ class SMC:
 
 
 def get_log_Z_ESS(log_weights: FloatArray):
-    log_Z = jax.scipy.special.logsumexp(log_weights) - jnp.log(log_weights.size)
-    ESS = jnp.exp(jax.scipy.special.logsumexp(log_weights)*2 - jax.scipy.special.logsumexp(log_weights*2))
+    log_Z = jax.scipy.special.logsumexp(log_weights) - jax.lax.log(log_weights.size)
+    ESS = jax.lax.exp(jax.scipy.special.logsumexp(log_weights)*2 - jax.scipy.special.logsumexp(log_weights*2))
     return log_Z, ESS
 
 def get_Z_ESS(log_weights: FloatArray):
-    Z = jnp.exp(jax.scipy.special.logsumexp(log_weights)) / log_weights.size
-    ESS = jnp.exp(jax.scipy.special.logsumexp(log_weights)*2 - jax.scipy.special.logsumexp(log_weights*2))
-    return Z, ESS
+    log_Z, ESS = get_log_Z_ESS(log_weights)
+    return jax.lax.exp(log_Z), ESS
 
 def normalise_log_weights(log_weights: FloatArray):
     return log_weights - jax.scipy.special.logsumexp(log_weights)

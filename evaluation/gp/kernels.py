@@ -216,20 +216,18 @@ class Times(CompositiveGPKernel):
 
 def transform_log_normal(z: FloatArrayLike, mu: FloatArrayLike, sigma: FloatArrayLike):
     return jax.lax.exp(mu + sigma*z)
-def untransform_log_normal(param: FloatArrayLike, mu: FloatArrayLike, sigma: FloatArrayLike):
-    return (jax.lax.log(param) - mu) / sigma
-
 def transform_logit_normal(z: FloatArrayLike, scale: FloatArrayLike, mu: FloatArrayLike, sigma: FloatArrayLike):
     return scale * 1 / (1 + jax.lax.exp(-(mu + sigma*z)))
-def untransform_logit_normal(param: FloatArrayLike, scale: FloatArrayLike, mu: FloatArrayLike, sigma: FloatArrayLike):
-    return (jax.lax.log(param / (scale - param)) - mu) / sigma
-
 def transform_param(field: str, z: FloatArrayLike):
     if field == "gamma":
         return transform_logit_normal(z, 2, 0, 1)
     else:
         return transform_log_normal(z, -1.5, 1.) # if z is Normal(0,1) then param is LogNormal(-1.5, 1.)
 
+def untransform_logit_normal(param: FloatArrayLike, scale: FloatArrayLike, mu: FloatArrayLike, sigma: FloatArrayLike):
+    return (jax.lax.log(param / (scale - param)) - mu) / sigma
+def untransform_log_normal(param: FloatArrayLike, mu: FloatArrayLike, sigma: FloatArrayLike):
+    return (jax.lax.log(param) - mu) / sigma
 def untransform_param(field: str, param: FloatArrayLike):
     if field == "gamma":
         return untransform_logit_normal(param, 2, 0, 1)

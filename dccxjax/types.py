@@ -69,6 +69,8 @@ class SampleValues(Generic[VALUE_TYPE]):
         return self.data
     def get_selection(self, sample_ix) -> VALUE_TYPE:
         return jax.tree.map(lambda v: v[sample_ix,...], self.data)
+    def get_ix(self, sample_ix: int):
+        return self.get_selection(sample_ix)
     def get_subset(self, sample_ix) -> "SampleValues[VALUE_TYPE]":
         sub_data = self.get_selection(sample_ix)
         leafs, _ = jax.tree.flatten(sub_data)
@@ -127,15 +129,17 @@ class StackedSampleValues(Generic[VALUE_TYPE]):
         return self.data
     def get_selection(self, sample_ix, chain_ix) -> VALUE_TYPE:
         return jax.tree.map(lambda v: v[sample_ix,chain_ix,...], self.data)
-    def get_stacked(self, sample_ix) -> StackedSampleValue[VALUE_TYPE]:
+    def get_stacked(self, sample_ix: int) -> StackedSampleValue[VALUE_TYPE]:
         return StackedSampleValue(jax.tree.map(lambda v: v[sample_ix,...], self.data), self.T)
-    def get_chains(self, chain_ix) -> SampleValues[VALUE_TYPE]:
+    def get_chain(self, chain_ix: int) -> SampleValues[VALUE_TYPE]:
         return SampleValues(jax.tree.map(lambda v: v[:,chain_ix,...], self.data), self.N)
     def get_subset(self, sample_ix, chain_ix) -> "StackedSampleValues[VALUE_TYPE]":
         sub_data = self.get_selection(sample_ix, chain_ix)
         leafs, _ = jax.tree.flatten(sub_data)
         N, T = leafs[0].shape[0:2]
         return StackedSampleValues(sub_data, N, T)
+    def get_chains(self, chain_ix) -> "StackedSampleValues[VALUE_TYPE]":
+        return self.get_subset(slice(None), chain_ix)
 
 StackedTraces = StackedSampleValues[Trace]
 

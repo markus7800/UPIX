@@ -25,6 +25,7 @@ __all__ = [
     "init_inference_infos",
     "init_inference_infos_for_chains",
     "summarise_mcmc_info",
+    "summarise_mcmc_infos",
     "pprint_mcmc_regime"
 ]
 
@@ -34,6 +35,12 @@ InferenceInfos = List[InferenceInfo]
 @dispatch(Any, int)
 def summarise_mcmc_info(info, n_samples: int) -> str:
     raise NotImplementedError
+
+def summarise_mcmc_infos(infos: InferenceInfos, n_samples: int):
+    info_strs = []
+    for step, info in enumerate(infos):
+        info_strs.append(f"Step {step}: {summarise_mcmc_info(info, n_samples)}")
+    return "\n".join(info_strs)
 
 class CarryStats(TypedDict, total=False):
     position: Trace
@@ -177,7 +184,7 @@ class ProgressbarManager:
     def _init_tqdm(self, increment):
         if self.tqdm_bar is not None:
             increment = int(increment)
-            self.tqdm_bar.set_description(f"Running {self.desc}", refresh=True)
+            self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
             self.tqdm_bar.update(increment)
 
     def _update_tqdm(self, iternum, increment, remainder):
@@ -416,7 +423,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
     def run(self, rng_key: PRNGKey, init_positions: StackedTrace, log_prob: Optional[FloatArray] = None, *, n_samples_per_chain: int) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
         assert init_positions.T == self.n_chains
         if log_prob is None:
-            log_prob = jax.vmap(self.slp.log_prob)(init_positions.data)
+            log_prob = jax.vmap(self.slp.log_prob, in_axes=(0,None,None))(init_positions.data, self.temperature, self.data_annealing)
         else:
             assert log_prob.shape == (self.n_chains,)
 

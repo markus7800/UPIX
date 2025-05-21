@@ -203,7 +203,7 @@ class SLP:
 
         self._gen_likelihood_weight = _make_slp_gen_likelihood_weight(self, model, branching_decisions)
 
-        self._unconstrained_log_prior_likeli_pathcond= _make_slp_unconstrained_log_prior_likeli_pathcond(self, model, branching_decisions)
+        self._unconstrained_log_prior_likeli_pathcond = _make_slp_unconstrained_log_prior_likeli_pathcond(self, model, branching_decisions)
 
         # this is not jitted
         # self._transform_unconstrained_to_support = _make_slp_transform_unconstrained_to_support(self, model, branching_decisions)
@@ -258,10 +258,10 @@ class SLP:
         log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X, data_annealing)
         return jax.lax.select(path_condition, log_likelihood, jax.lax.full_like(log_likelihood, -jnp.inf))
     
-    def log_prob(self, X: Trace, data_annealing: AnnealingMask = dict()) -> FloatArray:
+    def log_prob(self, X: Trace, temperature: FloatArray = jnp.array(1.,float), data_annealing: AnnealingMask = dict()) -> FloatArray:
         assert self.decision_representative.keys() == X.keys()
         log_prior, log_likelihood, path_condition = self._log_prior_likeli_pathcond(X, data_annealing)
-        lp = log_prior + log_likelihood
+        lp = log_prior + temperature * log_likelihood
 
         # However, when transformed with vmap() to operate over a batch of predicates, cond is converted to select().
         # return jax.lax.cond(path_indicator(X), model_logprob, lambda _: -jnp.inf, X)
@@ -277,10 +277,10 @@ class SLP:
         log_prior, log_likelihood, path_condition, X_constrained = self._unconstrained_log_prior_likeli_pathcond(X_unconstrained, data_annealing)
         return jax.lax.select(path_condition, log_likelihood, jax.lax.full_like(log_likelihood, -jnp.inf)), X_constrained
     
-    def unconstrained_log_prob(self, X_unconstrained: Trace, data_annealing: AnnealingMask = dict()) -> Tuple[FloatArray, Trace]:
+    def unconstrained_log_prob(self, X_unconstrained: Trace, temperature: FloatArray = jnp.array(1.,float), data_annealing: AnnealingMask = dict()) -> Tuple[FloatArray, Trace]:
         assert self.decision_representative.keys() == X_unconstrained.keys()
         log_prior, log_likelihood, path_condition, X_constrained = self._unconstrained_log_prior_likeli_pathcond(X_unconstrained, data_annealing)
-        lp = log_prior + log_likelihood
+        lp = log_prior + temperature * log_likelihood
         return jax.lax.select(path_condition, lp, jax.lax.full_like(lp, -jnp.inf)), X_constrained
     
     def transform_to_constrained(self, X_unconstrained: Trace) -> Trace:
@@ -296,6 +296,13 @@ class SLP:
                 self.model()
                 return ctx.X_unconstrained
         return retrace_branching(_transform_to_unconstrained, self.branching_decisions)(X)[0]
+        
+    def generate(self, rng_key: PRNGKey, Y: Trace = dict()):
+        def _generate(rng_key: PRNGKey):
+            with GenerateCtx(rng_key, Y) as ctx:
+                self.model()
+                return ctx.X, ctx.log_likelihood + ctx.log_prior
+        return retrace_branching(_generate, self.branching_decisions)(rng_key)[0]
         
     def get_is_discrete_map(self):
         if self.is_discrete_map is None:

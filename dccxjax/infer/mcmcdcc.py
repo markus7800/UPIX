@@ -4,7 +4,7 @@ from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, Typ
 from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
 from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
 from dataclasses import dataclass
-from .mcmc import MCMCRegime, MCMC, MCMCState, summarise_mcmc_info
+from .mcmc import MCMCRegime, MCMC, MCMCState, summarise_mcmc_infos
 from .estimate_Z import estimate_log_Z_for_SLP_from_prior
 from time import time
 from copy import deepcopy
@@ -16,6 +16,7 @@ from .lmh_global import lmh
 from .variable_selector import AllVariables, VariableSelector
 from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC
 from .mcdcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, WeightedSample
+from textwrap import indent
 
 __all__ = [
     "MCMCDCC",
@@ -159,9 +160,8 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         last_state, return_result = mcmc.run(rng_key, init_positions, init_log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
         if self.verbose >= 2 and self.mcmc_collect_inference_info:
             assert last_state.infos is not None
-            info_str = "MCMC Infos:"
-            for step, info in enumerate(last_state.infos):
-                info_str += f"\n\t Step {step}: {summarise_mcmc_info(info, self.mcmc_n_samples_per_chain)}"
+            info_str = "MCMC Infos:\n"
+            info_str += indent(summarise_mcmc_infos(last_state.infos, self.mcmc_n_samples_per_chain), "\t")
             tqdm.write(info_str)
         
         # TODO: only run MCMC on gpu and handle all result data on CPU

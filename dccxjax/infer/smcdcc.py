@@ -5,7 +5,7 @@ from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_repres
 from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
 from dataclasses import dataclass
 from .smc import SMC, DataAnnealingSchedule, TemperetureSchedule, ReweightingType, StratifiedResampling, ResampleType, ResampleTime
-from .mcmc import MCMCRegime, summarise_mcmc_info, MCMC
+from .mcmc import MCMCRegime, summarise_mcmc_infos, MCMC
 from .estimate_Z import estimate_log_Z_for_SLP_from_prior
 from time import time
 from copy import deepcopy
@@ -17,6 +17,7 @@ from .lmh_global import lmh
 from .variable_selector import AllVariables, VariableSelector
 from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC
 from .mcdcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, WeightedSample
+from textwrap import indent
 
 __all__ = [
     "SMCDCC"
@@ -141,9 +142,8 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
 
         if self.verbose >= 2 and self.smc_collect_inference_info:
             assert last_state.infos is not None
-            info_str = "Prior MCMC Infos:"
-            for step, info in enumerate(last_state.infos):
-                info_str += f"\n\t Step {step}: {summarise_mcmc_info(info, 1)}"
+            info_str = "Prior MCMC Infos:\n"
+            info_str += indent(summarise_mcmc_infos(last_state.infos, self.smc_prior_mcmc_n_steps), "\t")
             tqdm.write(info_str)
 
         return StackedTrace(last_state.position, mcmc.n_chains), last_state.log_prob
@@ -156,12 +156,14 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         init_positions, init_log_prob = self.produce_samples_from_prior(slp, prior_key)
 
         last_state, ess = smc.run(smc_key, init_positions, init_log_prob)
+        import matplotlib.pyplot as plt
+        plt.plot(ess)
+        plt.show()
         if self.verbose >= 2:
             if self.smc_collect_inference_info:
                 assert last_state.mcmc_infos is not None
-                info_str = "Rejuvination Infos:"
-                for step, info in enumerate(last_state.mcmc_infos):
-                    info_str += f"\n\t Step {step}: {summarise_mcmc_info(info, 1)}"
+                info_str = "Rejuvination Infos:\n"
+                info_str += indent(summarise_mcmc_infos(last_state.mcmc_infos, smc.n_steps), "\t")
                 tqdm.write(info_str)
         
         if self.smc_optimise_memory_with_early_return_map:
@@ -172,6 +174,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
     
 
     def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
+        # TODO we have to estimate prior log_Z here
         inference_results = self.inference_results.get(slp, [])
         if len(inference_results) > 0:
             last_result = inference_results[-1]

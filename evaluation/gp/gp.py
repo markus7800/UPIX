@@ -154,8 +154,18 @@ class SMCDCCConfig(SMCDCC[T]):
         active_slps.sort(key=self.model.slp_sort_key)
         print(f"{len(active_slps)=}")
 
+    def produce_samples_from_prior(self, slp: SLP, rng_key: PRNGKey) -> Tuple[StackedTrace, Optional[FloatArray]]:
+        Y: Trace = {addr: value  for addr,value in slp.decision_representative.items() if SuffixSelector("node_type").contains(addr)}    
+        particles, _ = jax.vmap(slp.generate, in_axes=(0,None))(jax.random.split(rng_key, self.smc_n_particles), Y)
+        return StackedTrace(particles, self.smc_n_particles), None
+    
     def get_SMC_rejuvination_kernel(self, slp: SLP) -> MCMCRegime:
-        regime = MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), HMC(10, 0.02))
+        # regime = MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), HMC(10, 0.02))
+        selector = PredicateSelector(lambda addr: not addr.endswith("node_type"))
+        regime = MCMCSteps(
+            MCMCStep(selector, RW(lambda _: dist.Normal(0.,1.), elementwise=True)),
+            MCMCStep(selector, HMC(10, 0.02))
+        )
         # pprint_mcmc_regime(regime, slp)
         return regime
     
@@ -164,11 +174,11 @@ class SMCDCCConfig(SMCDCC[T]):
     #     return data_annealing_schedule_from_range({"obs": range(step,len(ys),step)})
     
     def get_SMC_tempering_schedule(self, slp: SLP) -> Optional[TemperetureSchedule]:
-        return tempering_schedule_from_sigmoid(jnp.linspace(-15,15,10))
+        schedule = tempering_schedule_from_sigmoid(jnp.linspace(-5,5,100))
+        return schedule
 
 smc_dcc_obj = SMCDCCConfig(m, verbose=2,
     smc_n_particles=100,
-    smc_prior_mcmc_n_steps=1,
     smc_collect_inference_info=True,
 )
 
