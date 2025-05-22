@@ -61,12 +61,12 @@ def resampling_stratified(rng_key: PRNGKey, weights: FloatArray, num_samples: in
 
 from enum import Enum
 class ResampleType(Enum):
-    Never = 0
-    Adaptive = 1
-    Always = 2
+    Adaptive = 0
+    Always = 1
 class ResampleTime(Enum):
     BeforeMove = 0
     AfterMove = 1
+    Never = 2
 
 class ReweightingType(Enum):
     Bootstrap = 0
@@ -84,6 +84,8 @@ class SMCResampling(ABC):
 def MultinomialResampling(resample_type: ResampleType, resample_time: ResampleTime = ResampleTime.BeforeMove): return SMCResampling(resampling_multinomial, resample_type, resample_time)
 def StratifiedResampling(resample_type: ResampleType, resample_time: ResampleTime = ResampleTime.BeforeMove): return SMCResampling(resampling_stratified, resample_type, resample_time)
 def SystematicResampling(resample_type: ResampleType, resample_time: ResampleTime = ResampleTime.BeforeMove): return SMCResampling(resampling_systematic, resample_type, resample_time)
+def NoResampling(): return SMCResampling(resampling_systematic, ResampleType.Adaptive, ResampleTime.Never)
+
 
 class DataAnnealingSchedule(NamedTuple):
     data_annealing: AnnealingMask
@@ -142,7 +144,7 @@ class SMCStepData(NamedTuple):
     temperature: FloatArray
     data_annealing: AnnealingMask
 
-def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None]) -> Callable[[SMCState, SMCStepData],Tuple[SMCState,FloatArray]]:
+def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None], rejuvination_attempts: int) -> Callable[[SMCState, SMCStepData],Tuple[SMCState,FloatArray]]:
 
     def do_resample_fn(particles: Trace, log_prob: FloatArray, log_particle_weights: FloatArray, rng_key: PRNGKey):
         log_particle_weigths_sum = jax.scipy.special.logsumexp(log_particle_weights)
@@ -156,9 +158,7 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
         return particles, log_prob, log_particle_weights
 
     def maybe_resample(particles: Trace, log_prob: FloatArray, log_particle_weights: FloatArray, log_ess: FloatArray, rng_key: PRNGKey):
-        if resampling.resample_type == ResampleType.Never:
-            return particles, log_prob, log_particle_weights
-        elif resampling.resample_type == ResampleType.Always:
+        if resampling.resample_type == ResampleType.Always:
             return do_resample_fn(particles, log_prob, log_particle_weights, rng_key)
         elif resampling.resample_type == ResampleType.Adaptive:
             return jax.lax.cond(log_ess < jax.lax.log(n_particles / 2.0), do_resample_fn, no_resample_fn, particles, log_prob, log_particle_weights, rng_key)
@@ -193,15 +193,17 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
             raise NotImplementedError
         
 
-        # jax.debug.print("{ls} ta_log_prob_current={a} smc_state.ta_log_prob={b} log_w_hat={c}", ls = jax.scipy.special.logsumexp(smc_state.log_particle_weights), a=ta_log_prob_current[:5], b=smc_state.ta_log_prob[:5], c=log_w_hat[:5])
-
         log_particle_weights = smc_state.log_particle_weights + log_w_hat
         
+        # jax.debug.print("old_weights={o}\nta_log_prob_current={a}\nsmc_state.ta_log_prob={b}\nlog_w_hat={c}\nnew_weights={n}",  o=smc_state.log_particle_weights, a=ta_log_prob_current, b=smc_state.ta_log_prob, c=log_w_hat, n=log_particle_weights)
+
         log_ess = jax.scipy.special.logsumexp(log_particle_weights) * 2 - jax.scipy.special.logsumexp(log_particle_weights*2)
+
 
         # resample (imo preferrable because duplicated positions will be rejuvinated)
         if resampling.resample_time == ResampleTime.BeforeMove:
             particles_current, ta_log_prob_current, log_particle_weights = maybe_resample(particles_current, ta_log_prob_current, log_particle_weights, log_ess, resample_key)
+        
 
         # rejuvinate
         current_mcmc_state = MCMCState(
@@ -213,11 +215,12 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
             CarryStats(), # to support carry stats we would have to recompute here (e.g. unconstrained_log_prob)
             smc_state.mcmc_infos
         )
-        next_mcmc_state, _ = rejuvinate_kernel(current_mcmc_state, rejuvinate_key)
+        if rejuvination_attempts == 1:
+            next_mcmc_state, _ = rejuvinate_kernel(current_mcmc_state, rejuvinate_key)
+        else:
+            next_mcmc_state, _ = jax.lax.scan(rejuvinate_kernel, current_mcmc_state, jax.random.split(rejuvinate_key, rejuvination_attempts))
         particles = next_mcmc_state.position
         ta_log_prob = next_mcmc_state.log_prob
-        # jax.debug.print("x={x} lp={a}", x=particles["x"][:5], a=ta_log_prob[:5])
-        # jax.debug.print("{ls} ta_log_prob_current={a} smc_state.ta_log_prob={b} log_w_hat={c} x={x} lp={d}", ls = jax.scipy.special.logsumexp(smc_state.log_particle_weights), a=ta_log_prob_current[:5], b=smc_state.ta_log_prob[:5], c=log_w_hat[:5], x=particles["x"][:5], d=ta_log_prob[:5])
 
 
         # resample (only llorente2023 puts it after rejuvinate)
@@ -250,6 +253,7 @@ class SMC:
                  reweighting_type: ReweightingType,
                  resampling: SMCResampling,
                  rejuvination_regime: MCMCRegime,
+                 rejuvination_attempts: int = 1,
                  *,
                  collect_inference_info: bool = False,
                  progress_bar: bool = False) -> None:
@@ -264,6 +268,7 @@ class SMC:
         self.rejuvination_regime = rejuvination_regime
         self.rejuvination_kernel: MCMCKernel[None] = rejuvination_kernel
         self.rejuvination_kernel_init_carry_stat_names = rejuv_init_carry_stat_names
+        self.rejuvination_attempts = rejuvination_attempts
         self.collect_inference_info = collect_inference_info
 
         assert tempereture_schedule is not None or data_annealing_schedule is not None
@@ -283,7 +288,7 @@ class SMC:
         self.reweighting_type = reweighting_type
         self.resampling = resampling
 
-        self.smc_step = get_smc_step(slp, n_particles, reweighting_type, resampling, rejuvination_kernel)
+        self.smc_step = get_smc_step(slp, n_particles, reweighting_type, resampling, rejuvination_kernel, self.rejuvination_attempts)
 
     def run(self, rng_key: PRNGKey, particles: StackedTrace, log_prob: Optional[FloatArray] = None):
         # no tempering / annealing weights, we require that this is proper weighting for input particles
@@ -316,7 +321,7 @@ class SMC:
 
 
 def get_log_Z_ESS(log_weights: FloatArray):
-    log_Z = jax.scipy.special.logsumexp(log_weights) - jax.lax.log(log_weights.size)
+    log_Z = jax.scipy.special.logsumexp(log_weights) - jax.lax.log(float(log_weights.size))
     ESS = jax.lax.exp(jax.scipy.special.logsumexp(log_weights)*2 - jax.scipy.special.logsumexp(log_weights*2))
     return log_Z, ESS
 

@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from dccxjax.distributions import Transform, Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE, TransformedDistribution
+from dccxjax.distributions import Transform, Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE, TransformedDistribution, MultivariateNormal, Normal
 import numpyro.distributions as numpyro_dists
 from typing import Any, Optional, Dict, Callable, cast, Tuple
 from abc import ABC, abstractmethod
@@ -74,9 +74,17 @@ AnnealingMask = Dict[str,BoolArray]
 def maybe_annealed_log_prob(address:str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], value: DIST_SUPPORT, annealing_masks: AnnealingMask):
     if address in annealing_masks:
         mask = annealing_masks[address]
-        lp = distribution.log_prob(value)
-        assert len(lp.shape) == 1, f"Data-annealing only supported for univariate distributions, got {lp.shape=}"
-        return jax.lax.select(mask, lp, jax.lax.zeros_like_array(lp)).sum()
+        if isinstance(distribution, MultivariateNormal) and len(value.shape) == 1:
+            assert isinstance(distribution.numpyro_base, numpyro_dists.MultivariateNormal)
+            cov_matrix_full: jax.Array = distribution.numpyro_base.covariance_matrix # type: ignore
+            cov_matrix_masked = jax.lax.select(mask.reshape(1,-1) & mask.reshape(-1,1), cov_matrix_full, jnp.eye(value.size))
+            lp = MultivariateNormal(covariance_matrix=cov_matrix_masked).log_prob(value)
+            lp -= jax.lax.select(mask, jax.lax.zeros_like_array(value), Normal(0.,1.).log_prob(value)).sum()
+            return lp
+        else:
+            lp = distribution.log_prob(value)
+            assert distribution.numpyro_base.event_dim == 0 and len(lp.shape) == 1, f"Data-annealing only supported for univariate distributions, got {lp.shape=}"
+            return jax.lax.select(mask, lp, jax.lax.zeros_like_array(lp)).sum()
     else:
         return distribution.log_prob(value).sum()
 

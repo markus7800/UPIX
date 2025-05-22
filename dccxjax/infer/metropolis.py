@@ -65,6 +65,7 @@ def rw_kernel_sparse(
         proposal_dist = proposer(current_position)
         proposal_key, mask_key, accept_key = jax.random.split(step_key,3)
         proposed_position = proposal_dist.sample(proposal_key)
+        assert proposed_position.shape == current_position.shape, f"Proposal distribution produces wrong shape: produced {proposed_position.shape} vs required {current_position.shape}"
 
         mask = jax.random.bernoulli(mask_key, p, proposed_position.shape)
         proposed_position = jax.lax.select(mask, proposed_position, current_position)

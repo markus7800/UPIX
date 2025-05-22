@@ -18,6 +18,8 @@ from data import get_data_autogp
 import logging
 setup_logging(logging.WARN)
 
+# NOISE_Z = -3
+NOISE_Z = None
 
 @model
 def prim_kernel(xs, ys):
@@ -28,9 +30,11 @@ def prim_kernel(xs, ys):
     period = transform_param("period", period_z)
     amplitude = transform_param("amplitude", amplitude_z)
     k = Periodic(lengthscale, period, amplitude)
-    # noise_z = sample("noise", dist.Normal(0.,1.))
-    # noise = transform_param("noise", noise_z)
-    noise = 1.0
+    if NOISE_Z:
+        noise_z = NOISE_Z
+    else:
+        noise_z = sample("noise", dist.Normal(0.,1.))
+    noise = transform_param("noise", noise_z)
     cov_matrix = k.eval_cov_vec(xs) + (noise + 1e-5) * jnp.eye(xs.size)
     sample("obs", dist.MultivariateNormal(covariance_matrix=cov_matrix), ys)
 
@@ -38,7 +42,7 @@ def get_kernel(X: Trace):
     lengthscale = transform_param("lengthscale", X["lengthscale"])
     period = transform_param("period", X["period"])
     amplitude = transform_param("amplitude", X["amplitude"])
-    noise = transform_param("noise", X["noise"]) if "noise" in X else 1.0
+    noise = transform_param("noise", X["noise"] if "noise" in X else NOISE_Z) 
     k = Periodic(lengthscale, period, amplitude)
     return k, noise
 
@@ -65,19 +69,23 @@ xs = jnp.linspace(0.,1.,10)
 
 
 xs, xs_val, ys, ys_val = get_data_autogp()
+xs = jax.random.permutation(jax.random.PRNGKey(0), xs)
+ys = jax.random.permutation(jax.random.PRNGKey(0), ys)
+
 
 slp = SLP_from_branchless_model(prim_kernel(xs, ys))
 # plt.scatter(xs, ys)
 # plt.show()
 
-if True:
+if False:
     n_chains = 10
     n_samples_per_chain = 1_000
     mcmc_obj = MCMC(
         slp,
         # MCMCStep(AllVariables(), RW(gaussian_random_walk(0.05),elementwise=True)),
         # MCMCStep(AllVariables(), RW(lambda _: dist.Normal(0.,1.), elementwise=True)),
-        MCMCSteps(MCMCStep(AllVariables(), RW(lambda _: dist.Normal(0.,1.), elementwise=True)), MCMCStep(AllVariables(), RW(gaussian_random_walk(0.05),elementwise=True))),
+        # MCMCSteps(MCMCStep(AllVariables(), RW(lambda _: dist.Normal(0.,1.), elementwise=True)), MCMCStep(AllVariables(), RW(gaussian_random_walk(0.05),elementwise=True))),
+        MCMCSteps(MCMCStep(AllVariables(), RW(lambda _: dist.Normal(0.,1.), elementwise=True)), MCMCStep(AllVariables(), HMC(10,0.02))),
         # MCMCStep(AllVariables(), DHMC(10,0.01,0.02)),
         # MCMCStep(AllVariables(), HMC(10,0.02)),
         n_chains=n_chains,
@@ -127,9 +135,10 @@ if True:
         try:
             plt.figure()
             chain = positions.get_chain(i)
-            map_position = chain.get_ix(int(jnp.argmax(lp[:,i])))
-            print(i, map_position)
+            # map_position = chain.get_ix(int(jnp.argmax(lp[:,i])))
+            map_position = chain.get_ix(-1)
             k, noise = get_kernel(map_position)
+            print(i, k.pprint())
             xs_pred = jnp.linspace(0.,2.,500)
             post = k.posterior_predictive(xs, ys, noise+1e-5, xs_pred, noise+1e-5)
             plt.scatter(xs, ys)
@@ -159,20 +168,30 @@ if False:
 log_Z, ESS, _ = estimate_log_Z_for_SLP_from_prior(slp, 100_000, jax.random.PRNGKey(0))
 print(log_Z, ESS)
 
-n_particles = 100
+n_particles = 10
 
 # rejuvination_regime = MCMCSteps(MCMCStep(AllVariables(), RW(lambda _: dist.Normal(0.,1.), elementwise=True)), MCMCStep(AllVariables(), RW(gaussian_random_walk(0.05),elementwise=True)))
 # rejuvination_regime = MCMCStep(AllVariables(), HMC(10,0.02))
-rejuvination_regime = MCMCSteps(MCMCStep(AllVariables(), RW(lambda _: dist.Normal(0.,1.), elementwise=True)), MCMCStep(AllVariables(), HMC(10,0.02)))
+rejuvination_regime = MCMCSteps(
+    MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.lax.zeros_like_array(x),1.), elementwise=True)),
+    MCMCStep(AllVariables(), HMC(10,0.02))
+)
+
+# tempering_schedule = tempering_schedule_from_sigmoid(jnp.linspace(-5,5,10))
+# data_annealing_schedule = None
+
+tempering_schedule = None
+data_annealing_schedule = data_annealing_schedule_from_range({"obs": range(0,len(ys),13)})
 
 smc_obj = SMC(
     slp,
     n_particles,
-    tempering_schedule_from_sigmoid(jnp.linspace(-5,5,100)),
-    None,
+    tempering_schedule,
+    data_annealing_schedule,
     ReweightingType.BootstrapStaticPrior,
-    MultinomialResampling(ResampleType.Adaptive, ResampleTime.BeforeMove),
+    MultinomialResampling(ResampleType.Always, ResampleTime.Never),
     rejuvination_regime,
+    75,
     collect_inference_info=True,
     progress_bar=True
 )
@@ -196,16 +215,28 @@ smc_obj = SMC(
 # last_state, _ = mcmc.run(jax.random.PRNGKey(0), init_positions, n_samples_per_chain=10)
 # print(jnp.sum(jnp.abs(last_state.log_prob - jax.vmap(slp.log_prior)(last_state.position))))
 
-# particles = last_state.position
+# init_particles = last_state.position
 
-particles, _ = jax.vmap(slp.generate, in_axes=(0,None))(jax.random.split(jax.random.PRNGKey(0), smc_obj.n_particles), dict())
+init_particles, _ = jax.vmap(slp.generate, in_axes=(0,None))(jax.random.split(jax.random.PRNGKey(0), smc_obj.n_particles), dict())
 
-# plt.hist(particles["lengthscale"], density=True, bins=50)
-# plt.plot(jnp.linspace(-3,3,100), jnp.exp(dist.Normal(0.,1.).log_prob(jnp.linspace(-3,3,100))))
-# plt.show()
-
-last_state, ess = smc_obj.run(jax.random.PRNGKey(0), StackedTrace(particles, n_particles))
+last_state, ess = smc_obj.run(jax.random.PRNGKey(0), StackedTrace(init_particles, n_particles))
 print(get_log_Z_ESS(last_state.log_particle_weights))
-plt.plot(ess)
+# plt.plot(ess)
+# plt.show()
+print(summarise_mcmc_infos(last_state.mcmc_infos, smc_obj.n_steps*smc_obj.rejuvination_attempts))
+
+
+particles = StackedTrace(last_state.particles, smc_obj.n_particles)
+# xs_pred = jnp.linspace(0.,1.25,500)
+xs_pred = jnp.sort(jnp.hstack((xs, jnp.linspace(1.,1.5,100))))
+plt.figure()
+plt.scatter(xs, ys)
+for i in range(smc_obj.n_particles):
+    particle = particles.get_ix(i)
+    k, noise = get_kernel(particle)
+    post = k.posterior_predictive(xs, ys, noise+1e-5, xs_pred, noise+1e-5)
+    print(i, k.pprint(), last_state.log_particle_weights[i], last_state.ta_log_prob[i], noise)
+    plt.plot(xs_pred, post.numpyro_base.mean, color="black")
+    plt.fill_between(xs_pred, *mvnormal_quantiles(post, [0.025, 0.975]), alpha=0.1, color="tab:blue")
+
 plt.show()
-print(summarise_mcmc_infos(last_state.mcmc_infos, smc_obj.n_steps))

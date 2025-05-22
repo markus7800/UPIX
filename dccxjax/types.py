@@ -93,6 +93,8 @@ class StackedSampleValue(Generic[VALUE_TYPE]):
         return self.T
     def get(self):
         return self.data
+    def get_ix(self, ix: int) -> VALUE_TYPE:
+        return jax.tree.map(lambda v: v[ix,...], self.data)
     def unstack(self) -> SampleValues[VALUE_TYPE]:
         return SampleValues[VALUE_TYPE](self.data, self.T)
     def to_stacked_values(self) -> "StackedSampleValues[VALUE_TYPE]":
