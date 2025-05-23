@@ -32,6 +32,8 @@ class Model:
         self.has_equivalence_relation = False
         self.slp_equivalence_class_id_gen: Optional[Callable[[Trace], str]] = None
         self.slp_equivalence_class_element_id_gen: Optional[Callable[[Trace], str]] = None
+        
+        self.equivalence_map: Optional[Callable[[Trace], Trace]] = None
 
     def __call__(self) -> Any:
         return self.f(*self.args, **self.kwargs)
@@ -73,6 +75,9 @@ class Model:
         self.has_equivalence_relation = True
         self.slp_equivalence_class_id_gen = class_id_gen
         self.slp_equivalence_class_element_id_gen = element_id_gen
+
+    def set_equivalence_map(self, equivalence_map: Callable[[Trace], Trace]):
+        self.equivalence_map = equivalence_map
 
     def get_equivalence_class_id(self, X: Trace) -> str:
         assert self.slp_equivalence_class_id_gen is not None

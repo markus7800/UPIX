@@ -188,6 +188,7 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
         self.n_lmh_update_samples: int = self.config.get("n_lmh_update_samples", 1_000)
         self.lmh_variable_selector: VariableSelector = self.config.get("lmh_variable_selector", AllVariables())
 
+        self.max_active_slps: int = self.config.get("max_active_slps", 10)
         self.max_iterations: int = self.config.get("max_iterations", 10)
 
     # should populate active_slps
@@ -201,11 +202,15 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
             rng_key, key = jax.random.split(rng_key)
             trace = sample_from_prior(self.model, key)
 
+            if self.model.equivalence_map is not None:
+                trace = self.model.equivalence_map(trace)
+
             if all(slp.path_indicator(trace) == 0 for slp in discovered_slps):
                 slp = slp_from_decision_representative(self.model, trace)
                 if self.verbose >= 2:
                     tqdm.write(f"Discovered SLP {slp.formatted()}.")
                 discovered_slps.append(slp)
+
         active_slps.extend(discovered_slps)
     
 
@@ -247,6 +252,9 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
             # propose new trace with lmh
             trace_proposed, acceptance_log_prob = lmh(self.model, self.lmh_variable_selector, trace, lmh_key)
 
+            if self.model.equivalence_map is not None:
+                trace_proposed = self.model.equivalence_map(trace_proposed)
+
             # check if we know slp of proposed trace
             matched_slp = next(filter(lambda _slp: _slp.path_indicator(trace_proposed) != 0, inactive_slps), None)
             if matched_slp is None:
@@ -255,18 +263,21 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
                     tqdm.write(f"Discovered SLP {matched_slp.formatted()}.")
                 inactive_slps.append(matched_slp)
 
-            slp_to_proposal_prob[matched_slp] = slp_to_proposal_prob.get(matched_slp, 0.) + jnp.exp(acceptance_log_prob)
+            slp_to_proposal_prob[matched_slp] = jnp.logaddexp(slp_to_proposal_prob.get(matched_slp, -jnp.inf), acceptance_log_prob)
 
-        for slp, prob in list(slp_to_proposal_prob.items()).sort():
+        # pick top with respect to acceptance probability
+        slp_to_proposal_prob_list = list(slp_to_proposal_prob.items())
+        slp_to_proposal_prob_list.sort(key=lambda v: v[1].item(), reverse=True)
+
+        for slp, prob in slp_to_proposal_prob_list:
             print(slp.formatted(), prob)
-
-        # for slp, acceptance_log_prob_sum in slp_to_proposal_log_prob.items():
-        #     acceptance_log_prob = acceptance_log_prob - jnp.log()
-        #     rng_key, accept_key = jax.random.split(rng_key)
-        #     if jax.lax.log(jax.random.uniform(accept_key)) < acceptance_log_prob:
-        #         active_slps.append(slp)
-        #         inactive_slps.remove(slp)            
-        
+            if slp not in slp_log_weights:
+                tqdm.write(f"Make SLP {slp.formatted()} active.")
+                active_slps.append(slp)
+                inactive_slps.remove(slp)
+            if len(active_slps) >= self.max_active_slps:
+                break
+            
 
     def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
         log_Zs: List[FloatArray] = []

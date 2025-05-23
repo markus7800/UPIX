@@ -46,7 +46,6 @@ def covariance_prior(idx: int) -> GPKernel:
         right = covariance_prior(2*idx+1)
         return NodeType(left, right) # type: ignore
     
-
 @model
 def gaussian_process(xs: jax.Array, ts: jax.Array):
     kernel = covariance_prior(1)
@@ -97,28 +96,7 @@ def _equivalence_trace(old_trace: Trace, old_idx: int, new_trace: Trace, new_idx
             _equivalence_trace(old_trace, 2*old_idx, new_trace, 2*new_idx)
             _equivalence_trace(old_trace, 2*old_idx+1, new_trace, 2*new_idx+1)
             
-
-NODE_TYPE_TO_IX = {t: i for i, t in enumerate(NODE_TYPES)}
-def _trace_from_kernel(trace: Trace, idx: int, k: GPKernel):
-    node_type = jnp.array(NODE_TYPE_TO_IX[k.__class__],int)
-    trace[f"{idx}_node_type"] = node_type
-    if node_type < 5:
-        for field in fields(k):
-            field_name = field.name
-            trace[f"{idx}_{field_name}"] = getattr(k, field_name)
-    else:
-        assert isinstance(k, (Plus, Times))
-        _trace_from_kernel(trace, 2*idx, k.left)
-        _trace_from_kernel(trace, 2*idx+1, k.right)
-
 def equivalence_map(trace: Trace) -> Trace:
-    equivalence_class_representative: Trace = dict()
-    k = get_gp_kernel(trace, ordered=True)
-    _trace_from_kernel(equivalence_class_representative, 1, k)
-    equivalence_class_representative["noise"] = trace["noise"]
-    return equivalence_class_representative
-
-def equivalence_map_2(trace: Trace) -> Trace:
     equivalence_class_representative: Trace = dict()
     _equivalence_trace(trace, 1, equivalence_class_representative, 1)
     equivalence_class_representative["noise"] = trace["noise"]
@@ -128,15 +106,14 @@ def equivalence_map_2(trace: Trace) -> Trace:
 m = gaussian_process(xs, ys)
 m.set_slp_formatter(lambda slp: str(get_gp_kernel(slp.decision_representative)))
 m.set_slp_sort_key(lambda slp: get_gp_kernel(slp.decision_representative).size())
-m.set_slp_equivalence_class_id_gen(lambda X: get_gp_kernel(X, ordered=True).key(), lambda X: get_gp_kernel(X, ordered=False).key())
+# m.set_slp_equivalence_class_id_gen(lambda X: get_gp_kernel(X, ordered=True).key(), lambda X: get_gp_kernel(X, ordered=False).key())
+m.set_equivalence_map(equivalence_map)
 
-X, _ = m.generate(jax.random.PRNGKey(2))
-print(get_gp_kernel(X, False))
-print(get_gp_kernel(X, True))
-print(get_gp_kernel(equivalence_map(X), False))
-print(get_gp_kernel(equivalence_map_2(X), False))
+# X, _ = m.generate(jax.random.PRNGKey(2))
+# print(get_gp_kernel(X, False))
+# print(get_gp_kernel(X, True))
+# print(get_gp_kernel(equivalence_map(X), False))
 
-exit()
 
 class SMCDCCConfig(SMCDCC[T]):
 
@@ -201,7 +178,9 @@ smc_dcc_obj = SMCDCCConfig(m, verbose=2,
     smc_n_particles=10,
     smc_collect_inference_info=True,
     init_n_samples=1000,
-    max_iterations = 2,
+    max_iterations = 5,
+    n_lmh_update_samples = 250,
+    max_active_slps = 3,
 )
 
 t0 = time()
