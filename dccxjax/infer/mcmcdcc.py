@@ -15,7 +15,7 @@ from functools import reduce
 from .lmh_global import lmh
 from .variable_selector import AllVariables, VariableSelector
 from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC
-from .mcdcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, WeightedSample
+from .mcdcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, LogWeightedSample
 from textwrap import indent
 
 __all__ = [
@@ -53,7 +53,7 @@ class MCMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
 
         return MCMCInferenceResult(value_tree, last_state, self.n_chains, self.n_samples_per_chain + other.n_samples_per_chain, self.optimised_memory_with_early_return_map)
     
-    def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> WeightedSample[DCC_COLLECT_TYPE]:
+    def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> LogWeightedSample[DCC_COLLECT_TYPE]:
         if self.value_tree is not None:
             if self.optimised_memory_with_early_return_map:
                 # assert isinstance(inference_result.value_tree, DCC_COLLECT_TYPE)
@@ -62,7 +62,7 @@ class MCMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
                 # assert isinstance(inference_result.value_tree, Trace)
                 values = return_map(cast(Tuple[Trace,FloatArray], self.value_tree)[0])
 
-            weighted_samples = WeightedSample(
+            weighted_samples = LogWeightedSample(
                 StackedSampleValues(values, self.n_samples_per_chain, self.n_chains),
                 jnp.zeros((self.n_samples_per_chain, self.n_chains), float)
             )
@@ -74,7 +74,7 @@ class MCMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
             # we add axis when combining, if we have not combined anything, we have to add axis now
             last_state = broadcast_jaxtree(self.last_state, (1,)) if self.last_state.iteration.shape == () else self.last_state
             values = return_map(last_state.position)
-            weighted_samples = WeightedSample(
+            weighted_samples = LogWeightedSample(
                 StackedSampleValues(values, n_mcmc, n_chains),
                 jnp.zeros((n_mcmc,n_chains), float)
             )

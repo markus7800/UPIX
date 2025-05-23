@@ -233,10 +233,9 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
 
     return smc_step
 
-
 def add_progress_bar_to_smc_kernel(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]], slp_name: str, num_samples: int) -> Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]:
     progressbar_mngr, kernel_with_bar = _add_progress_bar(kernel, slp_name, num_samples)
-    # @jax.jit
+    @jax.jit
     def scan_with_bar(init: SMCState, xs: SMCStepData) -> Tuple[SMCState,FloatArray]:
         progressbar_mngr.start_progress()
         jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)

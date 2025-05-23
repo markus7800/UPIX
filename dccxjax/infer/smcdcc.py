@@ -16,7 +16,7 @@ from functools import reduce
 from .lmh_global import lmh
 from .variable_selector import AllVariables, VariableSelector
 from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC
-from .mcdcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, WeightedSample
+from .mcdcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, LogWeightedSample
 from textwrap import indent
 
 __all__ = [
@@ -45,7 +45,7 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
 
         return SMCInferenceResult(particles, log_particle_weight, self.n_particles+other.n_particles, self.optimised_memory_with_early_return_map)
     
-    def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> WeightedSample[DCC_COLLECT_TYPE]:
+    def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> LogWeightedSample[DCC_COLLECT_TYPE]:
         # shape = (#repeats smc, n_particles, ...)
         # we add axis when combining, if we have not combined anything, we have to add axis now
         particles, log_particle_weight = broadcast_jaxtree((self.particles, self.log_particle_weight), (1,)) if len(self.log_particle_weight.shape) == 1 else (self.particles, self.log_particle_weight)
@@ -57,7 +57,7 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
         # each smc run is treated independently
         log_weights = log_particle_weight - jax.scipy.special.logsumexp(log_particle_weight, axis=1)
 
-        weighted_samples = WeightedSample(
+        weighted_samples = LogWeightedSample(
             StackedSampleValues(values, n_smc, self.n_particles),
             log_weights
         )

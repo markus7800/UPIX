@@ -27,16 +27,33 @@ T = TypeVar("T")
 DCC_COLLECT_TYPE = TypeVar("DCC_COLLECT_TYPE")
 DCC_RESULT_QUERY_TYPE = TypeVar("DCC_RESULT_QUERY_TYPE")
 
+class BaseWeightedSample(Generic[DCC_COLLECT_TYPE]):
+    values: StackedSampleValues[DCC_COLLECT_TYPE]
+    def n_chains(self): return self.values.n_chains()
+    def n_samples_per_chain(self): return self.values.n_samples_per_chain()
+    def n_samples(self): return self.values.n_samples()
+
 @dataclass
-class WeightedSample(Generic[DCC_COLLECT_TYPE]):
+class LogWeightedSample(BaseWeightedSample, Generic[DCC_COLLECT_TYPE]):
     values: StackedSampleValues[DCC_COLLECT_TYPE]
     log_weights: FloatArray
     def __repr__(self) -> str:
-        return f"WeightedSample({self.values})"
+        return f"LogWeightedSample({self.values})"
+    def exp(self) -> "WeightedSample[DCC_COLLECT_TYPE]":
+        return WeightedSample(self.values, jax.lax.exp(self.log_weights))
 
+@dataclass
+class WeightedSample(BaseWeightedSample, Generic[DCC_COLLECT_TYPE]):
+    values: StackedSampleValues[DCC_COLLECT_TYPE]
+    weights: FloatArray
+    def __repr__(self) -> str:
+        return f"WeightedSample({self.values})"
+    def log(self) -> LogWeightedSample[DCC_COLLECT_TYPE]:
+        return LogWeightedSample(self.values, jax.lax.log(self.weights))
+    
 class MCInferenceResult(InferenceResult, ABC, Generic[DCC_COLLECT_TYPE]):
     @abstractmethod
-    def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> WeightedSample[DCC_COLLECT_TYPE]:
+    def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> LogWeightedSample[DCC_COLLECT_TYPE]:
         raise NotImplementedError
     
 class MCLogWeightEstimate(LogWeightEstimate, ABC):
@@ -47,7 +64,7 @@ class MCLogWeightEstimate(LogWeightEstimate, ABC):
 @dataclass
 class MCDCCResult(Generic[DCC_COLLECT_TYPE]):
     slp_log_weights: Dict[SLP, FloatArray]
-    slp_weighted_samples: Dict[SLP, WeightedSample[DCC_COLLECT_TYPE]]
+    slp_weighted_samples: Dict[SLP, LogWeightedSample[DCC_COLLECT_TYPE]]
 
     def __repr__(self) -> str:
         return f"MC-DCCResult({len(self.slp_log_weights)} SLPs)"
@@ -55,15 +72,20 @@ class MCDCCResult(Generic[DCC_COLLECT_TYPE]):
     def pprint(self):
         log_Z_normaliser = self.get_log_weight_normaliser()
         print("MC-DCCResult {")
-        for slp, log_weight in self.slp_log_weights.items():
+        slp_log_weights_list = list(self.slp_log_weights.items())
+        slp_log_weights_list.sort(key = lambda v: v[1].item())
+        for slp, log_weight in slp_log_weights_list:
             weighted_sample = self.slp_weighted_samples[slp]
             print(f"\t{slp.formatted()}: {weighted_sample.values} with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
         print("}")
 
     def get_slp_weights(self, predicate: Callable[[SLP], bool] = lambda _: True) -> Dict[SLP, float]:
         log_Z_normaliser = self.get_log_weight_normaliser()
-        return {slp: jnp.exp(log_weight - log_Z_normaliser).item() for slp, log_weight in self.slp_log_weights.items() if predicate(slp)}
-
+        slp_weights = {slp: jnp.exp(log_weight - log_Z_normaliser).item() for slp, log_weight in self.slp_log_weights.items()}
+        normaliser = sum(slp_weights.values())
+        # numerical inprecision may lead to weigths being not normalised because we normalised in "log" space
+        slp_weights = {slp: weight/normaliser for slp, weight in slp_weights.items() if predicate(slp)}
+        return slp_weights
     def get_slps(self, predicate: Callable[[SLP], bool] = lambda _: True) -> List[SLP]:
         return [slp for slp in self.slp_log_weights.keys() if predicate(slp)]
     
@@ -244,7 +266,7 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
             assert isinstance(slp_results, MCInferenceResult)
             
             # select trace from SLP inference result
-            weighted_sample: WeightedSample[Trace] = slp_results.get_weighted_sample(lambda x: x)
+            weighted_sample: LogWeightedSample[Trace] = slp_results.get_weighted_sample(lambda x: x)
             trace_ix = jax.random.categorical(select_trace_key, weighted_sample.log_weights.reshape(-1))
             sample_ix, chain_ix = jnp.unravel_index(trace_ix, weighted_sample.log_weights.shape)
             trace: Trace = jax.tree.map(lambda v: v[sample_ix, chain_ix, ...], weighted_sample.values.data)
@@ -270,7 +292,6 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
         slp_to_proposal_prob_list.sort(key=lambda v: v[1].item(), reverse=True)
 
         for slp, prob in slp_to_proposal_prob_list:
-            print(slp.formatted(), prob)
             if slp not in slp_log_weights:
                 tqdm.write(f"Make SLP {slp.formatted()} active.")
                 active_slps.append(slp)
@@ -293,8 +314,8 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
 
         return slp_log_weights
 
-    def get_slp_weighted_samples(self, inference_results: Dict[SLP, InferenceResult]) -> Dict[SLP, WeightedSample[DCC_COLLECT_TYPE]]:
-        slp_weighted_samples: Dict[SLP, WeightedSample[DCC_COLLECT_TYPE]] = {}
+    def get_slp_weighted_samples(self, inference_results: Dict[SLP, InferenceResult]) -> Dict[SLP, LogWeightedSample[DCC_COLLECT_TYPE]]:
+        slp_weighted_samples: Dict[SLP, LogWeightedSample[DCC_COLLECT_TYPE]] = {}
         for slp, inference_result in inference_results.items():
             assert isinstance(inference_result, MCInferenceResult)
             slp_weighted_samples[slp] = inference_result.get_weighted_sample(self.return_map)

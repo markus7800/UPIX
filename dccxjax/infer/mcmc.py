@@ -380,7 +380,7 @@ def add_progress_bar_to_mcmc_kernel(kernel: MCMCKernel[MCMC_COLLECT_TYPE], slp_n
     @jax.jit
     def scan_with_bar(init: MCMCState, xs: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
         progressbar_mngr.start_progress()
-        jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)
+        jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, init.iteration)
         return jax.lax.scan(kernel_with_bar, init, xs)
     return scan_with_bar
 

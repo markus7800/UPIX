@@ -55,6 +55,7 @@ def to_shaped_array_trace(X: Trace):
     return {address: value.aval for address, value in X.items()}
 
 VALUE_TYPE = TypeVar("VALUE_TYPE")
+MAPPED_TYPE = TypeVar("MAPPED_TYPE")
 
 # data[address] has shape (N,D) where D is the dimensionality of the RV
 @dataclass
@@ -76,6 +77,9 @@ class SampleValues(Generic[VALUE_TYPE]):
         leafs, _ = jax.tree.flatten(sub_data)
         N = leafs[0].shape[0]
         return SampleValues(sub_data, N)
+    def map(self, element_op: Callable[[VALUE_TYPE],MAPPED_TYPE]) -> "SampleValues[MAPPED_TYPE]":
+        return SampleValues(jax.vmap(element_op)(self.data), self.N)
+
     
 Traces = SampleValues[Trace]
 
@@ -99,6 +103,8 @@ class StackedSampleValue(Generic[VALUE_TYPE]):
         return SampleValues[VALUE_TYPE](self.data, self.T)
     def to_stacked_values(self) -> "StackedSampleValues[VALUE_TYPE]":
         return StackedSampleValues(jax.tree.map(lambda x: x.reshape((self.T, 1) + x.shape[1:]), self.data) , 1, self.T)
+    def map(self, element_op: Callable[[VALUE_TYPE],MAPPED_TYPE]) -> "StackedSampleValue[MAPPED_TYPE]":
+        return StackedSampleValue(jax.vmap(element_op)(self.data), self.T)
     
 StackedTrace = StackedSampleValue[Trace]
 
@@ -111,7 +117,6 @@ def _unstack_sample_data(values: jax.Array):
     n_chains = shape[1]
     return jax.lax.reshape(values, (n_samples * n_chains, *var_dim))
 
-MAPPED_TYPE = TypeVar("MAPPED_TYPE")
 # data[address] has shape (N,T,D) where D is the dimensionality of the RV
 @dataclass
 class StackedSampleValues(Generic[VALUE_TYPE]):

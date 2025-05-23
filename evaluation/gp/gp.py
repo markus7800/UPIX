@@ -14,6 +14,8 @@ from tqdm.auto import tqdm
 from dccxjax.core.branching_tracer import retrace_branching
 from time import time
 
+# set_platform("cpu")
+
 import logging
 setup_logging(logging.WARN)
 
@@ -99,7 +101,8 @@ def _equivalence_trace(old_trace: Trace, old_idx: int, new_trace: Trace, new_idx
 def equivalence_map(trace: Trace) -> Trace:
     equivalence_class_representative: Trace = dict()
     _equivalence_trace(trace, 1, equivalence_class_representative, 1)
-    equivalence_class_representative["noise"] = trace["noise"]
+    if "noise" in trace:
+        equivalence_class_representative["noise"] = trace["noise"]
     return equivalence_class_representative
 
 
@@ -177,7 +180,6 @@ smc_dcc_obj = SMCDCCConfig(m, verbose=2,
     smc_rejuvination_attempts=8,
     smc_n_particles=10,
     smc_collect_inference_info=True,
-    init_n_samples=1000,
     max_iterations = 5,
     n_lmh_update_samples = 250,
     max_active_slps = 3,
@@ -195,24 +197,53 @@ print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.
 slp_weights = list(result.get_slp_weights().items())
 slp_weights.sort(key=lambda v: v[1])
 
+
 map_slp, _ = slp_weights[-1]
-print(map_slp.formatted())
 
-weighted_samples = result.get_samples_for_slp(map_slp)
-traces = weighted_samples.map(lambda x: x[0])
-weights = weighted_samples.map(lambda x: x[1])
-print(traces.data)
-print(weights.data)
+weighted_samples = result.get_samples_for_slp(map_slp).unstack()
+_, weights = weighted_samples.get()
 
-map_trace = traces.get_selection(0, 0)
+map_trace, _ = weighted_samples.get_selection(weights.argmax())
 k = get_gp_kernel(map_trace)
 noise = transform_param("noise", map_trace["noise"]) + 1e-5
 xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
-post = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
+mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
 
+plt.figure()
 plt.scatter(xs, ys)
 plt.scatter(xs_val, ys_val)
-plt.plot(xs_pred, post.numpyro_base.mean, color="black")
-plt.fill_between(xs_pred, *mvnormal_quantiles(post, [0.025, 0.975]), alpha=0.5, color="tab:blue")
+plt.plot(xs_pred, mvn.numpyro_base.mean, color="black")
+q025, q975 = mvnormal_quantile(mvn, 0.025), mvnormal_quantile(mvn, 0.975)
+plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
 plt.title(map_slp.formatted())
+plt.show()
+
+
+
+plt.figure()
+plt.scatter(xs, ys)
+plt.scatter(xs_val, ys_val)
+xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
+
+n_posterior_samples = 10
+sample_key = jax.random.PRNGKey(0)
+slp_weights_array = jnp.array([weight for _, weight in slp_weights])
+posterior_over_slps = dist.Categorical(slp_weights_array)
+for _ in range(n_posterior_samples):
+    sample_key, key1, key2 = jax.random.split(sample_key, 3)
+    slp_ix = posterior_over_slps.sample(key1)
+    slp, _ = slp_weights[slp_ix]
+    print(f"sample from posterior: {slp.formatted()}")
+    weighted_samples = result.get_samples_for_slp(slp).unstack()
+    _, weights = weighted_samples.get()
+    trace_ix = dist.Categorical(weights).sample(key2)
+    trace, _ = weighted_samples.get_selection(trace_ix)
+
+    k = get_gp_kernel(trace)
+    noise = transform_param("noise", trace["noise"]) + 1e-5
+    mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
+
+    plt.plot(xs_pred, mvn.numpyro_base.mean, color="black", alpha=0.1)
+    q025, q975 = mvnormal_quantile(mvn, 0.025), mvnormal_quantile(mvn, 0.975)
+    plt.fill_between(xs_pred, q025, q975, alpha=0.1, color="tab:blue")
 plt.show()
