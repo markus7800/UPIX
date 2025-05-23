@@ -55,11 +55,11 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
         
         # normalise log_particle_weights on second axis
         # each smc run is treated independently
-        weights = jax.lax.exp(log_particle_weight - jax.scipy.special.logsumexp(log_particle_weight, axis=1))
+        log_weights = log_particle_weight - jax.scipy.special.logsumexp(log_particle_weight, axis=1)
 
         weighted_samples = WeightedSample(
             StackedSampleValues(values, n_smc, self.n_particles),
-            weights
+            log_weights
         )
         return weighted_samples
 
@@ -89,6 +89,8 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         self.smc_optimise_memory_with_early_return_map: bool = self.config.get("smc_optimise_memory_with_early_return_map", False)
         self.smc_n_particles: int = self.config.get("smc_n_particles", 100)
         self.smc_prior_mcmc_n_steps: int = self.config.get("smc_prior_mcmc_n_steps", 100)
+        self.smc_rejuvination_attempts: int = self.config.get("smc_rejuvination_attempts", 1)
+        self.est_path_log_prob_n_samples: int = self.config.get("est_path_log_prob_n_samples", 10_000)
 
     def get_SMC_tempering_schedule(self, slp: SLP) -> Optional[TemperetureSchedule]:
         return None
@@ -114,6 +116,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             ReweightingType.BootstrapStaticPrior,
             StratifiedResampling(ResampleType.Adaptive, ResampleTime.BeforeMove),
             self.get_SMC_rejuvination_kernel(slp),
+            self.smc_rejuvination_attempts,
             collect_inference_info=self.smc_collect_inference_info,
             progress_bar=True
         )
@@ -156,14 +159,11 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         init_positions, init_log_prob = self.produce_samples_from_prior(slp, prior_key)
 
         last_state, ess = smc.run(smc_key, init_positions, init_log_prob)
-        import matplotlib.pyplot as plt
-        plt.plot(ess)
-        plt.show()
         if self.verbose >= 2:
             if self.smc_collect_inference_info:
                 assert last_state.mcmc_infos is not None
                 info_str = "Rejuvination Infos:\n"
-                info_str += indent(summarise_mcmc_infos(last_state.mcmc_infos, smc.n_steps), "\t")
+                info_str += indent(summarise_mcmc_infos(last_state.mcmc_infos, smc.n_steps*smc.rejuvination_attempts), "\t")
                 tqdm.write(info_str)
         
         if self.smc_optimise_memory_with_early_return_map:
@@ -172,11 +172,15 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             return_result = last_state.particles
         return SMCInferenceResult(return_result, last_state.log_particle_weights, smc.n_particles, self.smc_optimise_memory_with_early_return_map)
     
+    def estimate_path_log_prob(self, slp: SLP, rng_key: PRNGKey) -> FloatArray:
+        _, _, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.est_path_log_prob_n_samples, rng_key)
+        return jax.lax.log(frac_in_support)
 
     def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
-        # TODO we have to estimate prior log_Z here
         inference_results = self.inference_results.get(slp, [])
         if len(inference_results) > 0:
+            path_log_prob = self.estimate_path_log_prob(slp, rng_key)
+
             last_result = inference_results[-1]
             assert isinstance(last_result, SMCInferenceResult)
             assert len(last_result.log_particle_weight.shape) == 1, "Attempted to get log_weight from combined result"
@@ -185,7 +189,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             ESS = jax.lax.exp(log_ess)
             if self.verbose >= 2:
                 tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():_.0f})")
-            return LogWeightEstimateFromSMC(log_Z, ESS, last_result.n_particles)
+            return LogWeightEstimateFromSMC(log_Z + path_log_prob, ESS, last_result.n_particles)
         else:
             raise Exception("In SMCDCC we should perform one run of SMC before estimate_log_weight to reuse estimate")
     

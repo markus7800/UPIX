@@ -298,11 +298,11 @@ class SLP:
         return retrace_branching(_transform_to_unconstrained, self.branching_decisions)(X)[0]
         
     def generate(self, rng_key: PRNGKey, Y: Trace = dict()):
-        def _generate(rng_key: PRNGKey):
-            with GenerateCtx(rng_key, Y) as ctx:
+        def _generate(rng_key: PRNGKey, _Y: Trace):
+            with GenerateCtx(rng_key, _Y) as ctx:
                 self.model()
                 return ctx.X, ctx.log_likelihood + ctx.log_prior
-        return retrace_branching(_generate, self.branching_decisions)(rng_key)[0]
+        return retrace_branching(_generate, self.branching_decisions)(rng_key, Y)[0]
         
     def get_is_discrete_map(self):
         if self.is_discrete_map is None:

@@ -9,7 +9,8 @@ __all__ = [
     "PrefixSelector",
     "SuffixSelector",
     "RegexSelector",
-    "PredicateSelector"
+    "PredicateSelector",
+    "ComplementSelector"
 ]
 
 class VariableSelector(ABC):
@@ -72,6 +73,14 @@ class PredicateSelector(VariableSelector):
     def __repr__(self) -> str:
         return f"<predicate {self.predicate}>"
     
+class ComplementSelector(VariableSelector):
+    def __init__(self, selector: VariableSelector) -> None:
+        self.selector = selector
+    def contains(self, variable: str) -> bool:
+        return not self.selector.contains(variable)
+    def __repr__(self) -> str:
+        return f"<complement {self.selector}>"
+
 
 T = TypeVar("T")
 def find_or_error(d: Dict[VariableSelector, T], address: str) -> T:

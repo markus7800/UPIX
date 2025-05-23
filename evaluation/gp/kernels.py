@@ -6,6 +6,7 @@ from dccxjax import FloatArrayLike, FloatArray
 import dccxjax.distributions as dist
 from typing import List
 
+@dataclass
 class GPKernel(ABC):
     @abstractmethod
     def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
@@ -19,8 +20,8 @@ class GPKernel(ABC):
     @abstractmethod
     def depth(self) -> int:
         raise NotImplementedError
-    @abstractmethod
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         raise NotImplementedError
     @abstractmethod
     def __repr__(self) -> str:
@@ -81,7 +82,8 @@ class Constant(PrimitiveGPKernel):
             return f"Const({self.value.item():.2f})"
     def key(self) -> str:
             return "Const"
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "Constant"
  
 @dataclass
@@ -102,7 +104,8 @@ class Linear(PrimitiveGPKernel):
             return f"Lin({self.intercept.item():.2f}; {self.bias.item():.2f}, {self.amplitude.item():.2f})"
     def key(self) -> str:
             return "Lin"
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "Linear"
     
 @dataclass
@@ -122,7 +125,8 @@ class SquaredExponential(PrimitiveGPKernel):
         return f"SqExp({self.lengthscale.item():.2f}; {self.amplitude.item():.2f})"
     def key(self) -> str:
         return "SqExp"
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "SquaredExponential"
 
 @dataclass
@@ -144,7 +148,8 @@ class GammaExponential(PrimitiveGPKernel):
         return f"GamExp({self.lengthscale.item():.2f}, {self.gamma.item():.2f}; {self.amplitude.item():.2f})"
     def key(self) -> str:
         return "GamExp"
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "GammaExponential"
 
 @dataclass
@@ -168,7 +173,8 @@ class Periodic(PrimitiveGPKernel):
         return f"Per({self.lengthscale.item():.2f}, {self.period.item():.2f}; {self.amplitude.item():.2f})"
     def key(self) -> str:
         return "Per"
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "Periodic"
 
 @dataclass
@@ -189,7 +195,8 @@ class Plus(CompositiveGPKernel):
         return f"({self.left.pprint()} + {self.right.pprint()})"
     def key(self) -> str:
         return f"({self.left.key()} + {self.right.key()})"
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "Plus"
    
 @dataclass 
@@ -210,7 +217,8 @@ class Times(CompositiveGPKernel):
         return f"({self.left.pprint()} * {self.right.pprint()})"
     def key(self) -> str:
         return f"({self.left.key()} * {self.right.key()})"
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "Times"
     
 

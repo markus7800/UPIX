@@ -60,7 +60,11 @@ class MCDCCResult(Generic[DCC_COLLECT_TYPE]):
             print(f"\t{slp.formatted()}: {weighted_sample.values} with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
         print("}")
 
-    def get_slps(self, predicate: Callable[[SLP], bool]) -> List[SLP]:
+    def get_slp_weights(self, predicate: Callable[[SLP], bool] = lambda _: True) -> Dict[SLP, float]:
+        log_Z_normaliser = self.get_log_weight_normaliser()
+        return {slp: jnp.exp(log_weight - log_Z_normaliser).item() for slp, log_weight in self.slp_log_weights.items() if predicate(slp)}
+
+    def get_slps(self, predicate: Callable[[SLP], bool] = lambda _: True) -> List[SLP]:
         return [slp for slp in self.slp_log_weights.keys() if predicate(slp)]
     
     def get_slp(self, predicate: Callable[[SLP], bool]) -> Optional[SLP]:
@@ -226,31 +230,35 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
             log_weight_list.append(log_weight)
         log_weights = jnp.array(log_weight_list)
         
-        # TODO
-        # slp_to_proposal_prob: Dict[SLP, FloatArray] = dict()
-        # for _ in tqdm(range(self.n_lmh_update_samples), desc="Determining new active SLPs with LMH"):
-        #     rng_key, select_key, select_chain_key, select_sample_key, lmh_key = jax.random.split(rng_key, 5)
-        #     slp = slps[jax.random.categorical(select_key, log_weights)]
-        #     slp_results = combined_inference_results[slp]
-        #     assert isinstance(slp_results, MCMCInferenceResult)
-        #     assert isinstance(slp_results.value_tree, dict) # trace
-        #     chain = jax.random.randint(select_chain_key, (), 0, slp_results.n_chains)
-        #     sample_ix = jax.random.randint(select_sample_key, (), 0, slp_results.n_samples_per_chain)
-        #     trace: Trace = jax.tree.map(lambda v: v[sample_ix, chain, ...], slp_results.value_tree)
-        #     trace_proposed, acceptance_log_prob = lmh(self.model, self.lmh_variable_selector, trace, lmh_key)
+        slp_to_proposal_prob: Dict[SLP, FloatArray] = dict()
+        for _ in tqdm(range(self.n_lmh_update_samples), desc="Determining new active SLPs with LMH"):
+            rng_key, select_slp_key, select_trace_key, lmh_key = jax.random.split(rng_key, 4)
+            # select SLP proportional to the logweight
+            slp = slps[jax.random.categorical(select_slp_key, log_weights)]
+            slp_results = combined_inference_results[slp]
+            assert isinstance(slp_results, MCInferenceResult)
+            
+            # select trace from SLP inference result
+            weighted_sample: WeightedSample[Trace] = slp_results.get_weighted_sample(lambda x: x)
+            trace_ix = jax.random.categorical(select_trace_key, weighted_sample.log_weights.reshape(-1))
+            sample_ix, chain_ix = jnp.unravel_index(trace_ix, weighted_sample.log_weights.shape)
+            trace: Trace = jax.tree.map(lambda v: v[sample_ix, chain_ix, ...], weighted_sample.values.data)
 
-        #     matched_slp = next(filter(lambda _slp: _slp.path_indicator(trace_proposed) != 0, inactive_slps), None)
-        #     if matched_slp is None:
-        #         matched_slp = slp_from_decision_representative(self.model, trace_proposed)
-        #         if self.verbose >= 2:
-        #             tqdm.write(f"Discovered SLP {matched_slp.formatted()}.")
-        #         inactive_slps.append(matched_slp)
+            # propose new trace with lmh
+            trace_proposed, acceptance_log_prob = lmh(self.model, self.lmh_variable_selector, trace, lmh_key)
 
-        #     slp_to_proposal_prob[matched_slp] = slp_to_proposal_prob.get(matched_slp, 0.) + jnp.exp(acceptance_log_prob)
-        #     slp_to_proposal_prob[slp] = slp_to_proposal_prob.get(slp, 0.) + (1 - jnp.exp(acceptance_log_prob))
+            # check if we know slp of proposed trace
+            matched_slp = next(filter(lambda _slp: _slp.path_indicator(trace_proposed) != 0, inactive_slps), None)
+            if matched_slp is None:
+                matched_slp = slp_from_decision_representative(self.model, trace_proposed)
+                if self.verbose >= 2:
+                    tqdm.write(f"Discovered SLP {matched_slp.formatted()}.")
+                inactive_slps.append(matched_slp)
 
-        # jnp.exp(jax.scipy.special.logsumexp(jnp.array(slp_to_proposal_log_prob.values()))) == self.n_lmh_update_samples
-        # proportional to budget that should be spent on slps
+            slp_to_proposal_prob[matched_slp] = slp_to_proposal_prob.get(matched_slp, 0.) + jnp.exp(acceptance_log_prob)
+
+        for slp, prob in list(slp_to_proposal_prob.items()).sort():
+            print(slp.formatted(), prob)
 
         # for slp, acceptance_log_prob_sum in slp_to_proposal_log_prob.items():
         #     acceptance_log_prob = acceptance_log_prob - jnp.log()

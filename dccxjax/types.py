@@ -1,5 +1,5 @@
 import jax
-from typing import Dict, Union, NamedTuple, TypeVar, Generic
+from typing import Dict, Union, NamedTuple, TypeVar, Generic, Callable
 from dataclasses import dataclass
 from .utils import broadcast_jaxtree
 from jax import Array
@@ -111,6 +111,7 @@ def _unstack_sample_data(values: jax.Array):
     n_chains = shape[1]
     return jax.lax.reshape(values, (n_samples * n_chains, *var_dim))
 
+MAPPED_TYPE = TypeVar("MAPPED_TYPE")
 # data[address] has shape (N,T,D) where D is the dimensionality of the RV
 @dataclass
 class StackedSampleValues(Generic[VALUE_TYPE]):
@@ -142,6 +143,8 @@ class StackedSampleValues(Generic[VALUE_TYPE]):
         return StackedSampleValues(sub_data, N, T)
     def get_chains(self, chain_ix) -> "StackedSampleValues[VALUE_TYPE]":
         return self.get_subset(slice(None), chain_ix)
+    def map(self, element_op: Callable[[VALUE_TYPE],MAPPED_TYPE]) -> "StackedSampleValues[MAPPED_TYPE]":
+        return StackedSampleValues(jax.vmap(jax.vmap(element_op))(self.data), self.N, self.T)
 
 StackedTraces = StackedSampleValues[Trace]
 

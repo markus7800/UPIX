@@ -176,6 +176,17 @@ rejuvination_regime = MCMCSteps(
     MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.lax.zeros_like_array(x),1.), elementwise=True)),
     MCMCStep(AllVariables(), HMC(10,0.02))
 )
+if NOISE_Z:
+    rejuvination_regime = MCMCSteps(
+        MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.lax.zeros_like_array(x),1.), elementwise=True)),
+        MCMCStep(AllVariables(), HMC(10,0.02))
+    )
+else:
+    rejuvination_regime = MCMCSteps(
+        MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.lax.zeros_like_array(x),1.), elementwise=True)),
+        MCMCStep(ComplementSelector(SingleVariable("noise")), HMC(10,0.02)),
+        MCMCStep(SingleVariable("noise"), HMC(10,0.02))
+    )
 
 # tempering_schedule = tempering_schedule_from_sigmoid(jnp.linspace(-5,5,10))
 # data_annealing_schedule = None
@@ -191,7 +202,7 @@ smc_obj = SMC(
     ReweightingType.BootstrapStaticPrior,
     MultinomialResampling(ResampleType.Always, ResampleTime.Never),
     rejuvination_regime,
-    75,
+    8,
     collect_inference_info=True,
     progress_bar=True
 )
