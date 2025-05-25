@@ -4,13 +4,14 @@ from time import time
 import os
 
 os.environ["XLA_FLAGS"] = " ".join(
-    ["--xla_force_host_platform_device_count=8"]
+    ["--xla_force_host_platform_device_count=10"]
 )
 import jax
 jax.config.update("jax_platform_name", "cpu")
 
 cpus = jax.devices('cpu')
 print(cpus)
+
 
 N = 100_000_000
 @jax.jit
