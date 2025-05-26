@@ -168,6 +168,10 @@ class SMCDCCConfig(SMCDCC[T]):
         # pprint_mcmc_regime(regime, slp)
         return regime
     
+    def run_inference(self, slp: SLP, rng_key: PRNGKey) -> InferenceResult:
+        print(f"Run inference with key {rng_key}")
+        return super().run_inference(slp, rng_key)
+    
     def get_SMC_data_annealing_schedule(self, slp: SLP) -> Optional[DataAnnealingSchedule]:
         step = round(len(ys)*0.1)
         return data_annealing_schedule_from_range({"obs": range(step,len(ys),step)})
@@ -233,11 +237,11 @@ for _ in range(n_posterior_samples):
     sample_key, key1, key2 = jax.random.split(sample_key, 3)
     slp_ix = posterior_over_slps.sample(key1)
     slp, _ = slp_weights[slp_ix]
-    print(f"sample from posterior: {slp.formatted()}")
     weighted_samples = result.get_samples_for_slp(slp).unstack()
     _, weights = weighted_samples.get()
     trace_ix = dist.Categorical(weights).sample(key2)
-    trace, _ = weighted_samples.get_selection(trace_ix)
+    trace, weight = weighted_samples.get_selection(trace_ix)
+    print(f"sample from posterior: {slp.formatted()} with weight {weight}")
 
     k = get_gp_kernel(trace)
     noise = transform_param("noise", trace["noise"]) + 1e-5
