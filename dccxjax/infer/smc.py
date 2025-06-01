@@ -289,6 +289,8 @@ class SMC:
 
         self.smc_step = get_smc_step(slp, n_particles, reweighting_type, resampling, rejuvination_kernel, self.rejuvination_attempts)
 
+        self.cached_smc_scan: Optional[Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]] = None
+
     def run(self, rng_key: PRNGKey, particles: StackedTrace, log_prob: Optional[FloatArray] = None):
         # no tempering / annealing weights, we require that this is proper weighting for input particles
         if log_prob is None:
@@ -308,11 +310,20 @@ class SMC:
 
         init_state = SMCState(jnp.array(0,int), particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infoss)
         smc_data = SMCStepData(smc_keys, self.tempereture_schedule.temperature, self.data_annealing_schedule.data_annealing)
-        if self.progress_bar:
-            scan_with_pbar = add_progress_bar_to_smc_kernel(self.smc_step, "SMC for "+self.slp.formatted(), self.n_steps)
-            last_state, ess = scan_with_pbar(init_state, smc_data)
+
+        if self.cached_smc_scan:
+            last_state, ess = self.cached_smc_scan(init_state, smc_data)
         else:
-            last_state, ess = jax.lax.scan(self.smc_step, init_state, smc_data)
+            if self.progress_bar:
+                scan_with_pbar = add_progress_bar_to_smc_kernel(self.smc_step, "SMC for "+self.slp.formatted(), self.n_steps)
+                self.cached_smc_scan = scan_with_pbar
+                last_state, ess = scan_with_pbar(init_state, smc_data)
+            else:
+                @jax.jit
+                def scan_without_bar(init: SMCState, xs: SMCStepData) -> Tuple[SMCState,FloatArray]:
+                    return jax.lax.scan(self.smc_step, init, xs)
+                last_state, ess = scan_without_bar(init_state, smc_data)
+                self.cached_smc_scan = scan_without_bar
 
         return last_state, ess 
     

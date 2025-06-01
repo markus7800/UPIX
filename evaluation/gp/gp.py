@@ -160,11 +160,20 @@ class SMCDCCConfig(SMCDCC[T]):
     
     def get_SMC_rejuvination_kernel(self, slp: SLP) -> MCMCRegime:
         # regime = MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), HMC(10, 0.02))
-        selector = PredicateSelector(lambda addr: not addr.endswith("node_type"))
+        
+        # selector = PredicateSelector(lambda addr: not addr.endswith("node_type"))
+        # regime = MCMCSteps(
+        #     MCMCStep(selector, RW(lambda _: dist.Normal(0.,1.), elementwise=True)),
+        #     MCMCStep(selector, HMC(10, 0.02))
+        # )
+
+        selector = PredicateSelector(lambda addr: not addr == "noise" and not addr.endswith("node_type"))
         regime = MCMCSteps(
             MCMCStep(selector, RW(lambda _: dist.Normal(0.,1.), elementwise=True)),
-            MCMCStep(selector, HMC(10, 0.02))
+            MCMCStep(selector, HMC(10, 0.02)),
+            MCMCStep(SingleVariable("noise"), HMC(10, 0.02))
         )
+
         # pprint_mcmc_regime(regime, slp)
         return regime
     
@@ -185,9 +194,31 @@ smc_dcc_obj = SMCDCCConfig(m, verbose=2,
     smc_n_particles=10,
     smc_collect_inference_info=True,
     max_iterations = 5,
-    n_lmh_update_samples = 250,
+    n_lmh_update_samples = 1000,
     max_active_slps = 3,
+    max_new_active_slps = 3,
+    one_inference_run_per_slp = True,
 )
+
+
+# key_sets = [set() for depth in range(10)]
+# rng_key = jax.random.PRNGKey(0)
+# for _ in tqdm(range(10_000)):
+#     rng_key, sample_key = jax.random.split(rng_key)
+#     trace, _ = m.generate(sample_key)
+#     # trace = equivalence_map(trace)
+#     k = get_gp_kernel(trace, ordered=True)
+#     d = k.depth()
+#     if d < len(key_sets):
+#         key_sets[d].add(k.key())
+
+# for depth in range(len(key_sets)):
+#     print(f"Depth {depth}: {len(key_sets[depth])}")
+
+# print(key_sets[1])
+# print(key_sets[2])
+# exit()
+
 
 t0 = time()
 result = smc_dcc_obj.run(jax.random.PRNGKey(0))
@@ -229,25 +260,45 @@ plt.scatter(xs, ys)
 plt.scatter(xs_val, ys_val)
 xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
 
-n_posterior_samples = 10
+n_posterior_samples = 1_000
 sample_key = jax.random.PRNGKey(0)
 slp_weights_array = jnp.array([weight for _, weight in slp_weights])
 posterior_over_slps = dist.Categorical(slp_weights_array)
-for _ in range(n_posterior_samples):
-    sample_key, key1, key2 = jax.random.split(sample_key, 3)
+
+samples = []
+for i in tqdm(range(n_posterior_samples), desc="Sample posterior"):
+    sample_key, key1, key2, key3 = jax.random.split(sample_key, 4)
     slp_ix = posterior_over_slps.sample(key1)
     slp, _ = slp_weights[slp_ix]
     weighted_samples = result.get_samples_for_slp(slp).unstack()
     _, weights = weighted_samples.get()
     trace_ix = dist.Categorical(weights).sample(key2)
     trace, weight = weighted_samples.get_selection(trace_ix)
-    print(f"sample from posterior: {slp.formatted()} with weight {weight}")
-
+    
     k = get_gp_kernel(trace)
     noise = transform_param("noise", trace["noise"]) + 1e-5
     mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
 
-    plt.plot(xs_pred, mvn.numpyro_base.mean, color="black", alpha=0.1)
-    q025, q975 = mvnormal_quantile(mvn, 0.025), mvnormal_quantile(mvn, 0.975)
-    plt.fill_between(xs_pred, q025, q975, alpha=0.1, color="tab:blue")
+
+    if i < 10:
+        tqdm.write(f"sample from posterior: {slp.formatted()} noise={noise} with log_prob {m.log_prob(trace)}")
+
+        plt.plot(xs_pred, mvn.numpyro_base.mean, color="black", alpha=0.1)
+        q025, q975 = mvnormal_quantile(mvn, 0.025), mvnormal_quantile(mvn, 0.975)
+        plt.fill_between(xs_pred, q025, q975, alpha=0.1, color="tab:blue")
+
+    samples.append(mvn.sample(key3))
+# plt.show()
+
+
+samples = jnp.vstack(samples)
+m = jnp.mean(samples, axis=0)
+q025 = jnp.quantile(samples, 0.025, axis=0)
+q975 = jnp.quantile(samples, 0.975, axis=0)
+
+plt.figure()
+plt.scatter(xs, ys)
+plt.scatter(xs_val, ys_val)
+plt.plot(xs_pred, m, color="black")
+plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
 plt.show()

@@ -209,8 +209,10 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
 
         self.n_lmh_update_samples: int = self.config.get("n_lmh_update_samples", 1_000)
         self.lmh_variable_selector: VariableSelector = self.config.get("lmh_variable_selector", AllVariables())
+        self.one_inference_run_per_slp: bool = self.config.get("one_inference_run_per_slp", True)
 
         self.max_active_slps: int = self.config.get("max_active_slps", 10)
+        self.max_new_active_slps: int = self.config.get("max_new_active_slps", 10)
         self.max_iterations: int = self.config.get("max_iterations", 10)
 
     # should populate active_slps
@@ -291,13 +293,21 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
         slp_to_proposal_prob_list = list(slp_to_proposal_prob.items())
         slp_to_proposal_prob_list.sort(key=lambda v: v[1].item(), reverse=True)
 
+        new_active_slp_count = 0
         for slp, prob in slp_to_proposal_prob_list:
-            if slp not in slp_log_weights:
-                tqdm.write(f"Make SLP {slp.formatted()} active.")
-                active_slps.append(slp)
-                inactive_slps.remove(slp)
             if len(active_slps) >= self.max_active_slps:
                 break
+
+            already_performed_inference = slp in slp_log_weights
+            if self.one_inference_run_per_slp and already_performed_inference:
+                continue
+            if (not already_performed_inference) and (new_active_slp_count >= self.max_new_active_slps):
+                continue
+
+            tqdm.write(f"Make SLP {slp.formatted()} active (already performed inference = {already_performed_inference}).")
+            active_slps.append(slp)
+            inactive_slps.remove(slp)
+            new_active_slp_count += (not already_performed_inference)
             
 
     def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:

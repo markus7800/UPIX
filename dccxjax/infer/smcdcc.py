@@ -43,7 +43,7 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
 
         assert self.optimised_memory_with_early_return_map == other.optimised_memory_with_early_return_map
 
-        return SMCInferenceResult(particles, log_particle_weight, self.n_particles+other.n_particles, self.optimised_memory_with_early_return_map)
+        return SMCInferenceResult(particles, log_particle_weight, self.n_particles, self.optimised_memory_with_early_return_map)
     
     def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> LogWeightedSample[DCC_COLLECT_TYPE]:
         # shape = (#repeats smc, n_particles, ...)
@@ -55,7 +55,7 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
         
         # normalise log_particle_weights on second axis
         # each smc run is treated independently
-        log_weights = log_particle_weight - jax.scipy.special.logsumexp(log_particle_weight, axis=1)
+        log_weights = log_particle_weight - jax.scipy.special.logsumexp(log_particle_weight, axis=1).reshape(-1,1)
 
         weighted_samples = LogWeightedSample(
             StackedSampleValues(values, n_smc, self.n_particles),
@@ -188,7 +188,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             log_ess = log_Z * 2 - jax.scipy.special.logsumexp(last_result.log_particle_weight * 2)
             ESS = jax.lax.exp(log_ess)
             if self.verbose >= 2:
-                tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():_.0f})")
+                tqdm.write(f"Estimated log weight for {slp.formatted()}: {(log_Z  + path_log_prob).item()} (ESS={ESS.item():_.0f})")
             return LogWeightEstimateFromSMC(log_Z + path_log_prob, ESS, last_result.n_particles)
         else:
             raise Exception("In SMCDCC we should perform one run of SMC before estimate_log_weight to reuse estimate")

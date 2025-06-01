@@ -182,10 +182,11 @@ class ProgressbarManager:
         self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=True)
 
     def _init_tqdm(self, increment):
-        if self.tqdm_bar is not None:
-            increment = int(increment)
-            self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
-            self.tqdm_bar.update(increment)
+        if self.tqdm_bar is  None: 
+            self.tqdm_bar = tqdm_auto(range(self.num_samples), position=0)
+        increment = int(increment)
+        self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
+        self.tqdm_bar.update(increment)
 
     def _update_tqdm(self, iternum, increment, remainder):
         if self.tqdm_bar is not None:
