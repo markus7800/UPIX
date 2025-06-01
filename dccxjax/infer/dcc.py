@@ -25,7 +25,39 @@ class LogWeightEstimate(ABC):
     def combine(self, other: "LogWeightEstimate") -> "LogWeightEstimate":
         raise NotImplementedError
     
+    
+class BaseDCCResult:
+    slp_log_weights: Dict[SLP, FloatArray]
+    
+    def get_slp_weights(self, predicate: Callable[[SLP], bool] = lambda _: True) -> Dict[SLP, float]:
+        log_Z_normaliser = self.get_log_weight_normaliser()
+        slp_weights = {slp: jnp.exp(log_weight - log_Z_normaliser).item() for slp, log_weight in self.slp_log_weights.items()}
+        normaliser = sum(slp_weights.values())
+        # numerical inprecision may lead to weigths being not normalised because we normalised in "log" space
+        slp_weights = {slp: weight/normaliser for slp, weight in slp_weights.items() if predicate(slp)}
+        return slp_weights
+    def get_slps(self, predicate: Callable[[SLP], bool] = lambda _: True) -> List[SLP]:
+        return [slp for slp in self.slp_log_weights.keys() if predicate(slp)]
+    
+    def get_slp(self, predicate: Callable[[SLP], bool]) -> Optional[SLP]:
+        slps = self.get_slps(predicate)
+        if len(slps) == 0:
+            return None
+        elif len(slps) == 1:
+            return slps[0]
+        else:
+            print("Warn: multiple slps for predicate")
+            return slps[0]
 
+    # convenience function for DCC_COLLECT_TYPE = Trace
+    def get_slps_where_address_exists(self, address: str):
+        return self.get_slps(lambda slp: address in slp.decision_representative)
+    
+    # = model evidence if used DCC methods supports it, otherwise 0.
+    def get_log_weight_normaliser(self):
+        log_Zs = [log_Z for _, log_Z in self.slp_log_weights.items()]
+        return jax.scipy.special.logsumexp(jnp.vstack(log_Zs))
+    
 DCC_RESULT_TYPE = TypeVar("DCC_RESULT_TYPE")            
 
 class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):

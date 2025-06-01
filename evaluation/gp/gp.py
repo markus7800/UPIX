@@ -201,23 +201,23 @@ smc_dcc_obj = SMCDCCConfig(m, verbose=2,
 )
 
 
-# key_sets = [set() for depth in range(10)]
-# rng_key = jax.random.PRNGKey(0)
-# for _ in tqdm(range(10_000)):
-#     rng_key, sample_key = jax.random.split(rng_key)
-#     trace, _ = m.generate(sample_key)
-#     # trace = equivalence_map(trace)
-#     k = get_gp_kernel(trace, ordered=True)
-#     d = k.depth()
-#     if d < len(key_sets):
-#         key_sets[d].add(k.key())
+key_sets = [set() for _ in range(10)]
+rng_key = jax.random.PRNGKey(0)
+for _ in tqdm(range(10_000)):
+    rng_key, sample_key = jax.random.split(rng_key)
+    trace, _ = m.generate(sample_key)
+    # trace = equivalence_map(trace)
+    k = get_gp_kernel(trace, ordered=False)
+    d = k.n_internal()
+    if d < len(key_sets):
+        key_sets[d].add(k.key())
 
-# for depth in range(len(key_sets)):
-#     print(f"Depth {depth}: {len(key_sets[depth])}")
+for size in range(len(key_sets)):
+    print(f"size {size}: {len(key_sets[size])}")
 
-# print(key_sets[1])
-# print(key_sets[2])
-# exit()
+print(key_sets[1])
+print(key_sets[2])
+exit()
 
 
 t0 = time()

@@ -157,6 +157,7 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             init_positions = StackedTrace(broadcast_jaxtree(slp.decision_representative, (mcmc.n_chains,)), mcmc.n_chains)
             init_log_prob = broadcast_jaxtree(slp.log_prob(slp.decision_representative), (mcmc.n_chains,))
         
+        # TODO: continue_run ?
         last_state, return_result = mcmc.run(rng_key, init_positions, init_log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
         if self.verbose >= 2 and self.mcmc_collect_inference_info:
             assert last_state.infos is not None

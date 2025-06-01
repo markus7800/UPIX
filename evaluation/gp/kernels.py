@@ -17,6 +17,10 @@ class GPKernel(ABC):
     @abstractmethod
     def size(self) -> int:
         raise NotImplementedError
+    def n_internal(self) -> int:
+        return (self.size() - 1) // 2
+    def n_leaf(self) -> int:
+        return self.n_internal() + 1
     @abstractmethod
     def depth(self) -> int:
         raise NotImplementedError

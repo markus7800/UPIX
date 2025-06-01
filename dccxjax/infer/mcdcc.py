@@ -14,7 +14,7 @@ from ..utils import broadcast_jaxtree, pprint_dtype_shape_of_tree
 from functools import reduce
 from .lmh_global import lmh
 from .variable_selector import AllVariables, VariableSelector
-from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC
+from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult
 
 __all__ = [
     "MCDCC",
@@ -62,7 +62,7 @@ class MCLogWeightEstimate(LogWeightEstimate, ABC):
         raise NotImplementedError
 
 @dataclass
-class MCDCCResult(Generic[DCC_COLLECT_TYPE]):
+class MCDCCResult(BaseDCCResult, Generic[DCC_COLLECT_TYPE]):
     slp_log_weights: Dict[SLP, FloatArray]
     slp_weighted_samples: Dict[SLP, LogWeightedSample[DCC_COLLECT_TYPE]]
 
@@ -78,36 +78,6 @@ class MCDCCResult(Generic[DCC_COLLECT_TYPE]):
             weighted_sample = self.slp_weighted_samples[slp]
             print(f"\t{slp.formatted()}: {weighted_sample.values} with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
         print("}")
-
-    def get_slp_weights(self, predicate: Callable[[SLP], bool] = lambda _: True) -> Dict[SLP, float]:
-        log_Z_normaliser = self.get_log_weight_normaliser()
-        slp_weights = {slp: jnp.exp(log_weight - log_Z_normaliser).item() for slp, log_weight in self.slp_log_weights.items()}
-        normaliser = sum(slp_weights.values())
-        # numerical inprecision may lead to weigths being not normalised because we normalised in "log" space
-        slp_weights = {slp: weight/normaliser for slp, weight in slp_weights.items() if predicate(slp)}
-        return slp_weights
-    def get_slps(self, predicate: Callable[[SLP], bool] = lambda _: True) -> List[SLP]:
-        return [slp for slp in self.slp_log_weights.keys() if predicate(slp)]
-    
-    def get_slp(self, predicate: Callable[[SLP], bool]) -> Optional[SLP]:
-        slps = self.get_slps(predicate)
-        if len(slps) == 0:
-            return None
-        elif len(slps) == 1:
-            return slps[0]
-        else:
-            print("Warn: multiple slps for predicate")
-            return slps[0]
-
-    # convenience function for DCC_COLLECT_TYPE = Trace
-    def get_slps_where_address_exists(self, address: str):
-        return self.get_slps(lambda slp: address in slp.decision_representative)
-    
-    # = model evidence if used DCC methods supports it, otherwise 0.
-    def get_log_weight_normaliser(self):
-        log_Zs = [log_Z for _, log_Z in self.slp_log_weights.items()]
-        return jax.scipy.special.logsumexp(jnp.vstack(log_Zs))
-
 
     def _get_samples_for_slp(self, slp: SLP,
                              mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE],
@@ -311,12 +281,6 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
             
 
     def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
-        log_Zs: List[FloatArray] = []
-        for estimate in log_weight_estimates.values():
-            assert isinstance(estimate, MCLogWeightEstimate)
-            log_Zs.append(estimate.get_estimate())
-
-        # log_Z_normaliser = jax.scipy.special.logsumexp(jnp.vstack(log_Zs))
         slp_log_weights: Dict[SLP, FloatArray] = {}
         for slp, estimate in log_weight_estimates.items():
             assert isinstance(estimate, MCLogWeightEstimate)

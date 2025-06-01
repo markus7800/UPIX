@@ -171,10 +171,13 @@ class MCMCSteps(MCMCRegime):
                 yield from subregime
 
 class ProgressbarManager:
-    def __init__(self, desc: str, num_samples: int) -> None:
+    def __init__(self, desc: str) -> None:
         self.desc = desc
         self.tqdm_bar: Optional[tqdm_auto] = None
-        self.num_samples = num_samples
+        self.num_samples = 0
+
+    def set_num_samples(self, num_samples: int):
+        self.num_samples = num_samples # affects for tqdm bar lenght, not print rate
 
     def start_progress(self):
         assert self.tqdm_bar is None
@@ -182,7 +185,7 @@ class ProgressbarManager:
         self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=True)
 
     def _init_tqdm(self, increment):
-        if self.tqdm_bar is  None: 
+        if self.tqdm_bar is None: 
             self.tqdm_bar = tqdm_auto(range(self.num_samples), position=0)
         increment = int(increment)
         self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
@@ -347,16 +350,11 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
     return _vectorised_kernel
 
 # adapted form numpyro/util.py
-def _add_progress_bar(kernel: Callable, desc: str, num_samples: int) -> Tuple[ProgressbarManager,Callable]:
-    if num_samples > 100:
-        print_rate = int(num_samples / 100)
-    else:
-        print_rate = 1
+def _add_progress_bar(kernel: Callable, progressbar_mngr: ProgressbarManager, num_samples: int) -> Callable:
+    print_rate = max(int(num_samples / 100), 1)
 
     remainder = num_samples % print_rate
 
-    progressbar_mngr = ProgressbarManager(desc, num_samples)
-    
     def _update_progress_bar(iter_num: jax.Array):
         # nonlocal t0
         # t0 = time()
@@ -374,16 +372,21 @@ def _add_progress_bar(kernel: Callable, desc: str, num_samples: int) -> Tuple[Pr
         _update_progress_bar(state.iteration) # NOTE: we don't have to return something for this to work?
         return result
     
-    return progressbar_mngr, wrapped_kernel
+    return wrapped_kernel
 
-def add_progress_bar_to_mcmc_kernel(kernel: MCMCKernel[MCMC_COLLECT_TYPE], slp_name: str, num_samples: int) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
-    progressbar_mngr, kernel_with_bar = _add_progress_bar(kernel, slp_name, num_samples)
-    @jax.jit
+def get_mcmc_scan_with_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], progressbar_mngr: ProgressbarManager, num_samples: int) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
+    progressbar_mngr.set_num_samples(num_samples)
+    kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, num_samples)
     def scan_with_bar(init: MCMCState, xs: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
         progressbar_mngr.start_progress()
         jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, init.iteration)
         return jax.lax.scan(kernel_with_bar, init, xs)
-    return scan_with_bar
+    return jax.jit(scan_with_bar)
+
+def get_mcmc_scan_without_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
+    def scan_without_bar(init: MCMCState, xs: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
+        return jax.lax.scan(kernel, init, xs)
+    return jax.jit(scan_without_bar)
 
 
 class MCMC(Generic[MCMC_COLLECT_TYPE]):
@@ -405,6 +408,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         self.regime = regime
         self.n_chains = n_chains
         self.progress_bar = progress_bar
+        self.progress_bar_mngr = ProgressbarManager("MCMC for "+self.slp.formatted())
 
         self.temperature = temperature
         self.data_annealing = data_annealing
@@ -420,6 +424,8 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
 
         self.kernel: MCMCKernel[MCMC_COLLECT_TYPE] = kernel
         self.init_carry_stat_names: Set[str] = init_carry_stat_names
+
+        self.cached_mcmc_scan: Optional[Callable[[MCMCState,PRNGKey],Tuple[MCMCState,MCMC_COLLECT_TYPE]]] = None
 
     def run(self, rng_key: PRNGKey, init_positions: StackedTrace, log_prob: Optional[FloatArray] = None, *, n_samples_per_chain: int) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
         assert init_positions.T == self.n_chains
@@ -444,11 +450,17 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
             state = MCMCState(jnp.array(0, int), self.temperature, self.data_annealing, state.position, state.log_prob, state.carry_stats, infos)
 
-        if self.progress_bar:
-            scan_with_pbar = add_progress_bar_to_mcmc_kernel(self.kernel, "MCMC for "+self.slp.formatted(), n_samples_per_chain)
-            last_state, return_values = scan_with_pbar(state, keys)
+        if self.cached_mcmc_scan:
+            self.progress_bar_mngr.set_num_samples(n_samples_per_chain)
+            last_state, return_values = self.cached_mcmc_scan(state, keys)
         else:
-            last_state, return_values = jax.lax.scan(self.kernel, state, keys)
+            scan_fn = (
+                get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr, n_samples_per_chain) # print_rate will be based on n_samples_per_chain
+                if self.progress_bar else
+                get_mcmc_scan_without_progressbar(self.kernel)
+            )
+            self.cached_mcmc_scan = scan_fn
+            last_state, return_values = scan_fn(state, keys)
 
         return last_state, return_values
 

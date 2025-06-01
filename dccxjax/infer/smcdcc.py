@@ -188,7 +188,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             log_ess = log_Z * 2 - jax.scipy.special.logsumexp(last_result.log_particle_weight * 2)
             ESS = jax.lax.exp(log_ess)
             if self.verbose >= 2:
-                tqdm.write(f"Estimated log weight for {slp.formatted()}: {(log_Z  + path_log_prob).item()} (ESS={ESS.item():_.0f})")
+                tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():_.0f})")
             return LogWeightEstimateFromSMC(log_Z + path_log_prob, ESS, last_result.n_particles)
         else:
             raise Exception("In SMCDCC we should perform one run of SMC before estimate_log_weight to reuse estimate")

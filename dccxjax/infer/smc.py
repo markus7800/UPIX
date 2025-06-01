@@ -233,14 +233,18 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
 
     return smc_step
 
-def add_progress_bar_to_smc_kernel(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]], slp_name: str, num_samples: int) -> Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]:
-    progressbar_mngr, kernel_with_bar = _add_progress_bar(kernel, slp_name, num_samples)
-    @jax.jit
+def get_smc_scan_with_progressbar(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]], progressbar_mngr: ProgressbarManager, num_samples: int) -> Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]:
+    progressbar_mngr.set_num_samples(num_samples)
+    kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, num_samples)
     def scan_with_bar(init: SMCState, xs: SMCStepData) -> Tuple[SMCState,FloatArray]:
         progressbar_mngr.start_progress()
         jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)
         return jax.lax.scan(kernel_with_bar, init, xs)
-    return scan_with_bar
+    return jax.jit(scan_with_bar)
+def get_smc_scan_without_progressbar(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]) -> Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]:
+    def scan_without_bar(init: SMCState, xs: SMCStepData) -> Tuple[SMCState,FloatArray]:
+        return jax.lax.scan(kernel, init, xs)
+    return jax.jit(scan_without_bar)
 
 
 class SMC:
@@ -260,6 +264,7 @@ class SMC:
         self.slp = slp
         self.n_particles = n_particles
         self.progress_bar = progress_bar
+        self.progress_bar_mngr = ProgressbarManager("SMC for "+self.slp.formatted())
 
         rejuvination_kernel, rejuv_init_carry_stat_names = get_mcmc_kernel(slp, rejuvination_regime, collect_inference_info=collect_inference_info, vectorised=True, return_map=lambda _: None)
         assert len(rejuv_init_carry_stat_names) == 0, "CarryStats in MCMC currently not supported."
@@ -312,18 +317,16 @@ class SMC:
         smc_data = SMCStepData(smc_keys, self.tempereture_schedule.temperature, self.data_annealing_schedule.data_annealing)
 
         if self.cached_smc_scan:
+            self.progress_bar_mngr.set_num_samples(self.n_steps) # n_steps should be always the same
             last_state, ess = self.cached_smc_scan(init_state, smc_data)
         else:
-            if self.progress_bar:
-                scan_with_pbar = add_progress_bar_to_smc_kernel(self.smc_step, "SMC for "+self.slp.formatted(), self.n_steps)
-                self.cached_smc_scan = scan_with_pbar
-                last_state, ess = scan_with_pbar(init_state, smc_data)
-            else:
-                @jax.jit
-                def scan_without_bar(init: SMCState, xs: SMCStepData) -> Tuple[SMCState,FloatArray]:
-                    return jax.lax.scan(self.smc_step, init, xs)
-                last_state, ess = scan_without_bar(init_state, smc_data)
-                self.cached_smc_scan = scan_without_bar
+            scan_fn = (
+                get_smc_scan_with_progressbar(self.smc_step, self.progress_bar_mngr, self.n_steps)
+                if self.progress_bar else
+                get_smc_scan_without_progressbar(self.smc_step)
+            )
+            self.cached_smc_scan = scan_fn
+            last_state, ess = scan_fn(init_state, smc_data)
 
         return last_state, ess 
     

@@ -25,7 +25,6 @@ class Model:
         self.args = args
         self.kwargs = kwargs
 
-        self._jitted_log_prob = False
         self.slp_formatter: Optional[Callable[["SLP"],str]] = None
         self.slp_sort_key: Callable[["SLP"],SupportsRichComparison] = lambda slp: slp.short_repr()
         
