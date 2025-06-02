@@ -5,7 +5,8 @@ from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_repres
 from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
 from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult
 from dataclasses import dataclass
-from .vi import Guide, ADVI, Adagrad, ADVIState, Optimizer
+from .vi import Guide, ADVI, ADVIState, Optimizer
+from .optimizers import Adagrad
 from tqdm.auto import tqdm
 from abc import abstractmethod
 from functools import reduce

@@ -1,5 +1,5 @@
 import jax.flatten_util
-from ..core.samplecontext import SampleContext, SAMPLE_CONTEXT
+from ..core.samplecontext import GuideContext
 from dccxjax.distributions import Transform, Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE, TransformedDistribution, MultivariateNormal, Normal
 from typing import Optional, Sequence, List, Dict, Tuple, NamedTuple, Callable, Generic, TypeVar, Any, cast
 from ..types import FloatArray, FloatArrayLike, PRNGKey, Trace
@@ -11,33 +11,16 @@ from dccxjax.distributions.constraints import Constraint, real
 import numpyro.distributions.transforms as transforms
 from ..core.model_slp import Model, SLP
 from .mcmc import ProgressbarManager, _add_progress_bar
+from .optimizers import OPTIMIZER_STATE, Optimizer
+from math import prod
 
 __all__ = [
-    "param",
-    "SGD",
-    "Momentum",
-    "Adagrad",
-    "Adam",
-    "advi",
-    "guide"
+    "ADVI",
+    "guide",
+    "Guide",
+    "GuideProgram",
+    "MeanfieldNormalGuide"
 ]
-
-
-class GuideContext(SampleContext, ABC):
-    @abstractmethod
-    def param(self, address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:
-        raise NotImplementedError
-
-    def logfactor(self, lf: FloatArrayLike) -> None:
-        raise Exception("logfactor not supported for guides")
-    
-def param(address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:
-    global SAMPLE_CONTEXT
-    if SAMPLE_CONTEXT is not None:
-        assert isinstance(SAMPLE_CONTEXT, GuideContext)
-        return SAMPLE_CONTEXT.param(address, init_value, constraint)
-    else:
-        raise Exception("Probabilistic program run without guide context")
 
 class GuideInitCtx(GuideContext):
     def __init__(self, rng_key: PRNGKey = jax.random.PRNGKey(0)) -> None:
@@ -45,7 +28,7 @@ class GuideInitCtx(GuideContext):
         self.X: Trace = dict()
         self.params: Dict[str,FloatArray] = dict()
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
-        if observed is None:
+        if observed is not None:
             raise Exception("Observations not supported for guides")
         self.rng_key, sample_key = jax.random.split(self.rng_key)
         value = distribution.sample(sample_key)
@@ -64,7 +47,7 @@ class GuideGenerateCtx(GuideContext):
         self.log_prob: FloatArray = jnp.array(0., float)
         self.params = params
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
-        if observed is None:
+        if observed is not None:
             raise Exception("Observations not supported for guides")
         self.rng_key, sample_key = jax.random.split(self.rng_key)
         value = distribution.numpyro_base.rsample(sample_key)
@@ -81,7 +64,7 @@ class GuideLogprobCtx(GuideContext):
         self.log_prob: FloatArray = jnp.array(0., float)
         self.params = params
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
-        if observed is None:
+        if observed is not None:
             raise Exception("Observations not supported for guides")
         value = cast(DIST_SUPPORT, self.X[address])
         self.log_prob += distribution.log_prob(value)
@@ -98,15 +81,15 @@ class Guide(ABC):
     def update_params(self, params: jax.Array):
         raise NotImplementedError
     @abstractmethod
-    def sample_and_log_prob(self, rng_key: PRNGKey) -> Tuple[Trace, FloatArray]:
+    def sample_and_log_prob(self, rng_key: PRNGKey, shape = ()) -> Tuple[Trace, FloatArray]:
         raise NotImplementedError
     @abstractmethod
-    def sample(self, rng_key: PRNGKey) -> Trace:
+    def sample(self, rng_key: PRNGKey, shape = ()) -> Trace:
         raise NotImplementedError
     @abstractmethod
     def log_prob(self, X: Trace) -> FloatArray:
         raise NotImplementedError
-class GuideModel(Guide):
+class GuideProgram(Guide):
     def __init__(self, f: Callable, args, kwargs) -> None:
         self.f = f
         self.args = args
@@ -118,92 +101,66 @@ class GuideModel(Guide):
        return self.param_arr
     def update_params(self, params: FloatArray):
        self.param_arr = params
-    def sample_and_log_prob(self, rng_key: FloatArray) -> Tuple[Trace, FloatArray]:
+    def _sample_and_log_prob(self, rng_key: FloatArray) -> Tuple[Trace, FloatArray]:
        with GuideGenerateCtx(rng_key, self.unravel_fn(self.param_arr)) as ctx:
             self.f(*self.args, **self.kwargs)
             return ctx.X, ctx.log_prob
-    def sample(self, rng_key: PRNGKey) -> Trace:
-        return self.sample_and_log_prob(rng_key)[0]
+    def sample_and_log_prob(self, rng_key: FloatArray, shape = ()) -> Tuple[Trace, FloatArray]:
+        if shape == ():
+            return self._sample_and_log_prob(rng_key)
+        else:
+            flat_keys = jax.random.split(rng_key, (prod(shape),))
+            X, lp = jax.vmap(self._sample_and_log_prob)(flat_keys)
+            X = jax.tree.map(lambda v: v.reshape(shape + v.shape[1:]), X)
+            lp = lp.reshape(shape)
+            return X, lp
+    def sample(self, rng_key: PRNGKey, shape = ()) -> Trace:
+        return self.sample_and_log_prob(rng_key, shape)[0]
     def log_prob(self, X: Trace) -> FloatArray:
        with GuideLogprobCtx(X, self.unravel_fn(self.param_arr)) as ctx:
             self.f(*self.args, **self.kwargs)
             return ctx.log_prob
 
-def guide(f:Callable) -> Callable[..., GuideModel]:
+def guide(f:Callable) -> Callable[..., GuideProgram]:
     def _f(*args, **kwargs):
-        return GuideModel(f, args, kwargs)
+        return GuideProgram(f, args, kwargs)
     return _f
 
-
-# we do not need pytrees / we operate on arrays
-OPTIMIZER_STATE = TypeVar("OPTIMIZER_STATE")
-OPTIMIZER_PARAMS = jax.Array
-OPTIMIZER_UPDATES = jax.Array
-class Optimizer(NamedTuple, Generic[OPTIMIZER_STATE]):
-    init_fn: Callable[[OPTIMIZER_PARAMS], OPTIMIZER_STATE]
-    update_fn: Callable[[int, OPTIMIZER_UPDATES, OPTIMIZER_STATE], OPTIMIZER_STATE]
-    get_params_fn: Callable[[OPTIMIZER_STATE], OPTIMIZER_PARAMS]
-
-def SGD(step_size: float) -> Optimizer:
-  def init(x0: jax.Array) -> jax.Array:
-    return x0
-  def update(i: int, g: jax.Array, x: jax.Array) -> jax.Array:
-    return x - step_size * g
-  def get_params(x):
-    return x
-  return Optimizer(init, update, get_params)
-
-def Momentum(step_size: float, mass: float):
-  def init(x0: jax.Array) -> Tuple[jax.Array,jax.Array]:
-    v0 = jnp.zeros_like(x0)
-    return x0, v0
-  def update(i: int, g: jax.Array, state: Tuple[jax.Array,jax.Array]) -> Tuple[jax.Array,jax.Array]:
-    x, velocity = state
-    velocity = mass * velocity + g
-    x = x - step_size * velocity
-    return x, velocity
-  def get_params(state: Tuple[jax.Array,jax.Array]) -> jax.Array:
-    x, _ = state
-    return x
-  return Optimizer(init, update, get_params)
-
-def Adagrad(step_size: float, momentum=0.9) -> Optimizer:
-  def init(x0: jax.Array) -> Tuple[jax.Array,jax.Array,jax.Array]:
-    g_sq = jnp.zeros_like(x0)
-    m = jnp.zeros_like(x0)
-    return x0, g_sq, m
-
-  def update(i: int, g: jax.Array, state: Tuple[jax.Array,jax.Array,jax.Array]) -> Tuple[jax.Array,jax.Array,jax.Array]:
-    x, g_sq, m = state
-    g_sq += jnp.square(g)
-    g_sq_inv_sqrt = jnp.where(g_sq > 0, 1. / jnp.sqrt(g_sq), 0.0)
-    m = (1. - momentum) * (g * g_sq_inv_sqrt) + momentum * m
-    x = x - step_size * m
-    return x, g_sq, m
-
-  def get_params(state: Tuple[jax.Array,jax.Array,jax.Array]) -> jax.Array:
-    x, _, _ = state
-    return x
-
-  return Optimizer(init, update, get_params)
-
-def Adam(step_size: float, b1=0.9, b2=0.999, eps=1e-8) -> Optimizer:
-  def init(x0: jax.Array) -> Tuple[jax.Array,jax.Array,jax.Array]:
-    m0 = jnp.zeros_like(x0)
-    v0 = jnp.zeros_like(x0)
-    return x0, m0, v0
-  def update(i: int, g: jax.Array, state: Tuple[jax.Array,jax.Array,jax.Array]):
-    x, m, v = state
-    m = (1 - b1) * g + b1 * m  # First  moment estimate.
-    v = (1 - b2) * jnp.square(g) + b2 * v  # Second moment estimate.
-    mhat = m / (1 - jnp.asarray(b1, m.dtype) ** (i + 1))  # Bias correction.
-    vhat = v / (1 - jnp.asarray(b2, m.dtype) ** (i + 1))
-    x = x - step_size * mhat / (jnp.sqrt(vhat) + eps)
-    return x, m, v
-  def get_params(state: Tuple[jax.Array,jax.Array,jax.Array]) -> jax.Array:
-    x, _, _ = state
-    return x
-  return Optimizer(init, update, get_params)
+from dccxjax.distributions import Normal
+class MeanfieldNormalGuide(Guide):
+    def __init__(self, slp: SLP) -> None:
+        assert slp.all_continuous()
+        flat_X, unravel_fn = jax.flatten_util.ravel_pytree(slp.decision_representative)
+        assert len(flat_X.shape) == 1
+        self.n_latents = flat_X.shape[0]
+        self.mu = jax.lax.zeros_like_array(flat_X)
+        self.omega = jax.lax.zeros_like_array(flat_X)
+        self.unravel_fn = unravel_fn
+    def get_params(self) -> FloatArray:
+       return jax.lax.concatenate((self.mu, self.omega), 0)
+    def update_params(self, params: FloatArray):
+       self.mu = params[:self.n_latents]
+       self.omega = params[self.n_latents:]
+    def sample_and_log_prob(self, rng_key: FloatArray, shape = ()) -> Tuple[Trace, FloatArray]:
+        d = Normal(self.mu, jax.lax.exp(self.omega))
+        x = d.numpyro_base.rsample(rng_key, shape)
+        lp = jax.scipy.special.logsumexp(d.log_prob(x), axis=-1)
+        # print(x.shape) # shape + (self.n_latents,)
+        if shape == ():
+            return self.unravel_fn(x), lp
+        else:
+            x_flat = x.reshape(-1, self.n_latents)
+            X = jax.vmap(self.unravel_fn)(x_flat)
+            X = jax.tree.map(lambda v: v.reshape(shape + v.shape[1:]), X)
+            return X, lp
+    def sample(self, rng_key: PRNGKey, shape = ()) -> Trace: 
+        return self.sample_and_log_prob(rng_key, shape)[0] 
+    def log_prob(self, X: Trace) -> FloatArray:
+        d = Normal(self.mu, jax.lax.exp(self.omega))
+        x, _ = jax.flatten_util.ravel_pytree(X)
+        lp = d.log_prob(x)
+        return lp
+    
 
 class ADVIState(NamedTuple, Generic[OPTIMIZER_STATE]):
     iteration: int
@@ -291,5 +248,8 @@ class ADVI(Generic[OPTIMIZER_STATE]):
         init_state = ADVIState(0, self.optimizer.init_fn(self.guide.get_params()))
         return self.continue_run(rng_key, init_state, n_iter=n_iter)
         
-        
+    def get_updated_guide(self, state: ADVIState[OPTIMIZER_STATE]) -> Guide:
+        p = self.optimizer.get_params_fn(state.optimizer_state)
+        self.guide.update_params(p)
+        return self.guide
    

@@ -11,3 +11,5 @@ from .mcdcc import *
 from .mcmcdcc import *
 from .smc import *
 from .smcdcc import *
+from .vi import *
+from .vidcc import *

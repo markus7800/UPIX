@@ -5,11 +5,13 @@ import numpyro.distributions as numpyro_dists
 from typing import Any, Optional, Dict, Callable, cast, Tuple
 from abc import ABC, abstractmethod
 from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike, BoolArray, IntArray
+from dccxjax.distributions.constraints import Constraint, real
 
 __all__ = [
     "sample",
     "logfactor",
-    "factor"
+    "factor",
+    "param"
 ]
 
 class SampleContext(ABC):
@@ -241,3 +243,20 @@ class TransformToConstrainedCtx(SampleContext):
     
     def logfactor(self, lf: FloatArrayLike) -> None:
         pass
+    
+
+class GuideContext(SampleContext, ABC):
+    @abstractmethod
+    def param(self, address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:
+        raise NotImplementedError
+
+    def logfactor(self, lf: FloatArrayLike) -> None:
+        raise Exception("logfactor not supported for guides")
+    
+def param(address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:
+    global SAMPLE_CONTEXT
+    if SAMPLE_CONTEXT is not None:
+        assert isinstance(SAMPLE_CONTEXT, GuideContext)
+        return SAMPLE_CONTEXT.param(address, init_value, constraint)
+    else:
+        raise Exception("Probabilistic program run without guide context")
