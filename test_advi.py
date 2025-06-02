@@ -93,13 +93,13 @@ def normal_guide():
 
 g: Guide = normal_guide()
 
-g: Guide = MeanfieldNormalGuide(slp)
+g: Guide = MeanfieldNormalGuide(slp, AllVariables())
 
 print(g.sample_and_log_prob(jax.random.PRNGKey(0), ()))
 x, lp = g.sample_and_log_prob(jax.random.PRNGKey(0), (10,3))
 print(x["x"].shape, lp.shape)
 
-advi = ADVI(slp, g, Adagrad(1.), 100, progress_bar=True)
+advi = ADVI(slp, AllVariables(), g, Adagrad(1.), 100, progress_bar=True)
 
 last_state, elbo = advi.run(jax.random.PRNGKey(0), n_iter=1_000)
 plt.figure()

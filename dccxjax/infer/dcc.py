@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
-from dccxjax.core import SLP, Model
+from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
 from ..types import Trace, PRNGKey, FloatArray, IntArray
 from dataclasses import dataclass
 from .mcmc import MCMCState
@@ -154,3 +154,23 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         #     tqdm.write(f"Finished in {t1-t0:.3f}s")
         return combined_result
 
+def initialise_active_slps_from_prior(model: Model, verbose: int, init_n_samples: int, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
+    if verbose >= 2:
+        tqdm.write("Initialise active SLPS.")
+    discovered_slps: List[SLP] = []
+
+    # default samples from prior
+    for _ in tqdm(range(init_n_samples), desc="Search SLPs from prior"):
+        rng_key, key = jax.random.split(rng_key)
+        trace = sample_from_prior(model, key)
+
+        if model.equivalence_map is not None:
+            trace = model.equivalence_map(trace)
+
+        if all(slp.path_indicator(trace) == 0 for slp in discovered_slps):
+            slp = slp_from_decision_representative(model, trace)
+            if verbose >= 2:
+                tqdm.write(f"Discovered SLP {slp.formatted()}.")
+            discovered_slps.append(slp)
+
+    active_slps.extend(discovered_slps)

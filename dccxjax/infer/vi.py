@@ -13,6 +13,10 @@ from ..core.model_slp import Model, SLP
 from .mcmc import ProgressbarManager, _add_progress_bar
 from .optimizers import OPTIMIZER_STATE, Optimizer
 from math import prod
+from .gibbs_model import GibbsModel
+import jax.experimental
+from .variable_selector import VariableSelector, PredicateSelector
+from ..utils import broadcast_jaxtree
 
 __all__ = [
     "ADVI",
@@ -89,6 +93,7 @@ class Guide(ABC):
     @abstractmethod
     def log_prob(self, X: Trace) -> FloatArray:
         raise NotImplementedError
+    
 class GuideProgram(Guide):
     def __init__(self, f: Callable, args, kwargs) -> None:
         self.f = f
@@ -96,6 +101,7 @@ class GuideProgram(Guide):
         self.kwargs = kwargs
         with GuideInitCtx() as ctx:
             f(*args, **kwargs)
+            self.guide_trace = ctx.params
             self.param_arr, self.unravel_fn = jax.flatten_util.ravel_pytree(ctx.params)
     def get_params(self) -> FloatArray:
        return self.param_arr
@@ -128,13 +134,17 @@ def guide(f:Callable) -> Callable[..., GuideProgram]:
 
 from dccxjax.distributions import Normal
 class MeanfieldNormalGuide(Guide):
-    def __init__(self, slp: SLP) -> None:
-        assert slp.all_continuous()
-        flat_X, unravel_fn = jax.flatten_util.ravel_pytree(slp.decision_representative)
+    def __init__(self, slp: SLP, variable_selector: VariableSelector, init_sigma: float = 1.) -> None:
+        self._variable_selector = variable_selector
+        X = {addr: val for addr, val in slp.decision_representative.items() if variable_selector.contains(addr)}
+        self.Y = {addr: val for addr, val in slp.decision_representative.items() if not variable_selector.contains(addr)}
+        is_discret_map = slp.get_is_discrete_map()
+        assert all(not is_discret_map[addr] for addr in X.keys())
+        flat_X, unravel_fn = jax.flatten_util.ravel_pytree(X)
         assert len(flat_X.shape) == 1
         self.n_latents = flat_X.shape[0]
         self.mu = jax.lax.zeros_like_array(flat_X)
-        self.omega = jax.lax.zeros_like_array(flat_X)
+        self.omega = jax.lax.full_like(flat_X, jnp.log(init_sigma))
         self.unravel_fn = unravel_fn
     def get_params(self) -> FloatArray:
        return jax.lax.concatenate((self.mu, self.omega), 0)
@@ -144,15 +154,16 @@ class MeanfieldNormalGuide(Guide):
     def sample_and_log_prob(self, rng_key: FloatArray, shape = ()) -> Tuple[Trace, FloatArray]:
         d = Normal(self.mu, jax.lax.exp(self.omega))
         x = d.numpyro_base.rsample(rng_key, shape)
-        lp = jax.scipy.special.logsumexp(d.log_prob(x), axis=-1)
+        lp = d.log_prob(x).sum(axis=-1)
         # print(x.shape) # shape + (self.n_latents,)
         if shape == ():
-            return self.unravel_fn(x), lp
+            X = self.unravel_fn(x) | self.Y
         else:
             x_flat = x.reshape(-1, self.n_latents)
             X = jax.vmap(self.unravel_fn)(x_flat)
-            X = jax.tree.map(lambda v: v.reshape(shape + v.shape[1:]), X)
-            return X, lp
+            X = jax.tree.map(lambda v: v.reshape(shape + v.shape[1:]), X) | broadcast_jaxtree(self.Y, shape)
+        # jax.debug.print("x={x} m={m} s={s}", x=x, m=self.mu, s=self.omega)
+        return X, lp
     def sample(self, rng_key: PRNGKey, shape = ()) -> Trace: 
         return self.sample_and_log_prob(rng_key, shape)[0] 
     def log_prob(self, X: Trace) -> FloatArray:
@@ -160,6 +171,8 @@ class MeanfieldNormalGuide(Guide):
         x, _ = jax.flatten_util.ravel_pytree(X)
         lp = d.log_prob(x)
         return lp
+    def variable_selector(self) -> VariableSelector:
+        return self._variable_selector
     
 
 class ADVIState(NamedTuple, Generic[OPTIMIZER_STATE]):
@@ -167,18 +180,20 @@ class ADVIState(NamedTuple, Generic[OPTIMIZER_STATE]):
     optimizer_state: OPTIMIZER_STATE
 
 def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE], L: int):
+    # log_prob_fn = gibbs_model.tempered_log_prob(jnp.array(1.,float), {})
+    log_prob_fn = slp.log_prob
     def elbo_fn(params: jax.Array, rng_key: PRNGKey) -> FloatArray:
         guide.update_params(params)
         if L == 1:
             X, lq = guide.sample_and_log_prob(rng_key)
-            lp = slp.log_prob(X)
+            lp = log_prob_fn(X)
+            # jax.debug.print("{X} {lp} {lq}", X=X, lp=lp, lq=lq)
             elbo = lp - lq
         else:
             def _elbo_step(elbo: FloatArray, sample_key: PRNGKey) -> Tuple[FloatArray, None]:
                 X, lq = guide.sample_and_log_prob(sample_key)
-                lp = slp.log_prob(X)
+                lp = log_prob_fn(X)
                 return elbo + (lp - lq), None
-
             elbo, _ = jax.lax.scan(_elbo_step, jnp.array(0., float), jax.random.split(rng_key, L))
             elbo = elbo / L
         return elbo
@@ -187,12 +202,12 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
         iteration, optimizer_state = advi_state
         params = optimizer.get_params_fn(optimizer_state)
         elbo, elbo_grad = jax.value_and_grad(elbo_fn, argnums=0)(params, rng_key)
+        # jax.debug.print("e={e} g={g}", e=elbo, g=elbo_grad)
         new_optimizer_state = optimizer.update_fn(iteration, -elbo_grad, optimizer_state)
         return ADVIState(iteration + 1, new_optimizer_state), elbo
     
     return advi_step
 
-import jax.experimental
 def get_advi_scan_with_progressbar(kernel: Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]], progressbar_mngr: ProgressbarManager, n_iter: int) -> Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]:
     progressbar_mngr.set_num_samples(n_iter)
     kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, n_iter)
@@ -239,7 +254,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
                 if self.progress_bar else
                 get_advi_scan_without_progressbar(self.advi_step)
             )
-            self.cached_smc_scan = scan_fn
+            self.cached_advi_scan = scan_fn
             last_state, elbo = scan_fn(init_state, keys)
 
         return last_state, elbo

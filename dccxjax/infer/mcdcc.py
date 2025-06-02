@@ -14,7 +14,7 @@ from ..utils import broadcast_jaxtree, pprint_dtype_shape_of_tree
 from functools import reduce
 from .lmh_global import lmh
 from .variable_selector import AllVariables, VariableSelector
-from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult
+from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
 
 __all__ = [
     "MCDCC",
@@ -187,25 +187,7 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
 
     # should populate active_slps
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
-        if self.verbose >= 2:
-            tqdm.write("Initialise active SLPS.")
-        discovered_slps: List[SLP] = []
-
-        # default samples from prior
-        for _ in tqdm(range(self.init_n_samples), desc="Search SLPs from prior"):
-            rng_key, key = jax.random.split(rng_key)
-            trace = sample_from_prior(self.model, key)
-
-            if self.model.equivalence_map is not None:
-                trace = self.model.equivalence_map(trace)
-
-            if all(slp.path_indicator(trace) == 0 for slp in discovered_slps):
-                slp = slp_from_decision_representative(self.model, trace)
-                if self.verbose >= 2:
-                    tqdm.write(f"Discovered SLP {slp.formatted()}.")
-                discovered_slps.append(slp)
-
-        active_slps.extend(discovered_slps)
+        initialise_active_slps_from_prior(self.model, self.verbose, self.init_n_samples, active_slps, inactive_slps, rng_key)
     
 
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):

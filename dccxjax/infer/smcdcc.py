@@ -106,6 +106,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         if slp in self.inference_method_cache:
             smc = self.inference_method_cache[slp]
             assert isinstance(smc, SMC)
+            tqdm.write("Use cached SMC")
             return smc
             
         smc = SMC(

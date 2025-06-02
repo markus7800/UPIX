@@ -13,6 +13,7 @@ from dataclasses import fields
 from tqdm.auto import tqdm
 from dccxjax.core.branching_tracer import retrace_branching
 from time import time
+from functools import reduce
 
 # set_platform("cpu")
 
@@ -29,8 +30,13 @@ xs, xs_val, ys, ys_val = get_data_autogp()
 # plt.scatter(xs_val, ys_val)
 # plt.show()
 
+def normalise(a: jax.Array): return a / a.sum()
+
 NODE_TYPES: List[type[GPKernel]] = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
-NODE_TYPE_PROBS = jnp.array([0.0, 0.21428571428571427, 0.0, 0.21428571428571427, 0.21428571428571427, 0.17857142857142858, 0.17857142857142858])
+# NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
+# NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 6, 0, 6, 5, 5],float))
+
+NODE_TYPE_PROBS = normalise(jnp.array([0, 0.2, 0.2, 0, 0.2, 0.1, 0.1],float))
 
 def covariance_prior(idx: int) -> GPKernel:
     node_type = sample(f"{idx}_node_type", dist.Categorical(NODE_TYPE_PROBS))
@@ -117,6 +123,33 @@ m.set_equivalence_map(equivalence_map)
 # print(get_gp_kernel(X, True))
 # print(get_gp_kernel(equivalence_map(X), False))
 
+# t0 = time()
+# result = smc_dcc_obj.run(jax.random.PRNGKey(0))
+# result.pprint()
+# t1 = time()
+
+# equivalence_classes: Dict[str, Set[str]] = dict()
+# rng_key = jax.random.PRNGKey(0)
+# for _ in tqdm(range(10_000)):
+#     rng_key, sample_key = jax.random.split(rng_key)
+#     trace, _ = m.generate(sample_key)
+#     equ_trace = equivalence_map(trace)
+#     k = get_gp_kernel(trace, ordered=False)
+#     equ_k = get_gp_kernel(equ_trace, ordered=False)
+#     d = k.n_internal()
+#     if d < 3:
+#         equ_key = equ_k.key()
+#         if equ_key not in equivalence_classes:
+#             equivalence_classes[equ_key] = set([equ_key])
+#         equivalence_classes[equ_key].add(k.key())
+    
+
+# for k, vals  in equivalence_classes.items():
+#     print(k, vals)
+
+# exit()
+
+
 
 class SMCDCCConfig(SMCDCC[T]):
 
@@ -161,18 +194,18 @@ class SMCDCCConfig(SMCDCC[T]):
     def get_SMC_rejuvination_kernel(self, slp: SLP) -> MCMCRegime:
         # regime = MCMCStep(PredicateSelector(lambda addr: not addr.endswith("node_type")), HMC(10, 0.02))
         
-        # selector = PredicateSelector(lambda addr: not addr.endswith("node_type"))
-        # regime = MCMCSteps(
-        #     MCMCStep(selector, RW(lambda _: dist.Normal(0.,1.), elementwise=True)),
-        #     MCMCStep(selector, HMC(10, 0.02))
-        # )
-
-        selector = PredicateSelector(lambda addr: not addr == "noise" and not addr.endswith("node_type"))
+        selector = PredicateSelector(lambda addr: not addr.endswith("node_type"))
         regime = MCMCSteps(
             MCMCStep(selector, RW(lambda _: dist.Normal(0.,1.), elementwise=True)),
-            MCMCStep(selector, HMC(10, 0.02)),
-            MCMCStep(SingleVariable("noise"), HMC(10, 0.02))
+            MCMCStep(selector, HMC(10, 0.02))
         )
+
+        # selector = PredicateSelector(lambda addr: not addr == "noise" and not addr.endswith("node_type"))
+        # regime = MCMCSteps(
+        #     MCMCStep(selector, RW(lambda _: dist.Normal(0.,1.), elementwise=True)),
+        #     MCMCStep(selector, HMC(10, 0.02)),
+        #     MCMCStep(SingleVariable("noise"), HMC(10, 0.02))
+        # )
 
         # pprint_mcmc_regime(regime, slp)
         return regime
@@ -194,44 +227,145 @@ smc_dcc_obj = SMCDCCConfig(m, verbose=2,
     smc_n_particles=10,
     smc_collect_inference_info=True,
     max_iterations = 5,
-    n_lmh_update_samples = 1000,
+    n_lmh_update_samples = 250,
     max_active_slps = 3,
     max_new_active_slps = 3,
     one_inference_run_per_slp = True,
 )
 
+import math
+import heapq
+class SuccessiveHalving:
+    def __init__(self, num_total_iterations: int, num_final_arms: int):
+        self.num_total_iterations = num_total_iterations
+        self.num_final_arms = num_final_arms
 
-key_sets = [set() for _ in range(10)]
-rng_key = jax.random.PRNGKey(0)
-for _ in tqdm(range(10_000)):
-    rng_key, sample_key = jax.random.split(rng_key)
-    trace, _ = m.generate(sample_key)
-    # trace = equivalence_map(trace)
-    k = get_gp_kernel(trace, ordered=False)
-    d = k.n_internal()
-    if d < len(key_sets):
-        key_sets[d].add(k.key())
+    def calculate_num_phases(self, num_arms: int) -> int:
+        self.num_phases = 1
+        num_active_arms = num_arms
+        while num_active_arms > self.num_final_arms:
+            num_active_arms = max(math.ceil(num_active_arms / 2), self.num_final_arms)
+            self.num_phases += 1
 
-for size in range(len(key_sets)):
-    print(f"size {size}: {len(key_sets[size])}")
+        return self.num_phases
 
-print(key_sets[1])
-print(key_sets[2])
-exit()
+    def calculate_num_optimization_steps(self, num_active_arms: int) -> int:
+        return math.floor(self.num_total_iterations / (self.num_phases * num_active_arms))
 
+    def select_active_slps(self, arm2reward: List[Tuple[SLP,float]]) -> List[SLP]:
+        num_active_arms = len(arm2reward)
+        num_to_keep = max(math.ceil(num_active_arms / 2), self.num_final_arms)
+        arms_to_keep = heapq.nlargest(num_to_keep, arm2reward, key=lambda v: v[1])
+        return [slp for slp, _ in arms_to_keep]
+
+
+class VIConfig(VIDCC):
+    # def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
+    #     for node_type in range(len(NODE_TYPE_PROBS) - 2):
+    #         if jax.lax.exp(dist.Categorical(NODE_TYPE_PROBS).log_prob(node_type)) > 0:
+    #             rng_key, generate_key = jax.random.split(rng_key)
+    #             trace, _ = self.model.generate(generate_key, {"1_node_type": jnp.array(node_type,int)})
+    #             slp = slp_from_decision_representative(self.model, trace)
+    #             active_slps.append(slp)
+    #             tqdm.write(f"Make SLP {slp.formatted()} active.")
+    
+    def __init__(self, model: Model, *ignore, verbose=0, **config_kwargs) -> None:
+        super().__init__(model, *ignore, verbose=verbose, **config_kwargs)
+        self.successive_halving: SuccessiveHalving = self.config["successive_halving"]
+                
+    def get_guide(self, slp: SLP) -> Guide:
+        selector = PredicateSelector(lambda addr: not addr.endswith("node_type"))
+        return MeanfieldNormalGuide(slp, selector, 0.1)
+    
+    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
+        super().initialise_active_slps(active_slps, inactive_slps, rng_key)
+        self.n_phases = self.successive_halving.calculate_num_phases(len(active_slps))
+        self.advi_n_iter = self.successive_halving.calculate_num_optimization_steps(len(active_slps))
+        print(f"{len(active_slps)=} {self.n_phases=} {self.advi_n_iter=}")        
+    
+    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
+        inactive_slps.clear()
+        inactive_slps.extend(active_slps)
+        active_slps.clear()
+        
+        if self.iteration_counter == self.n_phases:
+            return
+        
+        slp_to_log_weight: List[Tuple[SLP, float]] = []
+        for slp in inactive_slps:
+            latest_estimate = log_weight_estimates[slp][-1]
+            assert isinstance(latest_estimate, LogWeightEstimateFromADVI)
+            slp_to_log_weight.append((slp, latest_estimate.get_estimate().item()))
+        selected_slps = self.successive_halving.select_active_slps(slp_to_log_weight)
+        active_slps.extend(selected_slps)
+        self.advi_n_iter = self.successive_halving.calculate_num_optimization_steps(len(active_slps))
+        print(f"update active slps {len(active_slps)=} {self.advi_n_iter=}")        
+        
+        
+
+from dccxjax.infer.optimizers import Adagrad, SGD, Adam
+vi_dcc_obj = VIConfig(m, verbose=2,
+    init_n_samples=1_000, # 1_000
+    advi_n_iter=1_000,
+    advi_L=1, # 1
+    advi_optimizer=Adam(0.005), # Adam(0.005)
+    elbo_estimate_n_samples=100, # 100
+    successive_halving=SuccessiveHalving(1_000_000, 10)
+)
 
 t0 = time()
-result = smc_dcc_obj.run(jax.random.PRNGKey(0))
+result = vi_dcc_obj.run(jax.random.PRNGKey(0))
 result.pprint()
 t1 = time()
+
 
 print(f"Total time: {t1-t0:.3f}s")
 comp_time = compilation_time_tracker.get_total_compilation_time_secs()
 print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
 
+
 slp_weights = list(result.get_slp_weights().items())
 slp_weights.sort(key=lambda v: v[1])
 
+xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
+for i in range(10):
+    slp, weight = slp_weights[-i]
+    print(slp.formatted(), weight)
+    g = result.slp_guides[slp]
+    
+    n = 100
+    
+    key = jax.random.PRNGKey(0)
+    posterior = Traces(g.sample(key, (n,)), n)
+    
+    samples = []
+    for i in range(n):
+        key, sample_key = jax.random.split(key)
+        trace = posterior.get_ix(i)
+        k = get_gp_kernel(trace)
+        noise = transform_param("noise", trace["noise"]) + 1e-5
+        mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
+        samples.append(mvn.sample(sample_key))
+
+    samples = jnp.vstack(samples)
+    m = jnp.mean(samples, axis=0)
+    q025 = jnp.quantile(samples, 0.025, axis=0)
+    q975 = jnp.quantile(samples, 0.975, axis=0)
+
+    plt.figure()
+    plt.title(slp.formatted())
+    plt.scatter(xs, ys)
+    plt.scatter(xs_val, ys_val)
+    plt.plot(xs_pred, m, color="black")
+    plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
+    plt.show()
+    
+exit()
+
+
+
+slp_weights = list(result.get_slp_weights().items())
+slp_weights.sort(key=lambda v: v[1])
 
 map_slp, _ = slp_weights[-1]
 
