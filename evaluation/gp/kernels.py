@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, field
 from dccxjax import FloatArrayLike, FloatArray
 import dccxjax.distributions as dist
 from typing import List
@@ -27,7 +27,6 @@ class GPKernel(ABC):
     @staticmethod
     def name() -> str:
         raise NotImplementedError
-    @abstractmethod
     def __repr__(self) -> str:
         raise NotImplementedError
     @abstractmethod
@@ -265,6 +264,142 @@ def untransform_param(field: str, param: FloatArrayLike):
     else:
         return untransform_log_normal(param, -1.5, 1.)
 
+@dataclass
+class RationalQuadratic(PrimitiveGPKernel):
+    lengthscale: jax.Array
+    scale_mixture: jax.Array
+    amplitude: jax.Array
+    def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
+        dt = jax.lax.square((t1 - t2)/self.lengthscale)
+        return self.amplitude * (1 + (0.5/self.scale_mixture) * dt) ** (-self.scale_mixture)
+    def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
+        dt = jax.lax.square((ts.reshape(-1,1) - ts.reshape(1,-1)) / self.lengthscale)
+        return self.amplitude * (1 + (0.5/self.scale_mixture) * dt) ** (-self.scale_mixture)
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
+        return f"RQ({self.lengthscale.item():.2f}, {self.scale_mixture.item():.2f}; {self.amplitude.item():.2f})"
+    def key(self) -> str:
+        return "RQ"
+    @staticmethod
+    def name() -> str:
+        return "RationalQuadratic"
+
+# == SquaredExponential
+# @dataclass
+# class RadialBasisFunction(PrimitiveGPKernel):
+#     lengthscale: jax.Array
+#     amplitude: jax.Array
+    
+#     def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
+#         dt = jax.lax.square((t1 - t2)/self.lengthscale)
+#         return self.amplitude * jax.lax.exp(-0.5 * dt)
+#     def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
+#         dt = jax.lax.square((ts.reshape(-1,1) - ts.reshape(1,-1)) / self.lengthscale)
+#         return self.amplitude * jax.lax.exp(-0.5 * dt)
+#     def __repr__(self) -> str:
+#         return self.key()
+#     def pprint(self) -> str:
+#         return f"RBF({self.lengthscale.item():.2f}; {self.amplitude.item():.2f})"
+#     def key(self) -> str:
+#         return "RBF"
+#     @staticmethod
+#     def name() -> str:
+#         return "RadialBasisFunction"
+
+@dataclass
+class Polynomial(PrimitiveGPKernel):
+    bias: jax.Array
+    amplitude: jax.Array
+    degree: int
+    def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
+        dt = t1 * t2 # univariate dot product
+        return self.amplitude * (self.bias + dt)**self.degree
+    def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
+        dt = ts.reshape(-1,1) * ts.reshape(1,-1)  # univariate dot product
+        return self.amplitude * (self.bias + dt)**self.degree
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
+        return f"Poly({self.bias.item():.2f}, {self.degree}; {self.amplitude.item():.2f})"
+    def key(self) -> str:
+        return "Poly"
+    @staticmethod
+    def name() -> str:
+        return "Polynomial"
+
+
+@dataclass
+class UnitRationalQuadratic(PrimitiveGPKernel):
+    lengthscale: jax.Array
+    scale_mixture: jax.Array
+    def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
+        return RationalQuadratic(self.lengthscale, self.scale_mixture, jnp.array(1.,float)).eval_cov(t1,t2)
+    def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
+        return RationalQuadratic(self.lengthscale, self.scale_mixture, jnp.array(1.,float)).eval_cov_vec(ts)
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
+        return f"1RQ({self.lengthscale.item():.2f}, {self.scale_mixture.item():.2f})"
+    def key(self) -> str:
+        return "1RQ"
+    @staticmethod
+    def name() -> str:
+        return "UnitRationalQuadratic"
+    
+@dataclass
+class UnitPolynomialDegreeOne(PrimitiveGPKernel):
+    bias: jax.Array
+    def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
+        return Polynomial(self.bias, jnp.array(1.,float), 1).eval_cov(t1,t2)
+    def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
+        return Polynomial(self.bias, jnp.array(1.,float), 1).eval_cov_vec(ts)
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
+        return f"1Poly({self.bias.item():.2f})"
+    def key(self) -> str:
+        return "1Poly"
+    @staticmethod
+    def name() -> str:
+        return "UnitPolynomialDegreeOne"
+    
+@dataclass
+class UnitPeriodic(PrimitiveGPKernel):
+    lengthscale: jax.Array
+    period: jax.Array
+    def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
+        return Periodic(self.lengthscale, self.period, jnp.array(1.,float)).eval_cov(t1,t2)
+    def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
+        return Periodic(self.lengthscale, self.period, jnp.array(1.,float)).eval_cov_vec(ts)
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
+        return f"1Per({self.lengthscale.item():.2f}, {self.period.item():.2f})"
+    def key(self) -> str:
+        return "1Per"
+    @staticmethod
+    def name() -> str:
+        return "UnitPeriodic"
+    
+@dataclass
+class UnitSquaredExponential(PrimitiveGPKernel):
+    lengthscale: jax.Array
+    def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
+        return SquaredExponential(self.lengthscale, jnp.array(1.,float)).eval_cov(t1,t2)
+    def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
+        return SquaredExponential(self.lengthscale, jnp.array(1.,float)).eval_cov_vec(ts)
+    def __repr__(self) -> str:
+        return self.key()
+    def pprint(self) -> str:
+        return f"1SqExp({self.lengthscale.item():.2f})"
+    def key(self) -> str:
+        return "1SqExp"
+    @staticmethod
+    def name() -> str:
+        return "UnitSquaredExponential"
+    
+    
 # import numpyro.distributions as numpyro_dist
 # import matplotlib.pyplot as plt
 # z = jax.random.normal(jax.random.PRNGKey(0), (10_000_000,))
