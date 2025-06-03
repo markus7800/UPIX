@@ -33,10 +33,10 @@ xs, xs_val, ys, ys_val = get_data_autogp()
 def normalise(a: jax.Array): return a / a.sum()
 
 NODE_TYPES: List[type[GPKernel]] = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
-# NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
+NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
 # NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 6, 0, 6, 5, 5],float))
 
-NODE_TYPE_PROBS = normalise(jnp.array([0, 0.2, 0.2, 0, 0.2, 0.1, 0.1],float))
+# NODE_TYPE_PROBS = normalise(jnp.array([0, 0.2, 0.2, 0, 0.2, 0.1, 0.1],float))
 
 def covariance_prior(idx: int) -> GPKernel:
     node_type = sample(f"{idx}_node_type", dist.Categorical(NODE_TYPE_PROBS))
@@ -123,11 +123,6 @@ m.set_equivalence_map(equivalence_map)
 # print(get_gp_kernel(X, True))
 # print(get_gp_kernel(equivalence_map(X), False))
 
-# t0 = time()
-# result = smc_dcc_obj.run(jax.random.PRNGKey(0))
-# result.pprint()
-# t1 = time()
-
 # equivalence_classes: Dict[str, Set[str]] = dict()
 # rng_key = jax.random.PRNGKey(0)
 # for _ in tqdm(range(10_000)):
@@ -152,25 +147,6 @@ m.set_equivalence_map(equivalence_map)
 
 
 class SMCDCCConfig(SMCDCC[T]):
-
-    # def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
-    #     _active_slps: List[SLP] = []
-    #     super().initialise_active_slps(_active_slps, inactive_slps, rng_key)
-    #     _active_slps.sort(key=self.model.slp_sort_key)
-    #     kernel_key: Set[str] = set()
-    #     for slp in _active_slps:
-    #         k = get_gp_kernel(slp.decision_representative)
-    #         k_key = k.key()
-    #         if k.depth() < 5 and k_key not in kernel_key:
-    #             active_slps.append(slp)
-    #             kernel_key.add(k_key) # deduplicate using commutativity of + and * kernel
-    #             log_prob_trace = self.model.log_prob_trace(slp.decision_representative)
-    #             log_path_prior: FloatArray = sum((log_prob for addr, (log_prob, _) in log_prob_trace.items() if SuffixSelector("node_type").contains(addr)), start=jnp.array(0,float))
-    #             tqdm.write(f"Activate {k_key} with log_path_prior={log_path_prior.item():.4f}")
-    #     active_slps.sort(key=self.model.slp_sort_key)
-    #     print(f"{len(active_slps)=}")
-
-
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
         for node_type in range(len(NODE_TYPE_PROBS) - 2):
             if jax.lax.exp(dist.Categorical(NODE_TYPE_PROBS).log_prob(node_type)) > 0:
@@ -233,6 +209,91 @@ smc_dcc_obj = SMCDCCConfig(m, verbose=2,
     one_inference_run_per_slp = True,
 )
 
+do_smc = False
+if do_smc:
+    t0 = time()
+    result = smc_dcc_obj.run(jax.random.PRNGKey(0))
+    result.pprint()
+    t1 = time()
+
+    print(f"Total time: {t1-t0:.3f}s")
+    comp_time = compilation_time_tracker.get_total_compilation_time_secs()
+    print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
+
+    slp_weights = list(result.get_slp_weights().items())
+    slp_weights.sort(key=lambda v: v[1])
+
+    map_slp, _ = slp_weights[-1]
+
+    weighted_samples = result.get_samples_for_slp(map_slp).unstack()
+    _, weights = weighted_samples.get()
+
+    map_trace, _ = weighted_samples.get_selection(weights.argmax())
+    k = get_gp_kernel(map_trace)
+    noise = transform_param("noise", map_trace["noise"]) + 1e-5
+    xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
+    mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
+
+    plt.figure()
+    plt.scatter(xs, ys)
+    plt.scatter(xs_val, ys_val)
+    plt.plot(xs_pred, mvn.numpyro_base.mean, color="black")
+    q025, q975 = mvnormal_quantile(mvn, 0.025), mvnormal_quantile(mvn, 0.975)
+    plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
+    plt.title(map_slp.formatted())
+    plt.show()
+
+
+
+    plt.figure()
+    plt.scatter(xs, ys)
+    plt.scatter(xs_val, ys_val)
+    xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
+
+    n_posterior_samples = 1_000
+    sample_key = jax.random.PRNGKey(0)
+    slp_weights_array = jnp.array([weight for _, weight in slp_weights])
+    posterior_over_slps = dist.Categorical(slp_weights_array)
+
+    samples = []
+    for i in tqdm(range(n_posterior_samples), desc="Sample posterior"):
+        sample_key, key1, key2, key3 = jax.random.split(sample_key, 4)
+        slp_ix = posterior_over_slps.sample(key1)
+        slp, _ = slp_weights[slp_ix]
+        weighted_samples = result.get_samples_for_slp(slp).unstack()
+        _, weights = weighted_samples.get()
+        trace_ix = dist.Categorical(weights).sample(key2)
+        trace, weight = weighted_samples.get_selection(trace_ix)
+        
+        k = get_gp_kernel(trace)
+        noise = transform_param("noise", trace["noise"]) + 1e-5
+        mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
+
+
+        if i < 10:
+            tqdm.write(f"sample from posterior: {slp.formatted()} noise={noise} with log_prob {m.log_prob(trace)}")
+
+            plt.plot(xs_pred, mvn.numpyro_base.mean, color="black", alpha=0.1)
+            q025, q975 = mvnormal_quantile(mvn, 0.025), mvnormal_quantile(mvn, 0.975)
+            plt.fill_between(xs_pred, q025, q975, alpha=0.1, color="tab:blue")
+
+        samples.append(mvn.sample(key3))
+    # plt.show()
+
+
+    samples = jnp.vstack(samples)
+    q050 = jnp.median(samples, axis=0)
+    q025 = jnp.quantile(samples, 0.025, axis=0)
+    q975 = jnp.quantile(samples, 0.975, axis=0)
+
+    plt.figure()
+    plt.scatter(xs, ys)
+    plt.scatter(xs_val, ys_val)
+    plt.plot(xs_pred, q050, color="black")
+    plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
+    plt.show()
+
+
 import math
 import heapq
 class SuccessiveHalving:
@@ -287,7 +348,7 @@ class VIConfig(VIDCC):
         inactive_slps.clear()
         inactive_slps.extend(active_slps)
         active_slps.clear()
-        
+
         if self.iteration_counter == self.n_phases:
             return
         
@@ -313,126 +374,54 @@ vi_dcc_obj = VIConfig(m, verbose=2,
     successive_halving=SuccessiveHalving(1_000_000, 10)
 )
 
-t0 = time()
-result = vi_dcc_obj.run(jax.random.PRNGKey(0))
-result.pprint()
-t1 = time()
+do_vi = True
+if do_vi:
+    t0 = time()
+    result = vi_dcc_obj.run(jax.random.PRNGKey(0))
+    result.pprint()
+    t1 = time()
 
 
-print(f"Total time: {t1-t0:.3f}s")
-comp_time = compilation_time_tracker.get_total_compilation_time_secs()
-print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
+    print(f"Total time: {t1-t0:.3f}s")
+    comp_time = compilation_time_tracker.get_total_compilation_time_secs()
+    print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
 
 
-slp_weights = list(result.get_slp_weights().items())
-slp_weights.sort(key=lambda v: v[1])
+    slp_weights = list(result.get_slp_weights().items())
+    slp_weights.sort(key=lambda v: v[1])
 
-xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
-for i in range(10):
-    slp, weight = slp_weights[-i]
-    print(slp.formatted(), weight)
-    g = result.slp_guides[slp]
+    xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
+    for i in range(min(len(slp_weights),10)):
+        slp, weight = slp_weights[-i]
+        print(slp.formatted(), weight)
+        g = result.slp_guides[slp]
+        
+        n = 100
+        
+        key = jax.random.PRNGKey(0)
+        posterior = Traces(g.sample(key, (n,)), n)
+        
+        samples = []
+        for i in range(n):
+            key, sample_key = jax.random.split(key)
+            trace = posterior.get_ix(i)
+            k = get_gp_kernel(trace)
+            noise = transform_param("noise", trace["noise"]) + 1e-5
+            mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
+            samples.append(mvn.sample(sample_key))
+
+        samples = jnp.vstack(samples)
+        m = jnp.mean(samples, axis=0)
+        q025 = jnp.quantile(samples, 0.025, axis=0)
+        q975 = jnp.quantile(samples, 0.975, axis=0)
+
+        plt.figure()
+        plt.title(slp.formatted())
+        plt.scatter(xs, ys)
+        plt.scatter(xs_val, ys_val)
+        plt.plot(xs_pred, m, color="black")
+        plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
+        plt.show()
     
-    n = 100
-    
-    key = jax.random.PRNGKey(0)
-    posterior = Traces(g.sample(key, (n,)), n)
-    
-    samples = []
-    for i in range(n):
-        key, sample_key = jax.random.split(key)
-        trace = posterior.get_ix(i)
-        k = get_gp_kernel(trace)
-        noise = transform_param("noise", trace["noise"]) + 1e-5
-        mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
-        samples.append(mvn.sample(sample_key))
-
-    samples = jnp.vstack(samples)
-    m = jnp.mean(samples, axis=0)
-    q025 = jnp.quantile(samples, 0.025, axis=0)
-    q975 = jnp.quantile(samples, 0.975, axis=0)
-
-    plt.figure()
-    plt.title(slp.formatted())
-    plt.scatter(xs, ys)
-    plt.scatter(xs_val, ys_val)
-    plt.plot(xs_pred, m, color="black")
-    plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
-    plt.show()
-    
-exit()
 
 
-
-slp_weights = list(result.get_slp_weights().items())
-slp_weights.sort(key=lambda v: v[1])
-
-map_slp, _ = slp_weights[-1]
-
-weighted_samples = result.get_samples_for_slp(map_slp).unstack()
-_, weights = weighted_samples.get()
-
-map_trace, _ = weighted_samples.get_selection(weights.argmax())
-k = get_gp_kernel(map_trace)
-noise = transform_param("noise", map_trace["noise"]) + 1e-5
-xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
-mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
-
-plt.figure()
-plt.scatter(xs, ys)
-plt.scatter(xs_val, ys_val)
-plt.plot(xs_pred, mvn.numpyro_base.mean, color="black")
-q025, q975 = mvnormal_quantile(mvn, 0.025), mvnormal_quantile(mvn, 0.975)
-plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
-plt.title(map_slp.formatted())
-plt.show()
-
-
-
-plt.figure()
-plt.scatter(xs, ys)
-plt.scatter(xs_val, ys_val)
-xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
-
-n_posterior_samples = 1_000
-sample_key = jax.random.PRNGKey(0)
-slp_weights_array = jnp.array([weight for _, weight in slp_weights])
-posterior_over_slps = dist.Categorical(slp_weights_array)
-
-samples = []
-for i in tqdm(range(n_posterior_samples), desc="Sample posterior"):
-    sample_key, key1, key2, key3 = jax.random.split(sample_key, 4)
-    slp_ix = posterior_over_slps.sample(key1)
-    slp, _ = slp_weights[slp_ix]
-    weighted_samples = result.get_samples_for_slp(slp).unstack()
-    _, weights = weighted_samples.get()
-    trace_ix = dist.Categorical(weights).sample(key2)
-    trace, weight = weighted_samples.get_selection(trace_ix)
-    
-    k = get_gp_kernel(trace)
-    noise = transform_param("noise", trace["noise"]) + 1e-5
-    mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
-
-
-    if i < 10:
-        tqdm.write(f"sample from posterior: {slp.formatted()} noise={noise} with log_prob {m.log_prob(trace)}")
-
-        plt.plot(xs_pred, mvn.numpyro_base.mean, color="black", alpha=0.1)
-        q025, q975 = mvnormal_quantile(mvn, 0.025), mvnormal_quantile(mvn, 0.975)
-        plt.fill_between(xs_pred, q025, q975, alpha=0.1, color="tab:blue")
-
-    samples.append(mvn.sample(key3))
-# plt.show()
-
-
-samples = jnp.vstack(samples)
-m = jnp.mean(samples, axis=0)
-q025 = jnp.quantile(samples, 0.025, axis=0)
-q975 = jnp.quantile(samples, 0.975, axis=0)
-
-plt.figure()
-plt.scatter(xs, ys)
-plt.scatter(xs_val, ys_val)
-plt.plot(xs_pred, m, color="black")
-plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
-plt.show()

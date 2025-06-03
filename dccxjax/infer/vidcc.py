@@ -119,8 +119,8 @@ class VIDCC(AbstractDCC[VIDCCResult]):
         if len(inference_results) > 0:
             last_result = inference_results[-1]
             assert isinstance(last_result, ADVIInferenceResult)
-            # continues from iteration count (may affect optimizers schedule, see Adam)
-            last_state, elbo = advi.continue_run(rng_key, last_result.last_state, n_iter=self.advi_n_iter, iteration=last_result.last_state.iteration)
+            # sets iteration count = 0 (may affect optimizers schedule)
+            last_state, elbo = advi.continue_run(rng_key, last_result.last_state, n_iter=self.advi_n_iter, iteration=0)
         else:
             last_state, elbo = advi.run(rng_key, n_iter=self.advi_n_iter)
         # import matplotlib.pyplot as plt
