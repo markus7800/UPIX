@@ -10,7 +10,7 @@ import jax.numpy as jnp
 from dccxjax.distributions.constraints import Constraint, real
 import numpyro.distributions.transforms as transforms
 from ..core.model_slp import Model, SLP
-from .mcmc import ProgressbarManager, _add_progress_bar
+from .progress_bar import _add_progress_bar, ProgressbarManager
 from .optimizers import OPTIMIZER_STATE, Optimizer
 from math import prod
 from .gibbs_model import GibbsModel
@@ -162,7 +162,6 @@ class MeanfieldNormalGuide(Guide):
             x_flat = x.reshape(-1, self.n_latents)
             X = jax.vmap(self.unravel_fn)(x_flat)
             X = jax.tree.map(lambda v: v.reshape(shape + v.shape[1:]), X) | broadcast_jaxtree(self.Y, shape)
-        # jax.debug.print("x={x} m={m} s={s}", x=x, m=self.mu, s=self.omega)
         return X, lp
     def sample(self, rng_key: PRNGKey, shape = ()) -> Trace: 
         return self.sample_and_log_prob(rng_key, shape)[0] 
@@ -187,7 +186,6 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
         if L == 1:
             X, lq = guide.sample_and_log_prob(rng_key)
             lp = log_prob_fn(X)
-            # jax.debug.print("{X} {lp} {lq}", X=X, lp=lp, lq=lq)
             elbo = lp - lq
         else:
             def _elbo_step(elbo: FloatArray, sample_key: PRNGKey) -> Tuple[FloatArray, None]:
@@ -202,17 +200,18 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
         iteration, optimizer_state = advi_state
         params = optimizer.get_params_fn(optimizer_state)
         elbo, elbo_grad = jax.value_and_grad(elbo_fn, argnums=0)(params, rng_key)
-        # jax.debug.print("e={e} g={g}", e=elbo, g=elbo_grad)
         new_optimizer_state = optimizer.update_fn(iteration, -elbo_grad, optimizer_state)
         return ADVIState(iteration + 1, new_optimizer_state), elbo
     
     return advi_step
 
-def get_advi_scan_with_progressbar(kernel: Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]], progressbar_mngr: ProgressbarManager, n_iter: int) -> Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]:
-    progressbar_mngr.set_num_samples(n_iter)
-    kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, n_iter)
+from tqdm.auto import tqdm
+
+def get_advi_scan_with_progressbar(kernel: Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]], progressbar_mngr: ProgressbarManager) -> Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]:
     def scan_with_bar(init: ADVIState[OPTIMIZER_STATE], xs: PRNGKey) -> Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]:
+        # will be recompiled if num_samples changes
         progressbar_mngr.start_progress()
+        kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, progressbar_mngr.num_samples)
         jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)
         return jax.lax.scan(kernel_with_bar, init, xs)
     return jax.jit(scan_with_bar)
@@ -244,13 +243,14 @@ class ADVI(Generic[OPTIMIZER_STATE]):
     def continue_run(self, rng_key: PRNGKey, state: ADVIState[OPTIMIZER_STATE], *, iteration: int = 0, n_iter: int):
         keys = jax.random.split(rng_key, n_iter)
         init_state = ADVIState(iteration, state.optimizer_state)
+        
+        self.progressbar_mngr.set_num_samples(n_iter)
 
         if self.cached_advi_scan:
-            self.progressbar_mngr.set_num_samples(n_iter)
             last_state, elbo = self.cached_advi_scan(init_state, keys)
         else:
             scan_fn = (
-                get_advi_scan_with_progressbar(self.advi_step, self.progressbar_mngr, n_iter)
+                get_advi_scan_with_progressbar(self.advi_step, self.progressbar_mngr)
                 if self.progress_bar else
                 get_advi_scan_without_progressbar(self.advi_step)
             )

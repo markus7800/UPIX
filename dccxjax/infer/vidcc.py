@@ -91,13 +91,13 @@ class VIDCC(AbstractDCC[VIDCCResult]):
     
     def get_ADVI(self, slp: SLP) -> ADVI:
         if slp in self.inference_method_cache:
-            mcmc = self.inference_method_cache[slp]
-            assert isinstance(mcmc, ADVI)
-            return mcmc
+            advi = self.inference_method_cache[slp]
+            assert isinstance(advi, ADVI)
+            return advi
         guide = self.get_guide(slp)
-        mcmc = ADVI(slp, guide, self.advi_optimizer, 1, progress_bar=self.verbose >= 1)
-        self.inference_method_cache[slp] = mcmc
-        return mcmc
+        advi = ADVI(slp, guide, self.advi_optimizer, self.advi_L, progress_bar=self.verbose >= 1)
+        self.inference_method_cache[slp] = advi
+        return advi
     
     def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
         inference_results = self.inference_results.get(slp, [])
@@ -120,6 +120,7 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             last_result = inference_results[-1]
             assert isinstance(last_result, ADVIInferenceResult)
             # sets iteration count = 0 (may affect optimizers schedule)
+            # iteration is also used in porgressbar (so we would have to add additional counter if we want to set iteration to different start value)
             last_state, elbo = advi.continue_run(rng_key, last_result.last_state, n_iter=self.advi_n_iter, iteration=0)
         else:
             last_state, elbo = advi.run(rng_key, n_iter=self.advi_n_iter)

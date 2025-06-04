@@ -33,14 +33,14 @@ xs, xs_val, ys, ys_val = get_data_autogp()
 def normalise(a: jax.Array): return a / a.sum()
 
 # AutoGP
-# N_LEAF_NODE_TYPES = 5
-# NODE_TYPES: List[type[GPKernel]] = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
-# NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
+N_LEAF_NODE_TYPES = 5
+NODE_TYPES: List[type[GPKernel]] = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
+NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
 
 # Reichelt
-N_LEAF_NODE_TYPES = 4
-NODE_TYPES: List[type[GPKernel]] = [UnitRationalQuadratic, UnitPolynomialDegreeOne, UnitSquaredExponential, UnitPeriodic, Plus, Times]
-NODE_TYPE_PROBS = normalise(jnp.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1],float))
+# N_LEAF_NODE_TYPES = 4
+# NODE_TYPES: List[type[GPKernel]] = [UnitRationalQuadratic, UnitPolynomialDegreeOne, UnitSquaredExponential, UnitPeriodic, Plus, Times]
+# NODE_TYPE_PROBS = normalise(jnp.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1],float))
 
 def covariance_prior(idx: int) -> GPKernel:
     node_type = sample(f"{idx}_node_type", dist.Categorical(NODE_TYPE_PROBS))
@@ -317,11 +317,11 @@ class SuccessiveHalving:
     def calculate_num_optimization_steps(self, num_active_arms: int) -> int:
         return math.floor(self.num_total_iterations / (self.num_phases * num_active_arms))
 
-    def select_active_slps(self, arm2reward: List[Tuple[SLP,float]]) -> List[SLP]:
+    def select_active_slps(self, arm2reward: List[Tuple[SLP,float]]) -> List[Tuple[SLP,float]]:
         num_active_arms = len(arm2reward)
         num_to_keep = max(math.ceil(num_active_arms / 2), self.num_final_arms)
         arms_to_keep = heapq.nlargest(num_to_keep, arm2reward, key=lambda v: v[1])
-        return [slp for slp, _ in arms_to_keep]
+        return arms_to_keep
 
 
 class VIConfig(VIDCC):
@@ -362,7 +362,9 @@ class VIConfig(VIDCC):
             assert isinstance(latest_estimate, LogWeightEstimateFromADVI)
             slp_to_log_weight.append((slp, latest_estimate.get_estimate().item()))
         selected_slps = self.successive_halving.select_active_slps(slp_to_log_weight)
-        active_slps.extend(selected_slps)
+        for slp, log_weight in selected_slps:
+            tqdm.write(f"Keep {slp.formatted()} with {log_weight}")
+            active_slps.append(slp)
         self.advi_n_iter = self.successive_halving.calculate_num_optimization_steps(len(active_slps))
         print(f"update active slps {len(active_slps)=} {self.advi_n_iter=}")        
         
@@ -395,8 +397,8 @@ if do_vi:
     slp_weights.sort(key=lambda v: v[1])
 
     xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
-    for i in range(min(len(slp_weights),10)):
-        slp, weight = slp_weights[-i]
+    for i in range(min(len(slp_weights),5)):
+        slp, weight = slp_weights[-(i+1)]
         print(slp.formatted(), weight)
         g = result.slp_guides[slp]
         
@@ -425,7 +427,7 @@ if do_vi:
         plt.scatter(xs_val, ys_val)
         plt.plot(xs_pred, m, color="black")
         plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
-        plt.show()
+plt.show()
     
 
 

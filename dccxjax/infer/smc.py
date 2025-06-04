@@ -2,12 +2,13 @@ import jax
 from typing import NamedTuple, Tuple, Set, Dict, Callable, Optional
 from ..types import PRNGKey, Trace, FloatArray, IntArray, StackedTrace, BoolArray
 from ..core.model_slp import SLP, AnnealingMask
-from .mcmc import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains, _add_progress_bar, ProgressbarManager
+from .mcmc import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains
 from ..utils import broadcast_jaxtree
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
 from jax.flatten_util import ravel_pytree
 import jax.experimental
+from .progress_bar import _add_progress_bar, ProgressbarManager
 
 __all__ = [
     "ResampleType",
@@ -233,10 +234,10 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
 
     return smc_step
 
-def get_smc_scan_with_progressbar(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]], progressbar_mngr: ProgressbarManager, num_samples: int) -> Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]:
-    progressbar_mngr.set_num_samples(num_samples)
-    kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, num_samples)
+def get_smc_scan_with_progressbar(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]], progressbar_mngr: ProgressbarManager) -> Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]:
     def scan_with_bar(init: SMCState, xs: SMCStepData) -> Tuple[SMCState,FloatArray]:
+        # will be recompiled if num_samples changes
+        kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, progressbar_mngr.num_samples)
         progressbar_mngr.start_progress()
         jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)
         return jax.lax.scan(kernel_with_bar, init, xs)
@@ -316,12 +317,13 @@ class SMC:
         init_state = SMCState(jnp.array(0,int), particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infoss)
         smc_data = SMCStepData(smc_keys, self.tempereture_schedule.temperature, self.data_annealing_schedule.data_annealing)
 
+        self.progress_bar_mngr.set_num_samples(self.n_steps)
+            
         if self.cached_smc_scan:
-            self.progress_bar_mngr.set_num_samples(self.n_steps) # n_steps should be always the same
             last_state, ess = self.cached_smc_scan(init_state, smc_data)
         else:
             scan_fn = (
-                get_smc_scan_with_progressbar(self.smc_step, self.progress_bar_mngr, self.n_steps)
+                get_smc_scan_with_progressbar(self.smc_step, self.progress_bar_mngr)
                 if self.progress_bar else
                 get_smc_scan_without_progressbar(self.smc_step)
             )

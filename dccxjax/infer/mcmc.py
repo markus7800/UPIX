@@ -13,6 +13,7 @@ from time import time
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
 from .variable_selector import AllVariables
+from .progress_bar import _add_progress_bar, ProgressbarManager
 
 from tqdm.auto import tqdm as tqdm_auto
 
@@ -170,46 +171,6 @@ class MCMCSteps(MCMCRegime):
                 assert isinstance(subregime, MCMCSteps)
                 yield from subregime
 
-class ProgressbarManager:
-    def __init__(self, desc: str) -> None:
-        self.desc = desc
-        self.tqdm_bar: Optional[tqdm_auto] = None
-        self.num_samples = 0
-
-    def set_num_samples(self, num_samples: int):
-        self.num_samples = num_samples # affects for tqdm bar lenght, not print rate
-
-    def start_progress(self):
-        assert self.tqdm_bar is None
-        self.tqdm_bar = tqdm_auto(range(self.num_samples), position=0)
-        self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=True)
-
-    def _init_tqdm(self, increment):
-        if self.tqdm_bar is None: 
-            self.tqdm_bar = tqdm_auto(range(self.num_samples), position=0)
-        increment = int(increment)
-        self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
-        self.tqdm_bar.update(increment)
-
-    def _update_tqdm(self, iternum, increment, remainder):
-        if self.tqdm_bar is not None:
-            iternum = int(iternum)
-            increment = int(increment)
-            remainder = int(remainder)
-            # tqdm_auto.write(f"update tqdm {iternum} inc={increment}")
-            if iternum == self.num_samples:
-                if remainder == 0:
-                    # update and close event happen at same time
-                    self.tqdm_bar.update(increment)
-                else:
-                    self.tqdm_bar.update(remainder)
-                self.tqdm_bar.close()
-                self.tqdm_bar = None
-            else:
-                self.tqdm_bar.update(increment)
-
-
-
 MCMC_COLLECT_TYPE = TypeVar("MCMC_COLLECT_TYPE")
 MCMCKernel = Callable[[MCMCState,PRNGKey],Tuple[MCMCState,MCMC_COLLECT_TYPE]]
 
@@ -349,35 +310,10 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
         return jax.vmap(kernel, in_axes=axes, out_axes=axes)(state, chain_keys)
     return _vectorised_kernel
 
-# adapted form numpyro/util.py
-def _add_progress_bar(kernel: Callable, progressbar_mngr: ProgressbarManager, num_samples: int) -> Callable:
-    print_rate = max(int(num_samples / 100), 1)
-
-    remainder = num_samples % print_rate
-
-    def _update_progress_bar(iter_num: jax.Array):
-        # nonlocal t0
-        # t0 = time()
-        
-        iter_num = iter_num + 1 # all chains are at the same iteration, init iteration=0
-        _ = jax.lax.cond(
-            (iter_num % print_rate == 0) | (iter_num == num_samples),
-            lambda _: jax.experimental.io_callback(progressbar_mngr._update_tqdm, None, iter_num, print_rate, remainder),
-            lambda _: None,
-            operand=None,
-        )
-    
-    def wrapped_kernel(state, data):
-        result = kernel(state, data)
-        _update_progress_bar(state.iteration) # NOTE: we don't have to return something for this to work?
-        return result
-    
-    return wrapped_kernel
-
-def get_mcmc_scan_with_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], progressbar_mngr: ProgressbarManager, num_samples: int) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
-    progressbar_mngr.set_num_samples(num_samples)
-    kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, num_samples)
+def get_mcmc_scan_with_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], progressbar_mngr: ProgressbarManager) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
     def scan_with_bar(init: MCMCState, xs: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
+        # will be recompiled if num_samples changes
+        kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, progressbar_mngr.num_samples)
         progressbar_mngr.start_progress()
         jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, init.iteration)
         return jax.lax.scan(kernel_with_bar, init, xs)
@@ -450,12 +386,13 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
             state = MCMCState(jnp.array(0, int), self.temperature, self.data_annealing, state.position, state.log_prob, state.carry_stats, infos)
 
+        self.progress_bar_mngr.set_num_samples(n_samples_per_chain)
+            
         if self.cached_mcmc_scan:
-            self.progress_bar_mngr.set_num_samples(n_samples_per_chain)
             last_state, return_values = self.cached_mcmc_scan(state, keys)
         else:
             scan_fn = (
-                get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr, n_samples_per_chain) # print_rate will be based on n_samples_per_chain
+                get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr)
                 if self.progress_bar else
                 get_mcmc_scan_without_progressbar(self.kernel)
             )
