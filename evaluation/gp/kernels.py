@@ -133,13 +133,12 @@ class SquaredExponential(PrimitiveGPKernel):
         return "SquaredExponential"
 
 @jax.custom_jvp
-def gamma_exponential_cov(dt, l, g, a):
-    return a * jax.lax.exp(-(dt/l)**g)
-gamma_exponential_cov.defjvps(
-    lambda dt_dot, primal_out, dt, l, g, a: -primal_out/dt * dt_dot,
-    lambda l_dot, primal_out, dt, l, g, a: primal_out * (g/l) * (dt/l)**g * l_dot,
-    lambda g_dot, primal_out, dt, l, g, a: jnp.where(dt == 0., 0., -primal_out * (dt/l)**g * jax.lax.log(dt/l)) * g_dot,
-    lambda a_dot, primal_out, dt, l, g, a: primal_out / a * a_dot
+def _gamma_exponential_cov(dt, l, g):
+    return jax.lax.exp(-(dt/l)**g)
+_gamma_exponential_cov.defjvps(
+    lambda dt_dot, primal_out, dt, l, g: -primal_out/dt * dt_dot,
+    lambda l_dot, primal_out, dt, l, g: primal_out * (g/l) * (dt/l)**g * l_dot,
+    lambda g_dot, primal_out, dt, l, g: jnp.where(dt == 0., 0., -primal_out * (dt/l)**g * jax.lax.log(dt/l)) * g_dot,
 )
 
 @dataclass
@@ -159,10 +158,10 @@ class GammaExponential(PrimitiveGPKernel):
     
     def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
         dt = jax.lax.abs(t1 - t2)
-        return gamma_exponential_cov(dt, self.lengthscale, self.gamma, self.amplitude)
+        return self.amplitude * _gamma_exponential_cov(dt, self.lengthscale, self.gamma)
     def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
         dt = jax.lax.abs(ts.reshape(-1,1) - ts.reshape(1,-1))
-        return gamma_exponential_cov(dt, self.lengthscale, self.gamma, self.amplitude)
+        return self.amplitude * _gamma_exponential_cov(dt, self.lengthscale, self.gamma)
     
     def __repr__(self) -> str:
         return self.key()
@@ -264,6 +263,15 @@ def untransform_param(field: str, param: FloatArrayLike):
     else:
         return untransform_log_normal(param, -1.5, 1.)
 
+
+@jax.custom_jvp
+def _rational_quadratic_cov(dt, s):
+    return (1 + (0.5/s) * dt) ** (-s)
+_rational_quadratic_cov.defjvps(
+    lambda dt_dot, primal_out, dt, s: -0.5 * primal_out/(1 + 0.5/s * dt) * dt_dot,
+    lambda s_dot, primal_out, dt, s: (primal_out * ((-s - 0.5*dt) * jax.lax.log(1 + 0.5/s * dt) + 0.5*dt) / (s + 0.5*dt)) * s_dot
+)
+
 @dataclass
 class RationalQuadratic(PrimitiveGPKernel):
     lengthscale: jax.Array
@@ -271,10 +279,12 @@ class RationalQuadratic(PrimitiveGPKernel):
     amplitude: jax.Array
     def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
         dt = jax.lax.square((t1 - t2)/self.lengthscale)
-        return self.amplitude * (1 + (0.5/self.scale_mixture) * dt) ** (-self.scale_mixture)
+        # return self.amplitude * (1 + (0.5/self.scale_mixture) * dt) ** (-self.scale_mixture)
+        return self.amplitude * _rational_quadratic_cov(dt, self.scale_mixture)
     def eval_cov_vec(self, ts: jax.Array) -> jax.Array:
         dt = jax.lax.square((ts.reshape(-1,1) - ts.reshape(1,-1)) / self.lengthscale)
-        return self.amplitude * (1 + (0.5/self.scale_mixture) * dt) ** (-self.scale_mixture)
+        # return self.amplitude * (1 + (0.5/self.scale_mixture) * dt) ** (-self.scale_mixture)
+        return self.amplitude * _rational_quadratic_cov(dt, self.scale_mixture)
     def __repr__(self) -> str:
         return self.key()
     def pprint(self) -> str:

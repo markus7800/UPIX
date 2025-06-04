@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from evaluation.gp.data import get_data_autogp
 import numpyro.distributions as dist
 from evaluation.gp.kernels import *
+from evaluation.gp.kernels import _gamma_exponential_cov, _rational_quadratic_cov
 
 xs, xs_val, ys, ys_val = get_data_autogp()
 
@@ -30,7 +31,7 @@ print(jax.grad(f_star)(jnp.array([a,g,l],float))) # nan at lengthscale
 
 def f2(a, g, l):
     dt = jax.lax.abs(xs.reshape(-1,1) - xs.reshape(1,-1))
-    cov_matrix = gamma_exponential_cov(dt, l, g, a)
+    cov_matrix = a * _gamma_exponential_cov(dt, l, g)
     return cov_matrix.sum()
 
 print(f2(a, g, l))
@@ -48,3 +49,32 @@ grad_g = jnp.where(dt == 0., 0., -a * jax.lax.exp(- (dt/l)**g) * (dt/l)**g * jax
 print(grad_g)
 grad_l = (a * g * jax.lax.exp(- (dt/l)**g) * (dt/l)**g / l).sum()
 print(grad_l)
+
+
+
+l = transform_param("lengthscale", -0.03259766)
+s = transform_param("scale_mixture", -0.14109862)
+
+def h(l, s):
+    k = UnitRationalQuadratic(l, s)
+    cov_matrix = k.eval_cov_vec(xs)
+    return cov_matrix.sum()
+
+print(h(l,s))
+
+def h_star(x):
+    return h(*x)
+
+print(jax.grad(h_star)(jnp.array([l,s],float)))
+
+def h2(l, s):
+    dt = jax.lax.square((xs.reshape(-1,1) - xs.reshape(1,-1))/ l)
+    cov_matrix = _rational_quadratic_cov(dt, s)
+    return cov_matrix.sum()
+
+print(h2(l,s))
+
+def h2_star(x):
+    return h2(*x)
+
+print(jax.grad(h2_star)(jnp.array([l,s],float)))
