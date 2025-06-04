@@ -9,6 +9,7 @@ sns.set_palette("colorblind")
 
 palette = {
     "ours": "C0",
+    "nonparametric-hmc": "C0",
     "LMH": "C2",
     "PGibbs": "C1",
     "RMH": "C3",

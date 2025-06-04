@@ -59,7 +59,7 @@ import pandas
 import seaborn as sns
 
 data = (
-    [("ours", v) for v in values[method]]
+    [("nonparametric-hmc", v) for v in values[method]]
 )
 x_label = "starting point"
 dataframe = pandas.DataFrame(data, columns=["method", x_label])
@@ -77,6 +77,9 @@ plot = sns.displot(
 )
 plot.set_ylabels(label="posterior density")
 plt.plot(gt_xs, gt_pdf, color="tab:orange", label="ground truth")
+plt.title("Nonparamteric HMC")
+plt.legend()
+plt.tight_layout()
 plt.savefig("result_nonparametric-hmc.pdf")
 plt.show()
 

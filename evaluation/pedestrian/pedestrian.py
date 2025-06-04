@@ -135,42 +135,45 @@ gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
 gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
 gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf.npy")
 
-show_plots = False
+show_plots = True
 if show_plots:
     slp = result.get_slp(lambda slp: find_t_max(slp) == 2)
     assert slp is not None
     traces, _ = result.get_samples_for_slp(slp).unstack().get()
 
-    plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
-    plt.xlabel("step_1")
-    plt.ylabel("step_2")
-    plt.title(slp.formatted())
+    if "step_1" in traces:
+        plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
+        plt.xlabel("step_1")
+        plt.ylabel("step_2")
+        plt.title(slp.formatted())
 
     slp = result.get_slp(lambda slp: find_t_max(slp) == 3)
     assert slp is not None
     traces, _ = result.get_samples_for_slp(slp).unstack().get()
 
-    plt.figure()
-    plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
-    plt.xlabel("step_1")
-    plt.ylabel("step_2")
-    plt.title(slp.formatted())
-    plt.figure()
-    plt.scatter(traces["step_2"], traces["step_3"], alpha=0.1, s=1)
-    plt.xlabel("step_2")
-    plt.ylabel("step_3")
-    plt.title(slp.formatted())
-    plt.figure()
-    plt.scatter(traces["step_1"], traces["step_3"], alpha=0.1, s=1)
-    plt.xlabel("step_1")
-    plt.ylabel("step_3")
-    plt.title(slp.formatted())
-    plt.show()
+    if "step_1" in traces:
+        plt.figure()
+        plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
+        plt.xlabel("step_1")
+        plt.ylabel("step_2")
+        plt.title(slp.formatted())
+        plt.figure()
+        plt.scatter(traces["step_2"], traces["step_3"], alpha=0.1, s=1)
+        plt.xlabel("step_2")
+        plt.ylabel("step_3")
+        plt.title(slp.formatted())
+        plt.figure()
+        plt.scatter(traces["step_1"], traces["step_3"], alpha=0.1, s=1)
+        plt.xlabel("step_1")
+        plt.ylabel("step_3")
+        plt.title(slp.formatted())
+        plt.show()
 
 
     plot_histogram_by_slp(result, "start")
-    plot_histogram_by_slp(result, "step_1")
-    plot_histogram_by_slp(result, "step_2")
+    if "step_1" in traces:
+        plot_histogram_by_slp(result, "step_1")
+        plot_histogram_by_slp(result, "step_2")
     plt.show()
 
     plot_histogram(result, "start")
