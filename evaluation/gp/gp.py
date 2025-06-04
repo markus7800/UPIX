@@ -33,14 +33,14 @@ xs, xs_val, ys, ys_val = get_data_autogp()
 def normalise(a: jax.Array): return a / a.sum()
 
 # AutoGP
-N_LEAF_NODE_TYPES = 5
-NODE_TYPES: List[type[GPKernel]] = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
-NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
+# N_LEAF_NODE_TYPES = 5
+# NODE_TYPES: List[type[GPKernel]] = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
+# NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
 
 # Reichelt
-# N_LEAF_NODE_TYPES = 4
-# NODE_TYPES: List[type[GPKernel]] = [UnitRationalQuadratic, UnitPolynomialDegreeOne, UnitSquaredExponential, UnitPeriodic, Plus, Times]
-# NODE_TYPE_PROBS = normalise(jnp.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1],float))
+N_LEAF_NODE_TYPES = 4
+NODE_TYPES: List[type[GPKernel]] = [UnitRationalQuadratic, UnitPolynomialDegreeOne, UnitSquaredExponential, UnitPeriodic, Plus, Times]
+NODE_TYPE_PROBS = normalise(jnp.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1],float))
 
 def covariance_prior(idx: int) -> GPKernel:
     node_type = sample(f"{idx}_node_type", dist.Categorical(NODE_TYPE_PROBS))
@@ -341,6 +341,7 @@ class VIConfig(VIDCC):
     def get_guide(self, slp: SLP) -> Guide:
         selector = PredicateSelector(lambda addr: not addr.endswith("node_type"))
         return MeanfieldNormalGuide(slp, selector, 0.1)
+        # return FullRankNormalGuide(slp, selector, 0.1)
     
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
         super().initialise_active_slps(active_slps, inactive_slps, rng_key)
@@ -373,7 +374,7 @@ class VIConfig(VIDCC):
 from dccxjax.infer.optimizers import Adagrad, SGD, Adam
 vi_dcc_obj = VIConfig(m, verbose=2,
     init_n_samples=1_000, # 1_000
-    advi_n_iter=1_000,
+    advi_n_iter=1_000, # set by successive halving
     advi_L=1, # 1
     advi_optimizer=Adam(0.005), # Adam(0.005)
     elbo_estimate_n_samples=100, # 100

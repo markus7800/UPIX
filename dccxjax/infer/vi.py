@@ -7,7 +7,7 @@ from abc import abstractmethod, ABC
 from enum import Enum
 import jax
 import jax.numpy as jnp
-from dccxjax.distributions.constraints import Constraint, real
+from dccxjax.distributions.constraints import Constraint, real, scaled_unit_lower_cholesky
 import numpyro.distributions.transforms as transforms
 from ..core.model_slp import Model, SLP
 from .progress_bar import _add_progress_bar, ProgressbarManager
@@ -23,7 +23,8 @@ __all__ = [
     "guide",
     "Guide",
     "GuideProgram",
-    "MeanfieldNormalGuide"
+    "MeanfieldNormalGuide",
+    "FullRankNormalGuide"
 ]
 
 class GuideInitCtx(GuideContext):
@@ -132,7 +133,7 @@ def guide(f:Callable) -> Callable[..., GuideProgram]:
         return GuideProgram(f, args, kwargs)
     return _f
 
-from dccxjax.distributions import Normal
+from dccxjax.distributions import Normal, MultivariateNormal
 class MeanfieldNormalGuide(Guide):
     def __init__(self, slp: SLP, variable_selector: VariableSelector, init_sigma: float = 1.) -> None:
         self._variable_selector = variable_selector
@@ -167,6 +168,50 @@ class MeanfieldNormalGuide(Guide):
         return self.sample_and_log_prob(rng_key, shape)[0] 
     def log_prob(self, X: Trace) -> FloatArray:
         d = Normal(self.mu, jax.lax.exp(self.omega))
+        x, _ = jax.flatten_util.ravel_pytree(X)
+        lp = d.log_prob(x)
+        return lp
+    def variable_selector(self) -> VariableSelector:
+        return self._variable_selector
+
+# adapted from numpyro/infer/autoguide/guides.py#AutoMultivariateNormal
+
+class FullRankNormalGuide(Guide):
+    def __init__(self, slp: SLP, variable_selector: VariableSelector, init_sigma: float = 1.) -> None:
+        self._variable_selector = variable_selector
+        X = {addr: val for addr, val in slp.decision_representative.items() if variable_selector.contains(addr)}
+        self.Y = {addr: val for addr, val in slp.decision_representative.items() if not variable_selector.contains(addr)}
+        is_discret_map = slp.get_is_discrete_map()
+        assert all(not is_discret_map[addr] for addr in X.keys())
+        flat_X, unravel_fn = jax.flatten_util.ravel_pytree(X)
+        assert len(flat_X.shape) == 1
+        self.n_latents = flat_X.shape[0]
+        self.mu = jax.lax.zeros_like_array(flat_X)
+        self.transform_to_cholesky: transforms.Transform = transforms.biject_to(scaled_unit_lower_cholesky)
+        self.L = self.transform_to_cholesky.inv(jnp.eye(self.n_latents)*init_sigma)
+        self.unravel_fn = unravel_fn
+    def get_params(self) -> FloatArray:
+       return jax.lax.concatenate((self.mu, self.L), 0)
+    def update_params(self, params: FloatArray):
+       self.mu = params[:self.n_latents]
+       self.L = params[self.n_latents:]
+    def sample_and_log_prob(self, rng_key: FloatArray, shape = ()) -> Tuple[Trace, FloatArray]:
+        scale_tril = self.transform_to_cholesky(self.L)
+        d = MultivariateNormal(self.mu, scale_tril=scale_tril)
+        x = d.numpyro_base.rsample(rng_key, shape)
+        lp = d.log_prob(x)
+        if shape == ():
+            X = self.unravel_fn(x) | self.Y
+        else:
+            x_flat = x.reshape(-1, self.n_latents)
+            X = jax.vmap(self.unravel_fn)(x_flat)
+            X = jax.tree.map(lambda v: v.reshape(shape + v.shape[1:]), X) | broadcast_jaxtree(self.Y, shape)
+        return X, lp
+    def sample(self, rng_key: PRNGKey, shape = ()) -> Trace: 
+        return self.sample_and_log_prob(rng_key, shape)[0] 
+    def log_prob(self, X: Trace) -> FloatArray:
+        scale_tril = self.transform_to_cholesky(self.L)
+        d = MultivariateNormal(self.mu, scale_tril=scale_tril)
         x, _ = jax.flatten_util.ravel_pytree(X)
         lp = d.log_prob(x)
         return lp
