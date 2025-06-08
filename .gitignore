@@ -5,3 +5,4 @@ old_evaluation/pedestrian/nonparametric-hmc
 evaluation/pedestrian/nonparametric-hmc/lookahead_samples
 evaluation/pedestrian/nonparametric-hmc/samples_produced
 *.pdf
+*.bin
