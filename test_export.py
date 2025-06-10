@@ -2,6 +2,7 @@ import jax
 from typing import NamedTuple
 
 import jax.export
+import jax.flatten_util
 
 class A(NamedTuple):
     x: jax.Array
@@ -16,9 +17,15 @@ def f(rng_key: jax.Array):
     y = jax.random.normal(key2)
     return A(x, y)
 
-print(f(jax.random.PRNGKey(1)))
+@jax.jit
+def _f(rng_key: jax.Array):
+    out = f(rng_key)
+    out, unravel_fn = jax.flatten_util.ravel_pytree(out)
+    return out
 
-exported = jax.export.export(f)(jax.random.PRNGKey(0))
+print(_f(jax.random.PRNGKey(1)))
+
+exported = jax.export.export(_f)(jax.random.PRNGKey(0))
 
 serialized: bytearray = exported.serialize()
 # print(serialized)
