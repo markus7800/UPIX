@@ -1,3 +1,0 @@
-true_Z=0.00014414283214136958
-(Array(0.00014428, dtype=float32), Array(661138.8, dtype=float32))
-Finished SMC in 19.629s

@@ -15,7 +15,10 @@ from dccxjax.core.branching_tracer import retrace_branching
 from time import time
 from functools import reduce
 
-# set_platform("cpu")
+if len(sys.argv) > 1 and sys.argv[1].endswith("cpu"):
+    print("Running on cpu...")
+    set_platform("cpu")
+# set_host_device_count(16)
 
 import logging
 setup_logging(logging.WARN)

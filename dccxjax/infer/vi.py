@@ -152,7 +152,7 @@ class MeanfieldNormalGuide(Guide):
     def update_params(self, params: FloatArray):
        self.mu = params[:self.n_latents]
        self.omega = params[self.n_latents:]
-    def sample_and_log_prob(self, rng_key: FloatArray, shape = ()) -> Tuple[Trace, FloatArray]:
+    def sample_and_log_prob(self, rng_key: PRNGKey, shape = ()) -> Tuple[Trace, FloatArray]:
         d = Normal(self.mu, jax.lax.exp(self.omega))
         x = d.numpyro_base.rsample(rng_key, shape)
         lp = d.log_prob(x).sum(axis=-1)
@@ -195,7 +195,7 @@ class FullRankNormalGuide(Guide):
     def update_params(self, params: FloatArray):
        self.mu = params[:self.n_latents]
        self.L = params[self.n_latents:]
-    def sample_and_log_prob(self, rng_key: FloatArray, shape = ()) -> Tuple[Trace, FloatArray]:
+    def sample_and_log_prob(self, rng_key: PRNGKey, shape = ()) -> Tuple[Trace, FloatArray]:
         scale_tril = self.transform_to_cholesky(self.L)
         d = MultivariateNormal(self.mu, scale_tril=scale_tril)
         x = d.numpyro_base.rsample(rng_key, shape)
