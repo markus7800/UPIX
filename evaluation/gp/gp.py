@@ -1,5 +1,11 @@
 import sys
 sys.path.insert(0, ".")
+import os
+
+if len(sys.argv) > 1:
+    if sys.argv[1].endswith("cpu"):
+        print("Force run on CPU.")
+        os.environ["JAX_PLATFORMS"] = "cpu"
 
 from data import *
 import matplotlib.pyplot as plt
@@ -12,20 +18,11 @@ from kernels import *
 from dataclasses import fields
 from tqdm.auto import tqdm
 from dccxjax.core.branching_tracer import retrace_branching
-from time import time
 from functools import reduce
 
-if len(sys.argv) > 1 and sys.argv[1].endswith("cpu"):
-    print("Running on cpu...")
-    set_platform("cpu")
-# set_host_device_count(16)
 
 import logging
 setup_logging(logging.WARN)
-
-compilation_time_tracker = CompilationTimeTracker()
-jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
-
 
 xs, xs_val, ys, ys_val = get_data_autogp()
 
@@ -218,14 +215,8 @@ smc_dcc_obj = SMCDCCConfig(m, verbose=2,
 
 do_smc = False
 if do_smc:
-    t0 = time()
-    result = smc_dcc_obj.run(jax.random.PRNGKey(0))
+    result = timed(smc_dcc_obj.run)(jax.random.PRNGKey(0))
     result.pprint()
-    t1 = time()
-
-    print(f"Total time: {t1-t0:.3f}s")
-    comp_time = compilation_time_tracker.get_total_compilation_time_secs()
-    print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
 
     slp_weights = list(result.get_slp_weights().items())
     slp_weights.sort(key=lambda v: v[1])
@@ -350,13 +341,15 @@ class VIConfig(VIDCC):
         super().initialise_active_slps(active_slps, inactive_slps, rng_key)
         self.n_phases = self.successive_halving.calculate_num_phases(len(active_slps))
         self.advi_n_iter = self.successive_halving.calculate_num_optimization_steps(len(active_slps))
-        print(f"{len(active_slps)=} {self.n_phases=} {self.advi_n_iter=}")        
+        print(f"{len(active_slps)=} {self.n_phases=} {self.advi_n_iter=}")
     
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         inactive_slps.clear()
         inactive_slps.extend(active_slps)
         active_slps.clear()
-
+        if self.iteration_counter == 1:
+            return
+        
         if self.iteration_counter == self.n_phases:
             return
         
@@ -386,16 +379,9 @@ vi_dcc_obj = VIConfig(m, verbose=2,
 
 do_vi = True
 if do_vi:
-    t0 = time()
-    result = vi_dcc_obj.run(jax.random.PRNGKey(0))
+    result = timed(vi_dcc_obj.run)(jax.random.PRNGKey(0))
     result.pprint()
-    t1 = time()
-
-
-    print(f"Total time: {t1-t0:.3f}s")
-    comp_time = compilation_time_tracker.get_total_compilation_time_secs()
-    print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
-
+    exit()
 
     slp_weights = list(result.get_slp_weights().items())
     slp_weights.sort(key=lambda v: v[1])

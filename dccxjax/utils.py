@@ -3,7 +3,7 @@ import logging
 import jax
 from jax._src.core import full_lower
 import contextlib
-from typing import Sequence, TypeVar, List, Optional
+from typing import Sequence, TypeVar, List, Optional, Callable
 from tqdm.contrib.logging import logging_redirect_tqdm
 import os
 import re
@@ -15,6 +15,7 @@ __all__ = [
     "broadcast_jaxtree",
     "set_platform",
     "set_host_device_count",
+    "timed"
 ]
 
 logger = logging.getLogger("dccxjax")
@@ -125,3 +126,28 @@ def set_host_device_count(n: int) -> None:
     os.environ["XLA_FLAGS"] = " ".join(
         ["--xla_force_host_platform_device_count={}".format(n)] + xla_flags
     )
+
+import time
+RETURN_VAL = TypeVar("RETURN_VAL")
+def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...,RETURN_VAL]:
+    def wrapped(*args) -> RETURN_VAL:
+        compilation_time_tracker = CompilationTimeTracker()
+        if compilation:
+            jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
+        start_wall = time.perf_counter()
+        start_cpu = time.process_time()
+        out = f(*args)
+        repr(out) # block until ready
+        end_wall = time.perf_counter()
+        end_cpu = time.process_time()
+        # computing the metric and displaying it
+        wall_time = end_wall - start_wall
+        cpu_time = end_cpu - start_cpu
+        cpu_count = os.cpu_count()
+        print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
+        if compilation:
+            comp_time = compilation_time_tracker.get_total_compilation_time_secs()
+            print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (wall_time) * 100:.2f}%)")
+            _unregister_event_duration_listener_by_callback(compilation_time_tracker)
+        return out
+    return wrapped

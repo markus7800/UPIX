@@ -1,7 +1,17 @@
+
+import os
+import time
+import sys
+
+if len(sys.argv) > 1:
+    if sys.argv[1].endswith("cpu"):
+        print("Force run on CPU.")
+        os.environ["JAX_PLATFORMS"] = "cpu"
+
+
 import jax
 import jax.numpy as jnp
 # import numpyro.distributions as numpyro_dist
-from time import time
 from typing import Generic, NamedTuple, TypeVar, Callable, Tuple
 import jax.flatten_util
 from dataclasses import dataclass
@@ -184,15 +194,68 @@ def make_advi_step(logdensity, guide: Meanfield, optimizer: Optimizer[OPTIMIZER_
     
     return advi_step
 
+from dccxjax.utils import timed
 optimizer = Adam(0.005)
 X = (jnp.array(0.,float),jnp.array(0.,float),jnp.array(0.,float))
 g = Meanfield(X, 0.1)
 advi_step = make_advi_step(logdensity, g, optimizer, 1)
 keys = jax.random.split(jax.random.PRNGKey(0), 25_000)
-t0 = time()
-result, elbo = jax.lax.scan(advi_step, ADVIState(0, optimizer.init_fn(g.get_params())), keys)
+# start_wall = time.perf_counter()
+# start_cpu = time.process_time()
+result, elbo = timed(lambda : jax.lax.scan(advi_step, ADVIState(0, optimizer.init_fn(g.get_params())), keys))()
 print(elbo)
-t1 = time()
-print(f"Finished in {t1-t0:.3f}s")
-# plt.plot(elbo)
-# plt.show()
+# end_wall = time.perf_counter()
+# end_cpu = time.process_time()
+# cpu_count = os.cpu_count()
+
+# wall_time = end_wall - start_wall
+# cpu_time = end_cpu - start_cpu
+# print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
+
+# jax[cuda] GPU
+# [-25.38362  -27.829231 -26.376095 ... 110.65305  112.43516  110.49699 ]
+# cpu usage 1.0/32 wall_time:8.1s
+
+# jax[cuda] CPU
+# [-25.38362  -27.829231 -26.376095 ... 110.65344  112.4355   110.49655 ]
+# cpu usage 30.7/32 wall_time:13.3s
+
+# jax[cpu]
+# [-25.38362  -27.829231 -26.376095 ... 110.65344  112.4355   110.49655 ]
+# cpu usage 30.5/32 wall_time:14.5s
+
+# jax[cpu] taskset -c 0
+# [-25.38362  -27.829231 -26.376095 ... 110.65363  112.43542  110.49643 ]
+# cpu usage 1.0/32 wall_time:5.3s
+
+# jax[cpu] taskset -c 0-31
+# [-25.38362  -27.829231 -26.376095 ... 110.65344  112.4355   110.49655 ]
+# cpu usage 30.6/32 wall_time:15.1s
+
+# jax[cpu] taskset -c 0-15
+# [-25.38362  -27.829231 -26.376095 ... 110.65334  112.43528  110.49664 ]
+# cpu usage 15.3/32 wall_time:8.8s
+
+# jax[cpu] taskset -c 0-3
+# [-25.38362  -27.829231 -26.376095 ... 110.65319  112.43548  110.496475]
+# cpu usage 3.9/32 wall_time:6.6s
+
+
+
+# evaluation/gp/gp.py, exit after first phase
+
+# jax[cpu]
+# cpu usage 26.5/32 wall_time:335.4s
+# Total compilation time: 70.421s (20.99%)
+
+# jax[cpu] taskset -c 0
+# cpu usage 1.0/32 wall_time:233.1s
+# Total compilation time: 113.935s (48.89%)
+
+# jax[cuda]
+# cpu usage 1.1/32 wall_time:188.4s
+# Total compilation time: 114.726s (60.88%)
+
+# jax[cuda] cpu
+# cpu usage 26.6/32 wall_time:342.1s
+# Total compilation time: 71.183s (20.81%)
