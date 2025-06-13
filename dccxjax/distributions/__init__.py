@@ -43,6 +43,10 @@ class Uniform(Distribution[FloatArray,FloatArrayLike]):
     def __init__(self, low: FloatArrayLike = 0., high: FloatArrayLike = 1.):
         super().__init__(numpyro_dists.Uniform(low, high)) # type: ignore
 
+class Gamma(Distribution[FloatArray,FloatArrayLike]):
+    def __init__(self, concentration: FloatArrayLike, rate: FloatArrayLike = 1.):
+        super().__init__(numpyro_dists.Gamma(concentration, rate)) # type: ignore
+        
 class InverseGamma(Distribution[FloatArray,FloatArrayLike]):
     def __init__(self, concentration: FloatArrayLike, rate: FloatArrayLike = 1.):
         super().__init__(numpyro_dists.InverseGamma(concentration, rate)) # type: ignore
@@ -75,4 +79,4 @@ class TwoSidedTruncatedDistribution(Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE]
 
 class TransformedDistribution(Distribution[TRANSFORM_CODOMAIN,TRANSFORM_CODOMAIN]):
     def __init__(self, base: Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE], transforms: Transform[DIST_SUPPORT, TRANSFORM_CODOMAIN]) -> None:
-        super().__init__(numpyro_dists.TransformedDistribution(base.numpyro_base, transforms))
+        super().__init__(numpyro_dists.TransformedDistribution(base.numpyro_base, transforms.numpyro_transform))
