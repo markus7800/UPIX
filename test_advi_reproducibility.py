@@ -214,8 +214,8 @@ advi_step = make_advi_step(logdensity, g, optimizer, 1)
 keys = jax.random.split(jax.random.PRNGKey(0), 25_000)
 start_wall = time.perf_counter()
 start_cpu = time.process_time()
-result = f(jax.random.PRNGKey(0))
-# _, result = jax.lax.scan(advi_step, ADVIState(0, optimizer.init_fn(g.get_params())), keys)
+# result = f(jax.random.PRNGKey(0))
+_, result = jax.lax.scan(advi_step, ADVIState(0, optimizer.init_fn(g.get_params())), keys)
 print(result)
 end_wall = time.perf_counter()
 end_cpu = time.process_time()
@@ -253,6 +253,9 @@ print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}
 # [-25.38362  -27.829231 -26.376095 ... 110.65319  112.43548  110.496475]
 # cpu usage 3.9/32 wall_time:6.6s
 
+# m2 pro
+# [-25.383612 -27.829231 -26.376095 ... 110.65322  112.43553  110.496506]
+# cpu usage 1.1/10 wall_time:5.9s
 
 
 # evaluation/gp/gp.py, exit after first phase
@@ -273,6 +276,9 @@ print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}
 # cpu usage 26.6/32 wall_time:342.1s
 # Total compilation time: 71.183s (20.81%)
 
+# m2 pro
+# cpu usage 1.6/10 wall_time:173.9s
+# Total compilation time: 65.693s (37.77%)
 
 # f
 
@@ -287,3 +293,6 @@ print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}
 
 # jax[cpu] taskset -c 0
 # cpu usage 1.0/32 wall_time:4.1s
+
+# m2 pro
+# cpu usage 1.0/10 wall_time:4.4s
