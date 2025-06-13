@@ -194,23 +194,36 @@ def make_advi_step(logdensity, guide: Meanfield, optimizer: Optimizer[OPTIMIZER_
     
     return advi_step
 
-from dccxjax.utils import timed
+
+@jax.jit
+def step(carry, any):
+  val, key = carry
+  key1, key2 = jax.random.split(key)
+  val = val + jax.random.normal(key1)
+  return (val,key2), None
+  
+@jax.jit
+def f(seed):
+  return jax.lax.scan(step, (jnp.array(0.,float), seed), length=10**7)[0][0]
+
+
 optimizer = Adam(0.005)
 X = (jnp.array(0.,float),jnp.array(0.,float),jnp.array(0.,float))
 g = Meanfield(X, 0.1)
 advi_step = make_advi_step(logdensity, g, optimizer, 1)
 keys = jax.random.split(jax.random.PRNGKey(0), 25_000)
-# start_wall = time.perf_counter()
-# start_cpu = time.process_time()
-result, elbo = timed(lambda : jax.lax.scan(advi_step, ADVIState(0, optimizer.init_fn(g.get_params())), keys))()
-print(elbo)
-# end_wall = time.perf_counter()
-# end_cpu = time.process_time()
-# cpu_count = os.cpu_count()
+start_wall = time.perf_counter()
+start_cpu = time.process_time()
+result = f(jax.random.PRNGKey(0))
+# _, result = jax.lax.scan(advi_step, ADVIState(0, optimizer.init_fn(g.get_params())), keys)
+print(result)
+end_wall = time.perf_counter()
+end_cpu = time.process_time()
+cpu_count = os.cpu_count()
 
-# wall_time = end_wall - start_wall
-# cpu_time = end_cpu - start_cpu
-# print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
+wall_time = end_wall - start_wall
+cpu_time = end_cpu - start_cpu
+print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
 
 # jax[cuda] GPU
 # [-25.38362  -27.829231 -26.376095 ... 110.65305  112.43516  110.49699 ]
@@ -252,10 +265,25 @@ print(elbo)
 # cpu usage 1.0/32 wall_time:233.1s
 # Total compilation time: 113.935s (48.89%)
 
-# jax[cuda]
+# jax[cuda] GPU
 # cpu usage 1.1/32 wall_time:188.4s
 # Total compilation time: 114.726s (60.88%)
 
-# jax[cuda] cpu
+# jax[cuda] CPU
 # cpu usage 26.6/32 wall_time:342.1s
 # Total compilation time: 71.183s (20.81%)
+
+
+# f
+
+# jax[cuda] GPU
+# cpu usage 1.0/32 wall_time:46.8s
+
+# jax[cuda] CPU
+# cpu usage 1.0/32 wall_time:4.1s
+
+# jax[cpu]
+# cpu usage 1.0/32 wall_time:3.8s
+
+# jax[cpu] taskset -c 0
+# cpu usage 1.0/32 wall_time:4.1s
