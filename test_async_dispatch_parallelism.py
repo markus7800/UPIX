@@ -49,8 +49,17 @@ def step(carry, any):
   
 @jax.jit
 def f(seed):
+  print(f"Compile f {seed}")
   return jax.lax.scan(step, (jnp.array(0.,float), seed), length=10**7)[0][0]
 
+# e = f.trace(jax.random.PRNGKey(0)).lower().compile()
+# print(e)
+# from jax.export import export
+
+# exported = export(f)(jax.random.PRNGKey(0))
+# print(exported)
+
+# f = exported.call
 
 timer("base", f, jax.device_put(PRNGKey(0), devices[0]), shouldBlock=True)
 
