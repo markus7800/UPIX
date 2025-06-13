@@ -50,6 +50,10 @@ class Gamma(Distribution[FloatArray,FloatArrayLike]):
 class InverseGamma(Distribution[FloatArray,FloatArrayLike]):
     def __init__(self, concentration: FloatArrayLike, rate: FloatArrayLike = 1.):
         super().__init__(numpyro_dists.InverseGamma(concentration, rate)) # type: ignore
+    
+class Exponential(Distribution[FloatArray,FloatArrayLike]):
+    def __init__(self, rate: FloatArrayLike = 1.):
+        super().__init__(numpyro_dists.Exponential(rate)) # type: ignore
 
 SimplexArray = jax.Array
 

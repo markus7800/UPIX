@@ -2,12 +2,12 @@
 
 import jax
 import jax.numpy as jnp
-from trees import Node, Leaf, Branch, count_leaves, ln_factorial, bisse_32
+from trees import Node, Leaf, Branch, count_leaves, ln_factorial
 
 def exact_CRBD_loglikelihood(tree: Branch, lam: jax.Array, mu: jax.Array, rho: jax.Array) -> jax.Array:
     # Compute correction factor from oriented to labelled unoriented trees
     num_leaves = count_leaves(tree)
-    corr_cactor = (num_leaves - 1) * jnp.log(2.0) - ln_factorial(num_leaves)
+    corr_factor = (num_leaves - 1) * jnp.log(2.0) - ln_factorial(num_leaves)
 
     # Non-stalked tree, unconditional likelihood
     ln1 = (num_leaves - 2) * jax.lax.log(lam)
@@ -16,7 +16,7 @@ def exact_CRBD_loglikelihood(tree: Branch, lam: jax.Array, mu: jax.Array, rho: j
     ln4 = CRBD_ln_likelihood(tree.left, lam, mu, rho) + CRBD_ln_likelihood(tree.right, lam, mu, rho)
     ln5 = -num_leaves * CRBD_ln_ghat(0, lam, mu, rho)
     
-    return jax.lax.select(mu < lam, (corr_cactor + ln1 + ln2 + ln3 + ln4 + ln5), -jnp.inf)
+    return jax.lax.select(mu < lam, (corr_factor + ln1 + ln2 + ln3 + ln4 + ln5), -jnp.inf)
 
 
 def CRBD_ln_ghat(t: float, lam: jax.Array, mu: jax.Array, rho: jax.Array) -> jax.Array:

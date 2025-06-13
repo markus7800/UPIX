@@ -20,7 +20,8 @@ def pyhlo(tree: Branch, rho: jax.Array):
     # mu = lam * eps
     
     logfactor(exact_CRBD_loglikelihood(tree, lam, mu, rho))
-    
+
+bisse_32 = read_phyjson("evaluation/phylo/data/bisse_32.phyjson")
 m = pyhlo(bisse_32, jnp.array(1.,float))
 slp = SLP_from_branchless_model(m)
 

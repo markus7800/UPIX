@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from typing import Callable, Optional, Any, Set, Tuple, Dict, TypeVar
+from typing import Callable, Optional, Any, Set, Tuple, Dict, TypeVar, ParamSpec
 from .samplecontext import LogprobCtx, LogprobTraceCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx, AnnealingMask
 from ..types import Trace, PRNGKey, FloatArray, BoolArray
 from ..utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
@@ -86,7 +86,8 @@ class Model:
         assert self.slp_equivalence_class_element_id_gen is not None
         return self.slp_equivalence_class_element_id_gen(X)
     
-def model(f:Callable) -> Callable[..., Model]:
+MODEL_F_PARAM_SPEC = ParamSpec("MODEL_F_PARAM_SPEC")
+def model(f:Callable[MODEL_F_PARAM_SPEC,Any]) -> Callable[MODEL_F_PARAM_SPEC, Model]:
     def _f(*args, **kwargs):
         return Model(f, args, kwargs)
     return _f
