@@ -1,6 +1,6 @@
 import jax
 import jax._src.core as jax_core
-from typing import List, Tuple, Any, Optional, Callable, TypeVar
+from typing import List, Tuple, Any, Optional, Callable, TypeVar, ParamSpec, ParamSpecArgs
 from .sexpr import SExpr, SConstant, SOp, primitive_name
 
 __all__ = [
@@ -46,8 +46,10 @@ class BranchingTracer(jax_core.Tracer):
             # self.val is tracer of parent trace
             with jax_core.set_current_trace(self._trace.parent_trace):
                 #print(f"{self.val=} {concrete_val=} {self.val == concrete_val} {self._trace.path_condition=}")
+                # print(type(self.val))
+                # print(self.val == b)
                 self._trace.path_condition = self._trace.path_condition & (self.val == b)
-
+                self._trace.path_decisions.append(self.val == b)
             return b
         else:
             concrete_val = jax_core.to_concrete_value(self.val)
@@ -85,7 +87,8 @@ def branching(a: jax.typing.ArrayLike):
 
 def maybe_branching_tracer(trace: "BranchingTrace", val):
     try:
-        jax_core.get_aval(val)
+        # use JAXs implementation to determine if val is abstract array
+        _ = jax_core.get_aval(val)
         return BranchingTracer(trace, val)
     except TypeError:
         return val
@@ -117,6 +120,7 @@ class BranchingTrace(jax_core.Trace):
         self.parent_trace = parent_trace
         self.branching_decisions = branching_decisions
         self.path_condition = True
+        self.path_decisions: List[bool] = []
         self.retrace = retrace
         self.decision_cnt = 0
 
@@ -147,29 +151,41 @@ class BranchingTrace(jax_core.Trace):
 
 
 RET_TYPE = TypeVar("RET_TYPE")
+FUNC_PARAM_SPEC = ParamSpec("FUNC_PARAM_SPEC")
+# FUNC_TYPE = TypeVar("FUNC_TYPE", bound=Callable)
+
 def execute_tracing_with_trace(trace: BranchingTrace, f: Callable[..., RET_TYPE], args) -> RET_TYPE:
     with jax_core.set_current_trace(trace):
-        in_flat, in_tree = jax.tree.flatten(args)
-        in_flat = map(lambda x: maybe_branching_tracer(trace, x), in_flat)
-        # print("in_tree =", in_tree)
-        # print("in_flat =", in_flat)
-        in_tracers = jax.tree.unflatten(in_tree, in_flat)
-        out = f(*in_tracers)
-        out_flat, out_tree = jax.tree.flatten(out)
-        out_flat = list(map(lambda x: x.val if isinstance(x, BranchingTracer) else x, out_flat))
-        # print("out_flat =", out_flat)
-        out_unflat = jax.tree.unflatten(out_tree, out_flat)
-        return out_unflat
+        # in_flat, in_tree = jax.tree.flatten(args)
+        # in_flat = map(lambda x: maybe_branching_tracer(trace, x), in_flat)
+        # in_tracers = jax.tree.unflatten(in_tree, in_flat)
+        in_tracers = jax.tree.map(lambda x: maybe_branching_tracer(trace, x), args)
+        out_tracers = f(*in_tracers)
+        # out_flat, out_tree = jax.tree.flatten(out_tracers)
+        # out_flat = list(map(lambda x: x.val if isinstance(x, BranchingTracer) else x, out_flat))
+        # out = jax.tree.unflatten(out_tree, out_flat)
+        out = jax.tree.map(lambda x:  x.val if isinstance(x, BranchingTracer) else x, out_tracers)
+        return out
 
-def retrace_branching(f: Callable[..., RET_TYPE], branching_decisions: BranchingDecisions):
-    def _f(*args) -> Tuple[RET_TYPE,bool]:
+def retrace_branching(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], branching_decisions: BranchingDecisions) -> Callable[FUNC_PARAM_SPEC, Tuple[RET_TYPE,bool]]:
+    def _f(*args, **kwargs) -> Tuple[RET_TYPE,bool]:
+        assert len(kwargs) == 0
         with jax_core.take_current_trace() as parent_trace:
             trace = BranchingTrace(parent_trace, branching_decisions, retrace=True)
             out = execute_tracing_with_trace(trace, f, args)
             return out, trace.path_condition
     return _f
 
-def trace_branching(f: Callable, *args):
+def retrace_branching_decisions(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], branching_decisions: BranchingDecisions) -> Callable[FUNC_PARAM_SPEC, Tuple[RET_TYPE,List[bool]]]:
+    def _f(*args, **kwargs) -> Tuple[RET_TYPE,List[bool]]:
+        assert len(kwargs) == 0
+        with jax_core.take_current_trace() as parent_trace:
+            trace = BranchingTrace(parent_trace, branching_decisions, retrace=True)
+            out = execute_tracing_with_trace(trace, f, args)
+            return out, trace.path_decisions
+    return _f
+
+def trace_branching(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], *args):
     branching_decisions = BranchingDecisions()
     with jax_core.take_current_trace() as parent_trace:
         trace = BranchingTrace(parent_trace, branching_decisions, retrace=False)

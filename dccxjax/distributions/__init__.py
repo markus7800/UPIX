@@ -72,6 +72,10 @@ class Poisson(Distribution[IntArray,IntArrayLike]):
 class Categorical(Distribution[IntArray,IntArrayLike]):
     def __init__(self, probs: SimplexArray):
         super().__init__(numpyro_dists.CategoricalProbs(probs)) # type: ignore
+        
+class DiscreteUniform(Distribution[IntArray,IntArrayLike]):
+    def __init__(self, low: IntArrayLike = 0, high: IntArrayLike = 1):
+        super().__init__(numpyro_dists.DiscreteUniform(low, high)) # type: ignore
 
 class CategoricalLogits(Distribution[IntArray,IntArrayLike]):
     def __init__(self, logits: FloatArrayLike):
