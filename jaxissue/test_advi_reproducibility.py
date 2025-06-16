@@ -11,7 +11,6 @@ if len(sys.argv) > 1:
 
 import jax
 import jax.numpy as jnp
-# import numpyro.distributions as numpyro_dist
 from typing import Generic, NamedTuple, TypeVar, Callable, Tuple
 import jax.flatten_util
 from dataclasses import dataclass
@@ -89,15 +88,6 @@ class SquaredExponential():
         c = jax.lax.exp(-0.5 * dt * dt / jax.lax.square(self.lengthscale))
         return self.amplitude * c
     
-# def logdensity1(x):
-#     lengthscale = transform_param("lengthscale", x[0])
-#     scale_mixture = transform_param("scale_mixture", x[1])
-#     noise = transform_param("noise", x[2]) + 1e-5
-#     lp = jax.scipy.stats.norm.logpdf(lengthscale) + jax.scipy.stats.norm.logpdf(scale_mixture) + jax.scipy.stats.norm.logpdf(noise)
-#     k = UnitRationalQuadratic(lengthscale, scale_mixture)
-#     cov_matrix = k.eval_cov_vec(xs) + noise * jnp.eye(xs.size)
-#     return lp + jax.scipy.stats.multivariate_normal.logpdf(ys, jax.lax.zeros_like_array(xs), cov_matrix)
-
 def logdensity(x):
     lengthscale = transform_param("lengthscale", x[0])
     amplitude = transform_param("amplitude", x[1])
@@ -108,7 +98,6 @@ def logdensity(x):
     return lp + jax.scipy.stats.multivariate_normal.logpdf(ys, jax.lax.zeros_like_array(xs), cov_matrix)
 
 
-# we do not need pytrees / we operate on arrays
 OPTIMIZER_STATE = TypeVar("OPTIMIZER_STATE")
 OPTIMIZER_PARAMS = jax.Array
 OPTIMIZER_UPDATES = jax.Array
@@ -159,30 +148,17 @@ class Meanfield:
         z = jax.random.normal(rng_key, self.mu.shape)
         x = self.mu + jax.lax.exp(self.omega) * z
         return self.unravel_fn(x), jax.scipy.stats.norm.logpdf(z).sum()
-    
-        d = numpyro_dist.Normal(self.mu, jax.lax.exp(self.omega))
-        x = d.rsample(rng_key, shape)
-        lp = d.log_prob(x).sum(axis=-1)
-        return self.unravel_fn(x), lp
 
 class ADVIState(NamedTuple, Generic[OPTIMIZER_STATE]):
     iteration: int
     optimizer_state: OPTIMIZER_STATE
 
-def make_advi_step(logdensity, guide: Meanfield, optimizer: Optimizer[OPTIMIZER_STATE], L: int):
+def make_advi_step(logdensity, guide: Meanfield, optimizer: Optimizer[OPTIMIZER_STATE]):
     def elbo_fn(params: jax.Array, rng_key) -> jax.Array:
         guide.update_params(params)
-        if L == 1:
-            X, lq = guide.sample_and_log_prob(rng_key)
-            lp = logdensity(X)
-            elbo = lp - lq
-        else:
-            def _elbo_step(elbo: jax.Array, sample_key) -> Tuple[jax.Array, None]:
-                X, lq = guide.sample_and_log_prob(sample_key)
-                lp = logdensity(X)
-                return elbo + (lp - lq), None
-            elbo, _ = jax.lax.scan(_elbo_step, jnp.array(0., float), jax.random.split(rng_key, L))
-            elbo = elbo / L
+        X, lq = guide.sample_and_log_prob(rng_key)
+        lp = logdensity(X)
+        elbo = lp - lq
         return elbo
     
     def advi_step(advi_state: ADVIState[OPTIMIZER_STATE], rng_key) -> Tuple[ADVIState[OPTIMIZER_STATE], jax.Array]:
@@ -210,7 +186,7 @@ def f(seed):
 optimizer = Adam(0.005)
 X = (jnp.array(0.,float),jnp.array(0.,float),jnp.array(0.,float))
 g = Meanfield(X, 0.1)
-advi_step = make_advi_step(logdensity, g, optimizer, 1)
+advi_step = make_advi_step(logdensity, g, optimizer)
 keys = jax.random.split(jax.random.PRNGKey(0), 25_000)
 start_wall = time.perf_counter()
 start_cpu = time.process_time()
@@ -225,6 +201,7 @@ wall_time = end_wall - start_wall
 cpu_time = end_cpu - start_cpu
 print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
 
+# Macbook M2 Pro
 # jax:    0.6.1
 # jaxlib: 0.6.1
 # numpy:  2.2.2
@@ -233,6 +210,49 @@ print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}
 # process_count: 1
 # platform: uname_result(system='Darwin', node='Markuss-MacBook-Pro-14.local', release='24.2.0', version='Darwin Kernel Version 24.2.0: Fri Dec  6 18:56:34 PST 2024; root:xnu-11215.61.5~2/RELEASE_ARM64_T6020', machine='arm64')
 
+# jax:    0.6.1
+# jaxlib: 0.6.1
+# numpy:  2.2.4
+# python: 3.13.1 (main, Dec  9 2024, 00:00:00) [GCC 14.2.1 20240912 (Red Hat 14.2.1-3)]
+# device info: NVIDIA GeForce GTX 1070-1, 1 local devices"
+# process_count: 1
+# platform: uname_result(system='Linux', node='fedora', release='6.12.10-200.fc41.x86_64', version='#1 SMP PREEMPT_DYNAMIC Fri Jan 17 18:05:24 UTC 2025', machine='x86_64')
+
+# $ nvidia-smi
+# Mon Jun 16 20:58:05 2025       
+# +-----------------------------------------------------------------------------------------+
+# | NVIDIA-SMI 565.77                 Driver Version: 565.77         CUDA Version: 12.7     |
+# |-----------------------------------------+------------------------+----------------------+
+# | GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+# | Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+# |                                         |                        |               MIG M. |
+# |=========================================+========================+======================|
+# |   0  NVIDIA GeForce GTX 1070        Off |   00000000:2B:00.0  On |                  N/A |
+# |  0%   30C    P2             36W /  180W |     632MiB /   8192MiB |      8%      Default |
+# |                                         |                        |                  N/A |
+# +-----------------------------------------+------------------------+----------------------+
+                                                                                         
+# +-----------------------------------------------------------------------------------------+
+# | Processes:                                                                              |
+# |  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
+# |        ID   ID                                                               Usage      |
+# |=========================================================================================|
+# |    0   N/A  N/A      2504      G   /usr/bin/gnome-shell                          257MiB |
+# |    0   N/A  N/A      3473      G   /usr/bin/Xwayland                               3MiB |
+# |    0   N/A  N/A      3552      G   ...erProcess --variations-seed-version        107MiB |
+# |    0   N/A  N/A      3860      G   ...seed-version=20250612-050034.702000         96MiB |
+# |    0   N/A  N/A      5500      C   python3                                        88MiB |
+# +-----------------------------------------------------------------------------------------+
+
+# WARNING:2025-06-16 20:59:26,806:jax._src.xla_bridge:791: An NVIDIA GPU may be present on this machine, but a CUDA-enabled jaxlib is not installed. Falling back to cpu.
+# jax:    0.6.1
+# jaxlib: 0.6.1
+# numpy:  2.3.0
+# python: 3.13.1 (main, Dec  9 2024, 00:00:00) [GCC 14.2.1 20240912 (Red Hat 14.2.1-3)]
+# device info: cpu-1, 1 local devices"
+# process_count: 1
+# platform: uname_result(system='Linux', node='fedora', release='6.12.10-200.fc41.x86_64', version='#1 SMP PREEMPT_DYNAMIC Fri Jan 17 18:05:24 UTC 2025', machine='x86_64')
+
 # jax[cuda] GPU
 # [-25.38362  -27.829231 -26.376095 ... 110.65305  112.43516  110.49699 ]
 # cpu usage 1.0/32 wall_time:8.1s
@@ -240,6 +260,14 @@ print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}
 # jax[cuda] CPU
 # [-25.38362  -27.829231 -26.376095 ... 110.65344  112.4355   110.49655 ]
 # cpu usage 30.7/32 wall_time:13.3s
+
+# jax[cuda] CPU taskset -c 0
+# [-25.38362  -27.829231 -26.376095 ... 110.65363  112.43542  110.49643 ]
+# cpu usage 1.0/32 wall_time:5.1s
+
+# jax[cuda] CPU taskset -c 0-15
+# [-25.38362  -27.829231 -26.376095 ... 110.65334  112.43528  110.49664 ]
+# cpu usage 15.4/32 wall_time:8.4s
 
 # jax[cpu]
 # [-25.38362  -27.829231 -26.376095 ... 110.65344  112.4355   110.49655 ]
@@ -260,6 +288,8 @@ print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}
 # jax[cpu] taskset -c 0-3
 # [-25.38362  -27.829231 -26.376095 ... 110.65319  112.43548  110.496475]
 # cpu usage 3.9/32 wall_time:6.6s
+
+
 
 # m2 pro
 # [-25.383612 -27.829231 -26.376095 ... 110.65322  112.43553  110.496506]
@@ -296,11 +326,3 @@ print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}
 # jax[cuda] CPU
 # cpu usage 1.0/32 wall_time:4.1s
 
-# jax[cpu]
-# cpu usage 1.0/32 wall_time:3.8s
-
-# jax[cpu] taskset -c 0
-# cpu usage 1.0/32 wall_time:4.1s
-
-# m2 pro
-# cpu usage 1.0/10 wall_time:4.4s
