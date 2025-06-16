@@ -225,6 +225,14 @@ wall_time = end_wall - start_wall
 cpu_time = end_cpu - start_cpu
 print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
 
+# jax:    0.6.1
+# jaxlib: 0.6.1
+# numpy:  2.2.2
+# python: 3.13.3 (main, Apr  8 2025, 13:54:08) [Clang 16.0.0 (clang-1600.0.26.6)]
+# device info: cpu-1, 1 local devices"
+# process_count: 1
+# platform: uname_result(system='Darwin', node='Markuss-MacBook-Pro-14.local', release='24.2.0', version='Darwin Kernel Version 24.2.0: Fri Dec  6 18:56:34 PST 2024; root:xnu-11215.61.5~2/RELEASE_ARM64_T6020', machine='arm64')
+
 # jax[cuda] GPU
 # [-25.38362  -27.829231 -26.376095 ... 110.65305  112.43516  110.49699 ]
 # cpu usage 1.0/32 wall_time:8.1s
