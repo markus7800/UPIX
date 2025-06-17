@@ -26,7 +26,6 @@ def urn(obs: IntArray, biased: bool):
         else:
             logfactor(jax.lax.select(balls_arr[draws[k]] == obs[k], 0., -jnp.inf), f"factor_{k}")
             
-# obs = jnp.array([0,1])
 obs = jnp.array([0,1] * 5)
 m = urn(obs, True)
 
@@ -40,8 +39,69 @@ from pprint import pprint
 from dccxjax.infer.exact import make_all_factors_fn, get_supports, compute_factors, variable_elimination, Factor
 from dccxjax.infer.greedy_elimination_order import get_greedy_elimination_order
 from dccxjax.core.samplecontext import GenerateCtx
+from dccxjax.utils import to_shaped_arrays_str_short
 
-for N in range(1,10):
+def compute_factors_fast(slp: SLP, jit: bool = True):
+    all_factors_fn = make_all_factors_fn(slp)
+    factor_prototypes = all_factors_fn(slp.decision_representative)
+    supports = get_supports(slp)
+    def _get_support(addr: str) -> IntArray:
+        s = supports[addr]
+        if s is None:
+            return jnp.array([slp.decision_representative[addr]])
+        else:
+            return s
+        
+    # order: N, ball_{}, draw_{}
+    N = int(slp.decision_representative["N"].item())
+    K = len(slp.model.args[0])
+    Bs = [f"ball_{n}" for n in range(N)]
+    Bs_support = list(map(_get_support, Bs))
+    N_support = _get_support("N")
+    D_support = _get_support("draw_0")
+    addresses_prototype = ["N"] + Bs + ["draw_"]
+    factor_variable_supports = [N_support] + Bs_support + [D_support]
+    
+    meshgrids = jnp.meshgrid(*factor_variable_supports, indexing="ij")
+    meshgrid_shape = meshgrids[0].shape
+        
+    X = {}
+    X["N"] = meshgrids[0].reshape(-1)
+    for n in range(N):
+        X[f"ball_{n}"] = meshgrids[n+1].reshape(-1)
+    for k in range(K):
+        X[f"draw_{k}"] = meshgrids[-1].reshape(-1)
+    
+    
+    @jax.vmap
+    def _factor_fn(_partial_X: Trace) -> List[FloatArray]:
+        return [val for val, _  in all_factors_fn(_partial_X)]
+    factor_fn = jax.jit(_factor_fn) if jit else _factor_fn
+
+    res = factor_fn(X)
+    
+    factors: List[Factor] = []
+    for i, (_, addresses) in enumerate(factor_prototypes):
+        selector = []
+        for addr in addresses_prototype:
+            if addr == "draw_" and any(factor_address.startswith(addr) for factor_address in addresses):
+                selector.append(slice(None))
+            elif addr in addresses:
+                selector.append(slice(None))
+            else:
+                selector.append(0)
+        factor_table = res[i].reshape(meshgrid_shape)[*selector]
+        factor = Factor(addresses, factor_table)
+        # print(factor)
+        factors.append(factor)
+
+    return factors
+
+    
+    
+    
+lp = []
+for N in range(1,15+1):
     with GenerateCtx(jax.random.PRNGKey(0), {"N": jnp.array(N,int)}) as ctx:
         m()
         X = ctx.X
@@ -52,7 +112,8 @@ for N in range(1,10):
         # pprint(factors_fn(slp.decision_representative))
         # pprint(get_supports(slp))
         t0 = time.time()
-        factors = compute_factors(slp, True)
+        # factors = compute_factors(slp, True)
+        factors = compute_factors_fast(slp, True)
         t1 = time.time()
         print(f"Computed factors in {t1-t0:.3f}s")
         # pprint(factors)
@@ -69,7 +130,12 @@ for N in range(1,10):
         t3 = time.time()
         print(f"Computed variable_elimination in {t3-t2:.3f}s")
         print(result, result.table, log_evidence)
-
+        lp.append(log_evidence)
+       
+lp = jnp.hstack(lp)
+print(jax.scipy.special.logsumexp(lp))
+lp = lp - jax.scipy.special.logsumexp(lp)
+print(jnp.exp(lp))
 
     
 exit()

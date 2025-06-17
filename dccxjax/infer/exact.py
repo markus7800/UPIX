@@ -141,6 +141,8 @@ class Factor:
     table: FloatArray
     def __init__(self, addresses: List[str], table: FloatArray) -> None:
         assert issorted(addresses)
+        if table is not None:
+            assert len(table.shape) == len(addresses), f"{addresses} vs {table.shape}"
         self.addresses = addresses
         self.table = table
     def __repr__(self) -> str:
@@ -239,7 +241,7 @@ def compute_factors(slp: SLP, jit: bool = True):
         
         factor_table = factor_fn(partial_X).reshape(factor_shape)
         factor = Factor(addresses, factor_table)
-        # print(factor, factor.table)
+        # print(factor)
         factors.append(factor)
 
     return factors
