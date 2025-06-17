@@ -6,6 +6,7 @@ import dccxjax.distributions as dist
 from typing import List
 import jax
 import jax.numpy as jnp
+import time
 
 @model
 def urn(obs: IntArray, biased: bool):
@@ -36,27 +37,38 @@ m.set_slp_sort_key(_get_n)
 
 from pprint import pprint
 
-from dccxjax.infer.exact import make_all_factors_fn, get_supports, compute_factors, variable_elimination
+from dccxjax.infer.exact import make_all_factors_fn, get_supports, compute_factors, variable_elimination, Factor
 from dccxjax.infer.greedy_elimination_order import get_greedy_elimination_order
 from dccxjax.core.samplecontext import GenerateCtx
 
-with GenerateCtx(jax.random.PRNGKey(0), {"N": jnp.array(3,int)}) as ctx:
-    m()
-    X = ctx.X
-    pprint(X)
-    slp = slp_from_decision_representative(m, X)
-    print(slp.formatted())
-    # factors_fn = make_all_factors_fn(slp)
-    # pprint(factors_fn(slp.decision_representative))
-    # pprint(get_supports(slp))
-    factors = compute_factors(slp)
-    # pprint(factors)
-    # elimination_order_set = set(slp.decision_representative.keys())
-    # elimination_order_set.discard("N")
-    # elimination_order = list(elimination_order_set)
-    elimination_order = get_greedy_elimination_order(factors, ["N"])
-    result, log_evidence = variable_elimination(factors, elimination_order)
-    print(result, result.table, log_evidence)
+for N in range(1,10):
+    with GenerateCtx(jax.random.PRNGKey(0), {"N": jnp.array(N,int)}) as ctx:
+        m()
+        X = ctx.X
+        # pprint(X)
+        slp = slp_from_decision_representative(m, X)
+        print(slp.formatted())
+        # factors_fn = make_all_factors_fn(slp)
+        # pprint(factors_fn(slp.decision_representative))
+        # pprint(get_supports(slp))
+        t0 = time.time()
+        factors = compute_factors(slp, True)
+        t1 = time.time()
+        print(f"Computed factors in {t1-t0:.3f}s")
+        # pprint(factors)
+        # elimination_order_set = set(slp.decision_representative.keys())
+        # elimination_order_set.discard("N")
+        # elimination_order = list(elimination_order_set)
+        elimination_order = get_greedy_elimination_order(factors, ["N"])
+        t2 = time.time()
+        print(f"Computed elimination_order in {t2-t1:.3f}s")
+        @jax.jit
+        def _ve(factors: List[Factor]):
+            return variable_elimination(factors, elimination_order)
+        result, log_evidence = _ve(factors)
+        t3 = time.time()
+        print(f"Computed variable_elimination in {t3-t2:.3f}s")
+        print(result, result.table, log_evidence)
 
 
     

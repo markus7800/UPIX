@@ -147,6 +147,15 @@ class Factor:
         assert issorted(self.addresses)
         return f"Factor({self.addresses}, {self.table.shape})"
     
+def factor_flatten(v):
+    children = (v.table,)
+    aux_data = v.addresses
+    return (children, aux_data)
+def factor_unflatten(aux_data, children):
+    return Factor(aux_data, *children)
+from jax.tree_util import register_pytree_node
+register_pytree_node(Factor, factor_flatten, factor_unflatten)
+    
 def factor_product(A: Factor, B: Factor) -> Factor:
     i = 0
     j = 0
@@ -202,7 +211,7 @@ def factor_sum_out_addr(A: Factor, address_to_sum_out: str) -> Factor:
     variables = [addr for i, addr in enumerate(A.addresses) if addr != address_to_sum_out]
     table = jax.scipy.special.logsumexp(A.table, axis=axis)
     return Factor(variables, table)
-    
+  
 def compute_factors(slp: SLP, jit: bool = True):
     all_factors_fn = make_all_factors_fn(slp)
     factor_prototypes = all_factors_fn(slp.decision_representative)
