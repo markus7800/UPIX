@@ -67,7 +67,7 @@ class LMHCtx(SampleContext):
         self.log_priors_proposed[address] = distribution.log_prob(value)
         return value
 
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         self.log_likelihood_proposed += lf
         
 

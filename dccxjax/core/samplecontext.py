@@ -19,7 +19,7 @@ class SampleContext(ABC):
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         raise NotImplementedError
     @abstractmethod
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         raise NotImplementedError
     def __enter__(self):
         global SAMPLE_CONTEXT
@@ -37,10 +37,10 @@ def sample(address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_L
     else:
         raise Exception("Probabilistic program run without sample context")
     
-def logfactor(f: FloatArrayLike) -> None:
+def logfactor(f: FloatArrayLike, address: str = "__log_factor__") -> None:
     global SAMPLE_CONTEXT
     if SAMPLE_CONTEXT is not None:
-        return SAMPLE_CONTEXT.logfactor(f)
+        return SAMPLE_CONTEXT.logfactor(f, address)
     else:
         raise Exception("Probabilistic program run without sample context")
 
@@ -67,7 +67,7 @@ class GenerateCtx(SampleContext):
             value = cast(DIST_SUPPORT, self.X[address])
         self.log_prior += distribution.log_prob(value).sum()
         return value
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address) -> None:
         self.log_likelihood += lf
         
 
@@ -109,7 +109,7 @@ class LogprobCtx(SampleContext):
         self.log_prior +=  maybe_annealed_log_prob(address, distribution, value, self.annealing_masks)
 
         return value
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         self.log_likelihood += lf
 
 class LogprobTraceCtx(SampleContext):
@@ -127,7 +127,7 @@ class LogprobTraceCtx(SampleContext):
         value = cast(DIST_SUPPORT, self.X[address])
         self.log_probs[address] = (maybe_annealed_log_prob(address, distribution, value, self.annealing_masks), False)
         return value
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         self.log_probs[address] = (self.log_probs.get(address, jnp.array(0.,float))[0] + lf, True)
     
 
@@ -140,7 +140,7 @@ class ReplayCtx(SampleContext):
             return cast(DIST_SUPPORT, observed)
         value = cast(DIST_SUPPORT, self.X[address])
         return value
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         pass
     
 class CollectDistributionTypesCtx(SampleContext):
@@ -154,7 +154,7 @@ class CollectDistributionTypesCtx(SampleContext):
         value = cast(DIST_SUPPORT,self.X[address])
         self.is_discrete[address] = distribution.numpyro_base.is_discrete
         return value
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         pass
 
 
@@ -191,7 +191,7 @@ class UnconstrainedLogprobCtx(SampleContext):
             maybe_annealed_log_prob(address, unconstrained_distribution, unconstrained_value, self.annealing_masks)
         return constrained_value
     
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         self.log_likelihood += lf
     
 
@@ -216,7 +216,7 @@ class TransformToUnconstrainedCtx(SampleContext):
 
         return constrained_value
     
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         pass
     
 class TransformToConstrainedCtx(SampleContext):
@@ -241,7 +241,7 @@ class TransformToConstrainedCtx(SampleContext):
 
         return constrained_value
     
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         pass
     
 
@@ -250,7 +250,7 @@ class GuideContext(SampleContext, ABC):
     def param(self, address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:
         raise NotImplementedError
 
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         raise Exception("logfactor not supported for guides")
     
 def param(address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:

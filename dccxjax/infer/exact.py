@@ -80,10 +80,10 @@ class FactorsCtx(SampleContext):
         else:
             self.rng_key, sample_key = jax.random.split(self.rng_key)
             value = distribution.sample(sample_key)
-        self.log_probs[address] = value
+        self.log_probs[address] = distribution.log_prob(value)
         return value
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
-        self.log_probs[address] = self.log_probs.get(address, jnp.array(0.,float))[0] + lf
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
+        self.log_probs[address] = self.log_probs.get(address, jnp.array(0.,float)) + lf
     
 
 class SupportCtx(SampleContext):
@@ -102,7 +102,7 @@ class SupportCtx(SampleContext):
             self.supports[address] = None    
         value = cast(DIST_SUPPORT, self.X[address])
         return value
-    def logfactor(self, lf: FloatArrayLike, address: str = "__log_factor__") -> None:
+    def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         pass
     
 def get_supports(slp: SLP) -> Dict[str,Optional[IntArray]]:
@@ -133,14 +133,76 @@ def make_all_factors_fn(slp: SLP):
             
     return _all_factors_fn
 
-@dataclass
+def issorted(l: List):
+   return all(l[i] <= l[i+1] for i in range(len(l) - 1))
+
 class Factor:
     addresses: List[str]
     table: FloatArray
-
+    def __init__(self, addresses: List[str], table: FloatArray) -> None:
+        assert issorted(addresses)
+        self.addresses = addresses
+        self.table = table
     def __repr__(self) -> str:
+        assert issorted(self.addresses)
         return f"Factor({self.addresses}, {self.table.shape})"
+    
+def factor_product(A: Factor, B: Factor) -> Factor:
+    i = 0
+    j = 0
+    a_shape = A.table.shape
+    b_shape = B.table.shape
+    a_new_shape: List[int] = []
+    b_new_shape: List[int] = []
+    c_addresses: List[str] = []
+    
+    while i < len(A.addresses) and j < len(B.addresses):
+        a_addr = A.addresses[i]
+        b_addr = B.addresses[j]
+        if a_addr == b_addr:
+            a_new_shape.append(a_shape[i])
+            b_new_shape.append(b_shape[j])
+            c_addresses.append(a_addr)
+            i += 1
+            j += 1
+        elif a_addr < b_addr:
+            a_new_shape.append(a_shape[i])
+            b_new_shape.append(1)
+            c_addresses.append(a_addr)
+            i += 1
+        else: # a_addr > b_addr:
+            a_new_shape.append(1)
+            b_new_shape.append(b_shape[j])
+            c_addresses.append(b_addr)
+            j += 1
+    while i < len(A.addresses):
+        a_addr = A.addresses[i]
+        a_new_shape.append(a_shape[i])
+        b_new_shape.append(1)
+        c_addresses.append(a_addr)
+        i += 1
+    while j < len(B.addresses):
+        b_addr = B.addresses[j]
+        a_new_shape.append(1)
+        b_new_shape.append(b_shape[j])
+        c_addresses.append(b_addr)
+        j += 1
+        
+    c_table = A.table.reshape(a_new_shape) + B.table.reshape(b_new_shape)
+    return Factor(c_addresses, c_table)
 
+def factor_sum(A: Factor, addresses_to_sum_out: List[str]) -> Factor:
+    axis = [i for i, addr in enumerate(A.addresses) if addr in addresses_to_sum_out]
+    variables = [addr for i, addr in enumerate(A.addresses) if addr not in addresses_to_sum_out]
+    table = jax.scipy.special.logsumexp(A.table, axis=axis)
+    return Factor(variables, table)
+
+def factor_sum_out_addr(A: Factor, address_to_sum_out: str) -> Factor:
+    axis = [i for i, addr in enumerate(A.addresses) if addr == address_to_sum_out]
+    variables = [addr for i, addr in enumerate(A.addresses) if addr != address_to_sum_out]
+    table = jax.scipy.special.logsumexp(A.table, axis=axis)
+    return Factor(variables, table)
+    
 def compute_factors(slp: SLP, jit: bool = True):
     all_factors_fn = make_all_factors_fn(slp)
     factor_prototypes = all_factors_fn(slp.decision_representative)
@@ -156,10 +218,9 @@ def compute_factors(slp: SLP, jit: bool = True):
     for i, (_, addresses) in enumerate(factor_prototypes):
         assert len(addresses) > 0
         factor_variable_supports: List[IntArray] = list(map(_get_support, addresses))
-        # print(names, factor_variable_supports)
-        meshgrids = jnp.meshgrid(*factor_variable_supports)
+        # print(addresses, factor_variable_supports)
+        meshgrids = jnp.meshgrid(*factor_variable_supports, indexing="ij")
         factor_shape = meshgrids[0].shape
-        print(addresses, factor_shape)
         partial_X = {addr: meshgrid.reshape(-1) for addr, meshgrid in zip(addresses, meshgrids)}
         
         @jax.vmap
@@ -168,9 +229,49 @@ def compute_factors(slp: SLP, jit: bool = True):
         factor_fn = jax.jit(_factor_fn) if jit else _factor_fn
         
         factor_table = factor_fn(partial_X).reshape(factor_shape)
-        
-        factors.append(Factor(addresses, factor_table))
+        factor = Factor(addresses, factor_table)
+        # print(factor, factor.table)
+        factors.append(factor)
 
     return factors
+    
+from pprint import pprint
+def variable_elimination(factors: List[Factor], elimination_order: List[str]):
+    variable_to_factors: Dict[str, Set[Factor]] = {}
+    for factor in factors:
+        for addr in factor.addresses:
+            if addr not in variable_to_factors:
+                variable_to_factors[addr] = set()
+            variable_to_factors[addr].add(factor)
+            
+    tau: Factor = Factor([], jnp.array(0.,float))
+    for addr in elimination_order:
+        print(f"eliminate {addr}")
+        pprint(variable_to_factors)
+        neighbour_factors = variable_to_factors[addr]
+        assert len(neighbour_factors) > 0
+        psi = reduce(factor_product, neighbour_factors)
+        tau = factor_sum_out_addr(psi, addr)
+        print(f"{tau=}")
+        for factor in neighbour_factors:
+            for variable in factor.addresses:
+                factor_set = variable_to_factors[variable]
+                if factor_set is not neighbour_factors:
+                    factor_set.discard(factor)
+        for variable in tau.addresses:
+            variable_to_factors[variable].add(tau)
+        del variable_to_factors[addr]
+        print()
         
+    if len(variable_to_factors) == 0:
+        log_evidence = jax.scipy.special.logsumexp(tau.table)
+        return Factor([], jnp.array(0.,float)), log_evidence
+    else:
+        remaining_factors = reduce(lambda x, y: x | y, variable_to_factors.values())
+        result = reduce(factor_product, remaining_factors)
+        log_evidence = jax.scipy.special.logsumexp(result.table)
+        return result, log_evidence
+        
+    
+
         
