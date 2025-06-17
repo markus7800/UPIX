@@ -55,14 +55,19 @@ print(out)
 # this does not work:
 # out = retrace_branching(jax.vmap(f), decisions)(jnp.array([0.1],float))
 # print(out)
+    
+from pprint import pprint
 
-
-from dccxjax.infer.exact import get_factors
+from dccxjax.infer.exact import make_all_factors_fn, get_supports, compute_factors
 for i in range(1):
     X, lp = m.generate(jax.random.PRNGKey(i))
     slp = slp_from_decision_representative(m, X)
     print(slp.formatted())
-    get_factors(slp)
+    # factors_fn = make_all_factors_fn(slp)
+    # pprint(factors_fn(slp.decision_representative))
+    # pprint(get_supports(slp))
+    factors = compute_factors(slp)
+    pprint(factors)
 
 
 exit()
