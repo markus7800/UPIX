@@ -237,6 +237,7 @@ def compute_factors(slp: SLP, jit: bool = True):
     
 from pprint import pprint
 def variable_elimination(factors: List[Factor], elimination_order: List[str]):
+    # print("\nvariable_elimination")
     variable_to_factors: Dict[str, Set[Factor]] = {}
     for factor in factors:
         for addr in factor.addresses:
@@ -246,13 +247,13 @@ def variable_elimination(factors: List[Factor], elimination_order: List[str]):
             
     tau: Factor = Factor([], jnp.array(0.,float))
     for addr in elimination_order:
-        print(f"eliminate {addr}")
-        pprint(variable_to_factors)
+        # print(f"eliminate {addr}")
+        # pprint(variable_to_factors)
         neighbour_factors = variable_to_factors[addr]
         assert len(neighbour_factors) > 0
         psi = reduce(factor_product, neighbour_factors)
         tau = factor_sum_out_addr(psi, addr)
-        print(f"{tau=}")
+        # print(f"{tau=}")
         for factor in neighbour_factors:
             for variable in factor.addresses:
                 factor_set = variable_to_factors[variable]
@@ -261,7 +262,7 @@ def variable_elimination(factors: List[Factor], elimination_order: List[str]):
         for variable in tau.addresses:
             variable_to_factors[variable].add(tau)
         del variable_to_factors[addr]
-        print()
+        # print()
         
     if len(variable_to_factors) == 0:
         log_evidence = jax.scipy.special.logsumexp(tau.table)

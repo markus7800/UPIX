@@ -34,31 +34,10 @@ def _get_n(slp: SLP) -> int:
 m.set_slp_formatter(lambda slp: f"N={_get_n(slp)}")
 m.set_slp_sort_key(_get_n)
 
-
-def f(x):
-    if x > 0:
-        return x*x
-    else:
-        return -x*x
-
-from dccxjax.core.branching_tracer import trace_branching, retrace_branching
-
-out, decisions = trace_branching(f, jnp.array(0.1,float))
-print(out, decisions.to_human_readable())
-
-# this does not work:
-# out, decisions = trace_branching(jax.vmap(f), jnp.array([0.1],float))
-
-out, _ = jax.vmap(retrace_branching(f, decisions))(jnp.array([0.1],float))
-print(out)
-
-# this does not work:
-# out = retrace_branching(jax.vmap(f), decisions)(jnp.array([0.1],float))
-# print(out)
-    
 from pprint import pprint
 
 from dccxjax.infer.exact import make_all_factors_fn, get_supports, compute_factors, variable_elimination
+from dccxjax.infer.greedy_elimination_order import get_greedy_elimination_order
 from dccxjax.core.samplecontext import GenerateCtx
 
 with GenerateCtx(jax.random.PRNGKey(0), {"N": jnp.array(3,int)}) as ctx:
@@ -72,9 +51,10 @@ with GenerateCtx(jax.random.PRNGKey(0), {"N": jnp.array(3,int)}) as ctx:
     # pprint(get_supports(slp))
     factors = compute_factors(slp)
     # pprint(factors)
-    elimination_order_set = set(slp.decision_representative.keys())
-    elimination_order_set.discard("N")
-    elimination_order = list(elimination_order_set)
+    # elimination_order_set = set(slp.decision_representative.keys())
+    # elimination_order_set.discard("N")
+    # elimination_order = list(elimination_order_set)
+    elimination_order = get_greedy_elimination_order(factors, ["N"])
     result, log_evidence = variable_elimination(factors, elimination_order)
     print(result, result.table, log_evidence)
 
