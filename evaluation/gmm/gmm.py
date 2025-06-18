@@ -90,7 +90,7 @@ m.set_slp_sort_key(find_K)
 class RJMCMCTransitionProbEstimate(LogWeightEstimate):
     transition_log_probs: Dict[Any, FloatArray]
     n_samples: int
-    def combine(self, other: LogWeightEstimate) -> "RJMCMCTransitionProbEstimate":
+    def combine_estimates(self, other: LogWeightEstimate) -> "RJMCMCTransitionProbEstimate":
         assert isinstance(other, RJMCMCTransitionProbEstimate)
 
         n_combined_samples = self.n_samples + other.n_samples
@@ -207,13 +207,5 @@ dcc_obj = DCCConfig(m, verbose=2,
               estimate_weight_n_samples=1000)
 
 # takes ~185s for 10 * 25_000 * 11 samples
-t0 = time()
-
-result = dcc_obj.run(jax.random.PRNGKey(0))
-result.pprint()
-
-t1 = time()
-
-print(f"Total time: {t1-t0:.3f}s")
-comp_time = compilation_time_tracker.get_total_compilation_time_secs()
-print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
+result = timed(dcc_obj.run)(jax.random.PRNGKey(0))
+result.pprint(sortkey="slp")

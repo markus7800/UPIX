@@ -26,7 +26,7 @@ class MCMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
     n_chains: int
     n_samples_per_chain: int
     optimised_memory_with_early_return_map: bool
-    def combine(self, other: InferenceResult) -> "MCMCInferenceResult":
+    def combine_results(self, other: InferenceResult) -> "MCMCInferenceResult":
         if not isinstance(other, MCMCInferenceResult):
             raise TypeError
         assert self.n_chains == other.n_chains
@@ -83,7 +83,7 @@ class LogWeightEstimateFromPrior(MCLogWeightEstimate):
     ESS: IntArray
     frac_in_support: FloatArray
     n_samples: int
-    def combine(self, other: LogWeightEstimate) -> "LogWeightEstimateFromPrior":
+    def combine_estimates(self, other: LogWeightEstimate) -> "LogWeightEstimateFromPrior":
         assert isinstance(other, LogWeightEstimateFromPrior)
         n_combined_samples = self.n_samples + other.n_samples
         a = self.n_samples / n_combined_samples

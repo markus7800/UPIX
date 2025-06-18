@@ -210,7 +210,7 @@ smc_dcc_obj = SMCDCCConfig(m, verbose=2,
     one_inference_run_per_slp = True,
 )
 
-do_smc = False
+do_smc = True
 if do_smc:
     result = timed(smc_dcc_obj.run)(jax.random.PRNGKey(0))
     result.pprint()

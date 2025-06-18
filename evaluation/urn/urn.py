@@ -13,6 +13,7 @@ from typing import List
 import jax
 import jax.numpy as jnp
 import time
+from tqdm.auto import tqdm
 
 @model
 def urn(obs: IntArray, biased: bool):
@@ -40,91 +41,43 @@ def _get_n(slp: SLP) -> int:
 m.set_slp_formatter(lambda slp: f"N={_get_n(slp)}")
 m.set_slp_sort_key(_get_n)
 
-from pprint import pprint
-
-from dccxjax.infer.exact.factors import make_all_factors_fn, get_supports, compute_factors, Factor, compute_factors_optimised
-from dccxjax.infer.exact.variable_elimination import variable_elimination
-from dccxjax.infer.exact.greedy_elimination_order import get_greedy_elimination_order
-from dccxjax.core.samplecontext import GenerateCtx
-from dccxjax.utils import to_shaped_arrays_str_short
-
-def compute_factors_fast(slp: SLP, jit: bool = True):
-    all_factors_fn = make_all_factors_fn(slp)
-    factor_prototypes = all_factors_fn(slp.decision_representative)
-    supports = get_supports(slp)
-    def _get_support(addr: str) -> IntArray:
-        s = supports[addr]
-        if s is None:
-            return jnp.array([slp.decision_representative[addr]])
-        else:
-            return s
+    
+    
+class Config(ExactDCC):
+    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
+        for N in range(1,15+1):
+            X, _ = m.generate(jax.random.PRNGKey(0), {"N": jnp.array(N,int)})
+            slp = slp_from_decision_representative(m, X)
+            tqdm.write(f"Make SLP {slp.formatted()} active.")
+            active_slps.append(slp)
+    def get_query_variables(self, slp: SLP) -> List[str]:
+        return []
+    
+    # def get_factors(self, slp: SLP) -> List[Factor]:
+    #     t0 = time.time()
+    
+    #     N = int(slp.decision_representative["N"].item())
         
-    # order: N, ball_{}, draw_{}
-    N = int(slp.decision_representative["N"].item())
-    K = len(slp.model.args[0])
-    Bs = [f"ball_{n}" for n in range(N)]
-    Bs_support = list(map(_get_support, Bs))
-    N_support = _get_support("N")
-    D_support = _get_support("draw_0")
-    addresses_prototype = ["N"] + Bs + ["draw_"]
-    factor_variable_supports = [N_support] + Bs_support + [D_support]
-    
-    meshgrids = jnp.meshgrid(*factor_variable_supports, indexing="ij")
-    meshgrid_shape = meshgrids[0].shape
+    #     selectors_1 = [SingleVariable("N"), PrefixSelector("draw_")]
         
-    X = {}
-    X["N"] = meshgrids[0].reshape(-1)
-    for n in range(N):
-        X[f"ball_{n}"] = meshgrids[n+1].reshape(-1)
-    for k in range(K):
-        X[f"draw_{k}"] = meshgrids[-1].reshape(-1)
-    
-    
-    @jax.vmap
-    def _factor_fn(_partial_X: Trace) -> List[FloatArray]:
-        return [val for val, _  in all_factors_fn(_partial_X)]
-    factor_fn = jax.jit(_factor_fn) if jit else _factor_fn
+    #     selectors_2: List[VariableSelector] = []
+    #     for addr in sorted([f"ball_{n}" for n in range(N)]):
+    #         selectors_2.append(SingleVariable(addr))
+    #     selectors_2.append(PrefixSelector("draw_"))
+        
+    #     factors = compute_factors_optimised(slp, [selectors_1, selectors_2], True)
 
-    res = factor_fn(X)
+    #     t1 = time.time()
+        
+    #     if self.verbose >= 2:
+    #         tqdm.write(f"Computed factors in {t1-t0:.3f}s")
+    #     return factors
     
-    factors: List[Factor] = []
-    for i, (_, addresses) in enumerate(factor_prototypes):
-        selector = []
-        for addr in addresses_prototype:
-            if addr == "draw_" and any(factor_address.startswith(addr) for factor_address in addresses):
-                selector.append(slice(None))
-            elif addr in addresses:
-                selector.append(slice(None))
-            else:
-                selector.append(0)
-        factor_table = res[i].reshape(meshgrid_shape)[*selector]
-        factor = Factor(addresses, factor_table)
-        # print(factor)
-        factors.append(factor)
-
-    return factors
-
-    
-    
-    
-lp = []
-for N in range(1,15+1):
-    with GenerateCtx(jax.random.PRNGKey(0), {"N": jnp.array(N,int)}) as ctx:
-        m()
-        X = ctx.X
-        # pprint(X)
-        slp = slp_from_decision_representative(m, X)
-        print(slp.formatted())
-        # factors_fn = make_all_factors_fn(slp)
-        # pprint(factors_fn(slp.decision_representative))
-        # pprint(get_supports(slp))
+    def get_factors(self, slp: SLP) -> List[Factor]:
         t0 = time.time()
         
-        # factors = compute_factors(slp, True)
-        
-        # factors = compute_factors_fast(slp, True)
-        
         N = int(slp.decision_representative["N"].item())
+        
         selectors: List[VariableSelector] = []
         selectors.append(SingleVariable("N"))
         for addr in sorted([f"ball_{n}" for n in range(N)]):
@@ -132,45 +85,15 @@ for N in range(1,15+1):
         selectors.append(PrefixSelector("draw_"))
         factors = compute_factors_optimised(slp, [selectors], True)
         
-        # selectors_2 = [SingleVariable("N"), PrefixSelector("draw_")]
-        # factors = compute_factors_optimised(slp, [selectors_2, selectors[1:]], True)
         
         t1 = time.time()
-        print(f"Computed factors in {t1-t0:.3f}s")
-        # pprint(factors)
-        # elimination_order_set = set(slp.decision_representative.keys())
-        # elimination_order_set.discard("N")
-        # elimination_order = list(elimination_order_set)
-        elimination_order = get_greedy_elimination_order(factors, ["N"])
-        t2 = time.time()
-        print(f"Computed elimination_order in {t2-t1:.3f}s")
-        @jax.jit
-        def _ve(factors: List[Factor]):
-            return variable_elimination(factors, elimination_order)
-        result, log_evidence = _ve(factors)
-        t3 = time.time()
-        print(f"Computed variable_elimination in {t3-t2:.3f}s")
-        print(result, result.table, log_evidence)
-        lp.append(log_evidence)
-       
-lp = jnp.hstack(lp)
-print(jax.scipy.special.logsumexp(lp))
-lp = lp - jax.scipy.special.logsumexp(lp)
-print(jnp.exp(lp))
-
+        
+        if self.verbose >= 2:
+            tqdm.write(f"Computed factors in {t1-t0:.3f}s")
+        return factors
     
-exit()
+    
+config = Config(m, verbose=2)
 
-
-for i in range(1):
-    X, lp = m.generate(jax.random.PRNGKey(i))
-exit()
-class Config(MCDCC[T]):
-    def run_inference(self, slp: SLP, rng_key: jax.Array) -> InferenceResult:
-        raise NotImplementedError
-    def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
-        raise NotImplementedError
-
-config = Config(m, n_init_samples=100, verbose=2)
-
-config.run(jax.random.PRNGKey(0))
+result = timed(config.run)(jax.random.PRNGKey(0))
+result.pprint(sortkey="slp")

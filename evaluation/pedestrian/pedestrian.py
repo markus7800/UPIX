@@ -121,16 +121,9 @@ dcc_obj = DCCConfig(m, verbose=2,
               return_map=lambda trace: {"start": trace["start"]}
 )
 
-t0 = time()
+result = timed(dcc_obj.run)(jax.random.PRNGKey(0))
+result.pprint(sortkey="slp")
 
-result = dcc_obj.run(jax.random.PRNGKey(0))
-result.pprint()
-
-t1 = time()
-
-print(f"Total time: {t1-t0:.3f}s")
-comp_time = compilation_time_tracker.get_total_compilation_time_secs()
-print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
 
 gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
 gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")

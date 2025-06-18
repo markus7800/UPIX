@@ -66,11 +66,10 @@ class MCDCCResult(BaseDCCResult, Generic[DCC_COLLECT_TYPE]):
     def __repr__(self) -> str:
         return f"MC-DCCResult({len(self.slp_log_weights)} SLPs)"
     
-    def pprint(self):
+    def pprint(self, *, sortkey: str = "logweight"):
         log_Z_normaliser = self.get_log_weight_normaliser()
         print("MC-DCCResult {")
-        slp_log_weights_list = list(self.slp_log_weights.items())
-        slp_log_weights_list.sort(key = lambda v: v[1].item())
+        slp_log_weights_list = self.get_log_weights_sorted(sortkey)
         for slp, log_weight in slp_log_weights_list:
             weighted_sample = self.slp_weighted_samples[slp]
             print(f"\t{slp.formatted()}: {weighted_sample.values} with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
@@ -194,8 +193,8 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
         if self.iteration_counter == self.max_iterations:
             return
 
-        combined_inference_results: Dict[SLP, InferenceResult] = {slp: reduce(lambda x, y: x.combine(y), results) for slp, results in inference_results.items()}
-        combined_log_weight_estimates: Dict[SLP, LogWeightEstimate] = {slp: reduce(lambda x, y: x.combine(y), results) for slp, results in log_weight_estimates.items()}
+        combined_inference_results: Dict[SLP, InferenceResult] = {slp: reduce(lambda x, y: x.combine_results(y), results) for slp, results in inference_results.items()}
+        combined_log_weight_estimates: Dict[SLP, LogWeightEstimate] = {slp: reduce(lambda x, y: x.combine_estimates(y), results) for slp, results in log_weight_estimates.items()}
 
         self.combined_inference_results = {slp: [combined_result] for slp, combined_result in combined_inference_results.items()} # small optimisation to avoid repeated combination
         self.log_weight_estimates = {slp: [combined_estimate] for slp, combined_estimate in combined_log_weight_estimates.items()} # small optimisation to avoid repeated combination
@@ -276,8 +275,8 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
         return slp_weighted_samples
 
     def combine_results(self, inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]]) -> MCDCCResult[DCC_COLLECT_TYPE]:
-        combined_inference_results: Dict[SLP, InferenceResult] = {slp: reduce(lambda x, y: x.combine(y), results) for slp, results in inference_results.items()}
-        combined_log_weight_estimates: Dict[SLP, LogWeightEstimate] = {slp: reduce(lambda x, y: x.combine(y), results) for slp, results in log_weight_estimates.items()}
+        combined_inference_results: Dict[SLP, InferenceResult] = {slp: reduce(lambda x, y: x.combine_results(y), results) for slp, results in inference_results.items()}
+        combined_log_weight_estimates: Dict[SLP, LogWeightEstimate] = {slp: reduce(lambda x, y: x.combine_estimates(y), results) for slp, results in log_weight_estimates.items()}
 
         slp_log_weights = self.compute_slp_log_weight(combined_log_weight_estimates)
         slp_weighted_samples = self.get_slp_weighted_samples(combined_inference_results)

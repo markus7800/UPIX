@@ -6,9 +6,7 @@ from dccxjax.core import SLP
 import dccxjax.distributions as dist
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-
-from dccxjax.infer.dcc2 import *
-
+import jax
 
 import logging
 

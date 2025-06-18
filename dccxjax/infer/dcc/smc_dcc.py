@@ -24,7 +24,7 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
     log_particle_weight: FloatArray
     n_particles: int
     optimised_memory_with_early_return_map: bool
-    def combine(self, other: InferenceResult) -> "SMCInferenceResult":
+    def combine_results(self, other: InferenceResult) -> "SMCInferenceResult":
         if not isinstance(other, SMCInferenceResult):
             raise TypeError
         
@@ -64,7 +64,7 @@ class LogWeightEstimateFromSMC(MCLogWeightEstimate):
     log_Z: FloatArray
     ESS: IntArray
     n_particles: int
-    def combine(self, other: LogWeightEstimate) -> "LogWeightEstimateFromSMC":
+    def combine_estimates(self, other: LogWeightEstimate) -> "LogWeightEstimateFromSMC":
         assert isinstance(other, LogWeightEstimateFromSMC)
         n_combined_particles = self.n_particles + other.n_particles
         a = self.n_particles / n_combined_particles

@@ -14,18 +14,36 @@ __all__ = [
 
 class InferenceResult(ABC):
     @abstractmethod
-    def combine(self, other: "InferenceResult") -> "InferenceResult":
+    def combine_results(self, other: "InferenceResult") -> "InferenceResult":
         # fold left
         raise NotImplementedError
 
 class LogWeightEstimate(ABC):
     @abstractmethod
-    def combine(self, other: "LogWeightEstimate") -> "LogWeightEstimate":
+    def combine_estimates(self, other: "LogWeightEstimate") -> "LogWeightEstimate":
         raise NotImplementedError
     
     
 class BaseDCCResult:
     slp_log_weights: Dict[SLP, FloatArray]
+    
+    def get_log_weights_sorted(self, sortkey: str = "logweight"):
+        assert sortkey in ("logweight", "slp")
+        slp_log_weights_list = list(self.slp_log_weights.items())
+        if sortkey == "logweight":
+            slp_log_weights_list.sort(key = lambda v: v[1].item())
+        else:
+            slp_log_weights_list.sort(key = lambda v: v[0].sort_key())
+        return slp_log_weights_list
+    
+    def pprint(self, *, sortkey: str = "logweight"):
+        assert sortkey in ("log_weight", "slp")
+        log_Z_normaliser = self.get_log_weight_normaliser()
+        print("BaseDCCResult {")
+        slp_log_weights_list = self.get_log_weights_sorted(sortkey)
+        for slp, log_weight in slp_log_weights_list:
+            print(f"\t{slp.formatted()}: with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
+        print("}")
     
     def get_slp_weights(self, predicate: Callable[[SLP], bool] = lambda _: True) -> Dict[SLP, float]:
         log_Z_normaliser = self.get_log_weight_normaliser()

@@ -17,7 +17,7 @@ __all__ = [
 @dataclass
 class ADVIInferenceResult(InferenceResult):
     last_state: ADVIState
-    def combine(self, other: InferenceResult) -> InferenceResult:
+    def combine_results(self, other: InferenceResult) -> InferenceResult:
         # not used in default implementation of VIDCC
         assert isinstance(other, ADVIInferenceResult)
         # take advi with most steps
@@ -31,7 +31,7 @@ class ADVIInferenceResult(InferenceResult):
 class LogWeightEstimateFromADVI(LogWeightEstimate):
     log_Z: FloatArray
     n_samples: int
-    def combine(self, other: LogWeightEstimate) -> "LogWeightEstimateFromADVI":
+    def combine_estimates(self, other: LogWeightEstimate) -> "LogWeightEstimateFromADVI":
         # not used in default implementation of VIDCC
         assert isinstance(other, LogWeightEstimateFromADVI)
         n_combined_samples = self.n_samples + other.n_samples
@@ -51,12 +51,10 @@ class VIDCCResult(BaseDCCResult):
 
     def __repr__(self) -> str:
         return f"VI-DCCResult({len(self.slp_log_weights)} SLPs)"
-    
-    def pprint(self):
+    def pprint(self, *, sortkey: str = "logweight"):
         log_Z_normaliser = self.get_log_weight_normaliser()
         print("VI-DCCResult {")
-        slp_log_weights_list = list(self.slp_log_weights.items())
-        slp_log_weights_list.sort(key = lambda v: v[1].item())
+        slp_log_weights_list = self.get_log_weights_sorted(sortkey)
         for slp, log_weight in slp_log_weights_list:
             guide = self.slp_guides[slp]
             print(f"\t{slp.formatted()}: with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")

@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List
 from time import time
-from dccxjax.infer.mcmc import MCMCState, CarryStats
+from dccxjax.infer.mcmc.mcmc import MCMCState, CarryStats
 
 import logging
 setup_logging(logging.WARNING)
