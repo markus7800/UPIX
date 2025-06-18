@@ -1,4 +1,3 @@
-from io import BufferedReader, BufferedWriter
 import subprocess
 import sys
 import jax
@@ -6,6 +5,7 @@ import jax.export
 import jax.numpy as jnp
 import pickle
 import threading
+from typing import IO
 from queue import Queue, ShutDown
 import time
 
@@ -21,21 +21,22 @@ def f(seed):
   return jax.lax.scan(step, (jnp.array(0.,float), seed), length=10**7)[0][0]
 
 
-def read_transport_layer(reader: BufferedReader):
+def read_transport_layer(reader: IO[bytes]):
     msg = reader.readline().decode("utf8").rstrip()
     print(msg)
     if msg != "OK":
-        raise Exception
+        error = pickle.load(reader)
+        raise Exception(error)
     obj = pickle.load(reader)
     return obj
 
-def write_task_transport_layer(writer: BufferedWriter, obj):
+def write_task_transport_layer(writer: IO[bytes], obj):
     writer.write("task\r\n".encode("utf8"))
     writer.flush()
     pickle.dump(obj, writer)
     writer.flush()
 
-def write_close_transport_layer(writer: BufferedWriter):
+def write_close_transport_layer(writer: IO[bytes]):
     writer.write("close\r\n".encode("utf8"))
     writer.flush()
 
@@ -53,15 +54,18 @@ def worker(in_queue: Queue, out_queue: Queue):
             jitted_fn, args = task
             assert isinstance(args, tuple)
             exported_fn = jax.export.export(jitted_fn)(*args) # only traces
-            write_task_transport_layer(p.stdin, (exported_fn.serialize(), args)) # type: ignore
-            response = read_transport_layer(p.stdout) # type: ignore
+            write_task_transport_layer(p.stdin, (exported_fn.serialize(), args))
+            response = read_transport_layer(p.stdout)
             print("got response:", response)
-            in_queue.task_done()
             out_queue.put(response)
         except ShutDown:
             # By default, get() on a shut down queue will only raise once the queue is empty
-            write_close_transport_layer(p.stdin) # type: ignore
+            write_close_transport_layer(p.stdin)
             break
+        except Exception as e:
+            print("Worker error:", e)
+        finally:
+            in_queue.task_done()
     p.wait()
     
 def main():
@@ -70,7 +74,7 @@ def main():
     out_queue = Queue()
 
     num_threads = 5
-    num_tasks = 5
+    num_tasks = 10
     
     for _ in range(num_threads):
         t = threading.Thread(target=worker, args=(in_queue, out_queue), daemon=True)
