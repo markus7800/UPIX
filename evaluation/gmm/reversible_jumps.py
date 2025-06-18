@@ -1,7 +1,9 @@
 from dccxjax import *
 import numpyro.distributions as numpyro_dists
-from typing import NamedTuple
+from typing import NamedTuple, Callable
 from jax.flatten_util import ravel_pytree
+import jax
+import jax.numpy as jnp
 
 class SplitAux(NamedTuple):
     j_star: IntArray

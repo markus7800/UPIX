@@ -4,7 +4,7 @@ from dccxjax.distributions import Transform, Distribution, DIST_SUPPORT, DIST_SU
 import numpyro.distributions as numpyro_dists
 from typing import Any, Optional, Dict, Callable, cast, Tuple
 from abc import ABC, abstractmethod
-from ..types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike, BoolArray, IntArray
+from dccxjax.types import Trace, PRNGKey, FloatArrayLike, FloatArray, ArrayLike, BoolArray, IntArray
 from dccxjax.distributions.constraints import Constraint, real
 
 __all__ = [

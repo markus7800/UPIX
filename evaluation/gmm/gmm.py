@@ -1,6 +1,11 @@
 import sys
-
 sys.path.insert(0, ".")
+
+if len(sys.argv) > 1:
+    if sys.argv[1].endswith("cpu"):
+        print("Force run on CPU.")
+        from dccxjax.backend import *
+        set_platform("cpu")
 
 from dccxjax import *
 import jax
@@ -11,7 +16,7 @@ import matplotlib.pyplot as plt
 from typing import List
 from time import time
 from dccxjax.types import _unstack_sample_data
-from typing import Any
+from typing import Any, Dict
 from dataclasses import dataclass
 
 from gibbs_proposals import *

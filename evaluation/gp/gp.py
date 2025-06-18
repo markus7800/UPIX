@@ -1,11 +1,11 @@
 import sys
 sys.path.insert(0, ".")
-import os
 
 if len(sys.argv) > 1:
     if sys.argv[1].endswith("cpu"):
         print("Force run on CPU.")
-        os.environ["JAX_PLATFORMS"] = "cpu"
+        from dccxjax.backend import *
+        set_platform("cpu")
 
 from data import *
 import matplotlib.pyplot as plt
@@ -13,13 +13,10 @@ import jax
 import jax.numpy as jnp
 from dccxjax import *
 import dccxjax.distributions as dist
-import numpyro.distributions as numpyro_dist
 from kernels import *
 from dataclasses import fields
 from tqdm.auto import tqdm
-from dccxjax.core.branching_tracer import retrace_branching
-from functools import reduce
-
+from typing import Tuple, Optional, Dict
 
 import logging
 setup_logging(logging.WARN)
@@ -367,7 +364,7 @@ class VIConfig(VIDCC):
         
         
 
-from dccxjax.infer.optimizers import Adagrad, SGD, Adam
+from dccxjax.infer.variational_inference.optimizers import Adagrad, SGD, Adam
 vi_dcc_obj = VIConfig(m, verbose=2,
     init_n_samples=1_000, # 1_000
     advi_n_iter=1_000, # set by successive halving

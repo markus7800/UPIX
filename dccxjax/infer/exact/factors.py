@@ -3,17 +3,19 @@ import jax
 import jax._src.core as jax_core
 from typing import List, Tuple, Any, Optional, Callable, TypeVar, Set, Dict, cast
 from functools import reduce
-from ..core.samplecontext import SampleContext
-from ..core.model_slp import Model, SLP
-from ..core.branching_tracer import retrace_branching_decisions
-from ..types import Trace, FloatArray, PRNGKey, FloatArrayLike, IntArray
+from dccxjax.core.samplecontext import SampleContext
+from dccxjax.core.model_slp import Model, SLP
+from dccxjax.core.branching_tracer import retrace_branching_decisions
+from dccxjax.types import Trace, FloatArray, PRNGKey, FloatArrayLike, IntArray
 from dccxjax.distributions import Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE
 import jax.numpy as jnp
-import numpyro.distributions as numpyro_dist
-from dataclasses import dataclass
+from dccxjax.infer.variable_selector import VariableSelector
+from dccxjax.utils import to_shaped_arrays_str_short
 
 __all__ = [
-    
+    "compute_factors",
+    "compute_factors_optimised",
+    "Factor",
 ]
 
 
@@ -111,7 +113,6 @@ def get_supports(slp: SLP) -> Dict[str,Optional[IntArray]]:
         return ctx.supports
 
 def make_all_factors_fn(slp: SLP):
-    
     def _fs(_X: Dict) -> Dict[str,FloatArray]:
         with FactorsCtx(_X) as ctx:
             slp.model()
@@ -246,8 +247,6 @@ def compute_factors(slp: SLP, jit: bool = True):
 
     return factors
     
-from .variable_selector import VariableSelector
-from dccxjax.utils import to_shaped_arrays_str_short
 
 def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelector]], jit: bool = True):
     all_factors_fn = make_all_factors_fn(slp)
@@ -358,46 +357,3 @@ def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelecto
     assert all(factor_computed)
     return factors
     
-    
-
-from pprint import pprint
-def variable_elimination(factors: List[Factor], elimination_order: List[str]):
-    # print("\nvariable_elimination")
-    variable_to_factors: Dict[str, Set[Factor]] = {}
-    for factor in factors:
-        for addr in factor.addresses:
-            if addr not in variable_to_factors:
-                variable_to_factors[addr] = set()
-            variable_to_factors[addr].add(factor)
-            
-    tau: Factor = Factor([], jnp.array(0.,float))
-    for addr in elimination_order:
-        # print(f"eliminate {addr}")
-        # pprint(variable_to_factors)
-        neighbour_factors = variable_to_factors[addr]
-        assert len(neighbour_factors) > 0
-        psi = reduce(factor_product, neighbour_factors)
-        tau = factor_sum_out_addr(psi, addr)
-        # print(f"{tau=}")
-        for factor in neighbour_factors:
-            for variable in factor.addresses:
-                factor_set = variable_to_factors[variable]
-                if factor_set is not neighbour_factors:
-                    factor_set.discard(factor)
-        for variable in tau.addresses:
-            variable_to_factors[variable].add(tau)
-        del variable_to_factors[addr]
-        # print()
-        
-    if len(variable_to_factors) == 0:
-        log_evidence = jax.scipy.special.logsumexp(tau.table)
-        return Factor([], jnp.array(0.,float)), log_evidence
-    else:
-        remaining_factors = reduce(lambda x, y: x | y, variable_to_factors.values())
-        result = reduce(factor_product, remaining_factors)
-        log_evidence = jax.scipy.special.logsumexp(result.table)
-        return result, log_evidence
-        
-    
-
-        

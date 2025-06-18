@@ -1,14 +1,13 @@
 import jax
 import jax.numpy as jnp
 from typing import Callable, Dict, Optional, Tuple, NamedTuple
-from ..types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
-import dccxjax.distributions as dist
+from dccxjax.types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
 from .mcmc import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, AnnealingMask
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
-from .gibbs_model import GibbsModel, SLP
-from ..utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
-from .variable_selector import VariableSelector, AllVariables
+from dccxjax.infer.gibbs_model import GibbsModel, SLP
+from dccxjax.utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
+from dccxjax.infer.variable_selector import VariableSelector, AllVariables
 
 __all__ = [
     "HamiltonianMonteCarlo",

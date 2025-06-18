@@ -2,9 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
-from ..types import Trace, PRNGKey, FloatArray, IntArray
-from dataclasses import dataclass
-from .mcmc import MCMCState
+from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 

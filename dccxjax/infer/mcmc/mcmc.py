@@ -1,21 +1,19 @@
 import jax.experimental
-from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, BoolArray
+from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, BoolArray
 import jax
 import jax.numpy as jnp
 from typing import Callable, Generator, Any, Tuple, Optional, List, NamedTuple, TypeVar, Generic, TypedDict, Set, Dict
-from .gibbs_model import GibbsModel
-from .variable_selector import VariableSelector
+from dccxjax.infer.gibbs_model import GibbsModel
+from dccxjax.infer.variable_selector import VariableSelector
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from dccxjax.core.model_slp import SLP, AnnealingMask
-from ..utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree, broadcast_jaxtree
+from dccxjax.utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree, broadcast_jaxtree
 from time import time
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
-from .variable_selector import AllVariables
-from .progress_bar import _add_progress_bar, ProgressbarManager
-
-from tqdm.auto import tqdm as tqdm_auto
+from dccxjax.infer.variable_selector import AllVariables
+from dccxjax.infer.progress_bar import _add_progress_bar, ProgressbarManager
 
 __all__ = [
     "MCMCRegime",

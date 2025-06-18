@@ -1,6 +1,12 @@
 import sys
 sys.path.append(".")
 
+if len(sys.argv) > 1:
+    if sys.argv[1].endswith("cpu"):
+        print("Force run on CPU.")
+        from dccxjax.backend import *
+        set_platform("cpu")
+        
 from dccxjax import *
 import dccxjax.distributions as dist
 from typing import List
@@ -36,8 +42,9 @@ m.set_slp_sort_key(_get_n)
 
 from pprint import pprint
 
-from dccxjax.infer.exact import make_all_factors_fn, get_supports, compute_factors, variable_elimination, Factor, compute_factors_optimised
-from dccxjax.infer.greedy_elimination_order import get_greedy_elimination_order
+from dccxjax.infer.exact.factors import make_all_factors_fn, get_supports, compute_factors, Factor, compute_factors_optimised
+from dccxjax.infer.exact.variable_elimination import variable_elimination
+from dccxjax.infer.exact.greedy_elimination_order import get_greedy_elimination_order
 from dccxjax.core.samplecontext import GenerateCtx
 from dccxjax.utils import to_shaped_arrays_str_short
 

@@ -3,6 +3,7 @@ from dccxjax import *
 import jax
 import jax.numpy as jnp
 import dccxjax.distributions as dist
+from typing import Tuple
 
 class WProposal(TraceProposal):
     def __init__(self, delta: float, K: int) -> None:
@@ -90,7 +91,7 @@ class ZsProposal(TraceProposal):
     def __init__(self, ys: jax.Array) -> None:
         self.ys = ys
 
-    def get_categorical(self, current: Trace) -> dist.Categorical | dist.CategoricalLogits:
+    def get_categorical(self, current: Trace) -> dist.CategoricalLogits:
         mus = current["mus"]
         vars = current["vars"]
         w = current["w"]

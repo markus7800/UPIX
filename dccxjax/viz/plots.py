@@ -1,4 +1,4 @@
-from dccxjax.infer.mcdcc import MCDCCResult
+from dccxjax.infer.dcc.mc_dcc import MCDCCResult
 import matplotlib.pyplot as plt
 import jax
 from typing import Optional

@@ -1,14 +1,12 @@
 import jax
 import jax.numpy as jnp
 from typing import Callable, Dict, Optional, Set, Tuple, NamedTuple, List
-from ..types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
+from dccxjax.types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
 import dccxjax.distributions as dist
 from .mcmc import InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, CarryStats, AnnealingMask
-from dataclasses import dataclass
 import math
-from jax.flatten_util import ravel_pytree
-from ..utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
-from .gibbs_model import GibbsModel
+from dccxjax.utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
+from dccxjax.infer.gibbs_model import GibbsModel
 from abc import ABC, abstractmethod
 from multipledispatch import dispatch
 

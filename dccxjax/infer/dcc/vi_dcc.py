@@ -1,17 +1,13 @@
 import jax
 import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
-from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
-from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
-from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
+from dccxjax.core import SLP, Model
+from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
+from dccxjax.infer.dcc.abstract_dcc import InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
 from dataclasses import dataclass
-from .vi import Guide, ADVI, ADVIState, Optimizer
-from .optimizers import Adagrad
-from tqdm.auto import tqdm
+from dccxjax.infer.variational_inference.vi import Guide, ADVI, ADVIState, Optimizer
+from dccxjax.infer.variational_inference.optimizers import Adagrad
 from abc import abstractmethod
-from functools import reduce
-from .gibbs_model import GibbsModel
-
 __all__ = [
     "VIDCC",
     "ADVIInferenceResult",

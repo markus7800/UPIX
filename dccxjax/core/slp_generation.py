@@ -1,10 +1,9 @@
 import jax
 from typing import Set, Tuple
-from .model_slp import Model, SLP
-from ..types import Trace, PRNGKey
-from .samplecontext import LogprobCtx, GenerateCtx
-from .branching_tracer import BranchingDecisions, trace_branching
-from .sexpr import replace_constants_with_svars
+from dccxjax.types import Trace, PRNGKey
+from dccxjax.core.model_slp import Model, SLP
+from dccxjax.core.samplecontext import LogprobCtx, GenerateCtx
+from dccxjax.core.branching_tracer import BranchingDecisions, trace_branching
 
 __all__ = [
     "sample_from_prior",

@@ -10,7 +10,8 @@ __all__ = [
     "SuffixSelector",
     "RegexSelector",
     "PredicateSelector",
-    "ComplementSelector"
+    "ComplementSelector",
+    "VariableSelector"
 ]
 
 class VariableSelector(ABC):

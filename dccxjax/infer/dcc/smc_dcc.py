@@ -1,22 +1,17 @@
 import jax
 import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
-from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
-from ..types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
+from dccxjax.core import SLP, Model
+from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
+from dccxjax.utils import broadcast_jaxtree
 from dataclasses import dataclass
-from .smc import SMC, DataAnnealingSchedule, TemperetureSchedule, ReweightingType, StratifiedResampling, ResampleType, ResampleTime
-from .mcmc import MCMCRegime, summarise_mcmc_infos, MCMC
-from .estimate_Z import estimate_log_Z_for_SLP_from_prior
-from time import time
-from copy import deepcopy
+from dccxjax.infer.smc import SMC, DataAnnealingSchedule, TemperetureSchedule, ReweightingType, StratifiedResampling, ResampleType, ResampleTime
+from dccxjax.infer.mcmc import MCMCRegime, summarise_mcmc_infos, MCMC, lmh
+from dccxjax.infer.importance_sampling import estimate_log_Z_for_SLP_from_prior
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
-from ..utils import broadcast_jaxtree, pprint_dtype_shape_of_tree
-from functools import reduce
-from .lmh_global import lmh
-from .variable_selector import AllVariables, VariableSelector
-from .dcc import InferenceResult, LogWeightEstimate, AbstractDCC
-from .mcdcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, LogWeightedSample
+from dccxjax.infer.dcc.abstract_dcc import InferenceResult, LogWeightEstimate, AbstractDCC
+from dccxjax.infer.dcc.mc_dcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, LogWeightedSample
 from textwrap import indent
 
 __all__ = [

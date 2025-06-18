@@ -1,8 +1,13 @@
 
 from dataclasses import dataclass
 from typing import Set, List, Dict, cast
-import jax.numpy as jnp
 import math
+from dccxjax.infer.exact.factors import Factor
+from functools import reduce
+
+__all__ = [
+    "get_greedy_elimination_order"
+]
 
 @dataclass
 class ReductionSize:
@@ -101,9 +106,6 @@ def pop_heap(A: Heap):
     A.resize(n-1)
     return x
         
-
-from .exact import Factor
-from functools import reduce
 def initialise_reduction_size_heap(factors: List[Factor], var_to_dim: Dict[str,int], marignal_variables: List[str]):
     reduction_size: Dict[str, ReductionSize] = dict()
     marignal_variables_set = set(marignal_variables)
@@ -163,7 +165,6 @@ def add_tau_to_reduction_score_of_v_and_heapify(reduction_size: Dict[str, Reduct
         assert isheap(reduction_size_heap)
         
         
-from pprint import pprint
 def get_greedy_elimination_order(factors: List[Factor], marginal_variables: List[str]):
     # print("\nget_greedy_elimination_order")
     var_to_dim: Dict[str, int] = dict()

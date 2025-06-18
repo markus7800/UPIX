@@ -1,7 +1,6 @@
 import jax
 import jax._src.core as jax_core
-from typing import List, Tuple, Any, Optional, Callable, TypeVar, ParamSpec, ParamSpecArgs
-from .sexpr import SExpr, SConstant, SOp, primitive_name
+from typing import List, Tuple, Any, Callable, TypeVar, ParamSpec
 
 __all__ = [
     "branching"

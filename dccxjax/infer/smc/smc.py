@@ -1,14 +1,14 @@
 import jax
 from typing import NamedTuple, Tuple, Set, Dict, Callable, Optional
-from ..types import PRNGKey, Trace, FloatArray, IntArray, StackedTrace, BoolArray
-from ..core.model_slp import SLP, AnnealingMask
-from .mcmc import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains
-from ..utils import broadcast_jaxtree
+from dccxjax.types import PRNGKey, Trace, FloatArray, IntArray, StackedTrace, BoolArray
+from dccxjax.core.model_slp import SLP, AnnealingMask
+from dccxjax.infer.mcmc.mcmc import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains
+from dccxjax.utils import broadcast_jaxtree
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
 from jax.flatten_util import ravel_pytree
 import jax.experimental
-from .progress_bar import _add_progress_bar, ProgressbarManager
+from dccxjax.infer.progress_bar import _add_progress_bar, ProgressbarManager
 
 __all__ = [
     "ResampleType",

@@ -1,12 +1,11 @@
 import jax
 import jax.numpy as jnp
 from dccxjax.distributions import Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE
-import numpyro.distributions as numpyro_dists
-from ..core.model_slp import Model
-from ..core.samplecontext import SampleContext
+from dccxjax.core.model_slp import Model
+from dccxjax.core.samplecontext import SampleContext
 from typing import Optional, Dict, cast, Tuple, Set, List
-from ..types import FloatArrayLike, FloatArray, Trace, PRNGKey
-from .variable_selector import VariableSelector, SingleVariable
+from dccxjax.types import FloatArrayLike, FloatArray, Trace, PRNGKey
+from dccxjax.infer.variable_selector import VariableSelector, SingleVariable
 from abc import ABC, abstractmethod
 
 __all__ = [

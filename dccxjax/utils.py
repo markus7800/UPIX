@@ -6,15 +6,12 @@ import contextlib
 from typing import Sequence, TypeVar, List, Optional, Callable
 from tqdm.contrib.logging import logging_redirect_tqdm
 import os
-import re
 
 __all__ = [
     "setup_logging",
     "track_compilation_time",
     "CompilationTimeTracker",
     "broadcast_jaxtree",
-    "set_platform",
-    "set_host_device_count",
     "timed"
 ]
 
@@ -108,24 +105,6 @@ def track_compilation_time():
         yield tracker
     finally:
         _unregister_event_duration_listener_by_callback(tracker)
-
-
-# from https://github.dev/pyro-ppl/numpyro
-
-def set_platform(platform: Optional[str] = None) -> None:
-    if platform is None:
-        platform = os.getenv("JAX_PLATFORM_NAME", "cpu")
-    jax.config.update("jax_platform_name", platform)
-
-
-def set_host_device_count(n: int) -> None:
-    xla_flags_str = os.getenv("XLA_FLAGS", "")
-    xla_flags = re.sub(
-        r"--xla_force_host_platform_device_count=\S+", "", xla_flags_str
-    ).split()
-    os.environ["XLA_FLAGS"] = " ".join(
-        ["--xla_force_host_platform_device_count={}".format(n)] + xla_flags
-    )
 
 import time
 RETURN_VAL = TypeVar("RETURN_VAL")

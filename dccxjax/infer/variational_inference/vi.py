@@ -1,22 +1,22 @@
 import jax.flatten_util
-from ..core.samplecontext import GuideContext
+from dccxjax.core.samplecontext import GuideContext
 from dccxjax.distributions import Transform, Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE, TransformedDistribution, MultivariateNormal, Normal
 from typing import Optional, Sequence, List, Dict, Tuple, NamedTuple, Callable, Generic, TypeVar, Any, cast
-from ..types import FloatArray, FloatArrayLike, PRNGKey, Trace
+from dccxjax.types import FloatArray, FloatArrayLike, PRNGKey, Trace
 from abc import abstractmethod, ABC
 from enum import Enum
 import jax
 import jax.numpy as jnp
 from dccxjax.distributions.constraints import Constraint, real, scaled_unit_lower_cholesky
 import numpyro.distributions.transforms as transforms
-from ..core.model_slp import Model, SLP
-from .progress_bar import _add_progress_bar, ProgressbarManager
+from dccxjax.core.model_slp import Model, SLP
+from dccxjax.infer.progress_bar import _add_progress_bar, ProgressbarManager
 from .optimizers import OPTIMIZER_STATE, Optimizer
 from math import prod
-from .gibbs_model import GibbsModel
+from dccxjax.infer.gibbs_model import GibbsModel
 import jax.experimental
-from .variable_selector import VariableSelector, PredicateSelector
-from ..utils import broadcast_jaxtree
+from dccxjax.infer.variable_selector import VariableSelector, PredicateSelector
+from dccxjax.utils import broadcast_jaxtree
 
 __all__ = [
     "ADVI",

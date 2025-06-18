@@ -1,11 +1,12 @@
 #%%
 import sys
-import os
 sys.path.insert(0, ".")
+
 if len(sys.argv) > 1:
-    if sys.argv[1].endswith ("cpu"):
+    if sys.argv[1].endswith("cpu"):
         print("Force run on CPU.")
-        os.environ["JAX_PLATFORMS"] = "cpu"
+        from dccxjax.backend import *
+        set_platform("cpu")
 
 
 from dccxjax import *
@@ -14,7 +15,7 @@ import jax.numpy as jnp
 import dccxjax.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
-from typing import List
+from typing import List, Dict
 from time import time
 
 import logging
