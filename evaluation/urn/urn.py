@@ -36,7 +36,7 @@ m.set_slp_sort_key(_get_n)
 
 from pprint import pprint
 
-from dccxjax.infer.exact import make_all_factors_fn, get_supports, compute_factors, variable_elimination, Factor
+from dccxjax.infer.exact import make_all_factors_fn, get_supports, compute_factors, variable_elimination, Factor, compute_factors_optimised
 from dccxjax.infer.greedy_elimination_order import get_greedy_elimination_order
 from dccxjax.core.samplecontext import GenerateCtx
 from dccxjax.utils import to_shaped_arrays_str_short
@@ -112,8 +112,22 @@ for N in range(1,15+1):
         # pprint(factors_fn(slp.decision_representative))
         # pprint(get_supports(slp))
         t0 = time.time()
+        
         # factors = compute_factors(slp, True)
-        factors = compute_factors_fast(slp, True)
+        
+        # factors = compute_factors_fast(slp, True)
+        
+        N = int(slp.decision_representative["N"].item())
+        selectors: List[VariableSelector] = []
+        selectors.append(SingleVariable("N"))
+        for addr in sorted([f"ball_{n}" for n in range(N)]):
+            selectors.append(SingleVariable(addr))
+        selectors.append(PrefixSelector("draw_"))
+        factors = compute_factors_optimised(slp, [selectors], True)
+        
+        # selectors_2 = [SingleVariable("N"), PrefixSelector("draw_")]
+        # factors = compute_factors_optimised(slp, [selectors_2, selectors[1:]], True)
+        
         t1 = time.time()
         print(f"Computed factors in {t1-t0:.3f}s")
         # pprint(factors)

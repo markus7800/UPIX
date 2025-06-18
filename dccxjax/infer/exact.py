@@ -246,6 +246,120 @@ def compute_factors(slp: SLP, jit: bool = True):
 
     return factors
     
+from .variable_selector import VariableSelector
+from dccxjax.utils import to_shaped_arrays_str_short
+
+def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelector]], jit: bool = True):
+    all_factors_fn = make_all_factors_fn(slp)
+    factor_prototypes = all_factors_fn(slp.decision_representative)
+    supports = get_supports(slp)
+    def _get_support(addr: str) -> IntArray:
+        s = supports[addr]
+        if s is None:
+            return jnp.array([slp.decision_representative[addr]])
+        else:
+            return s
+        
+    factors: List[Factor] = []
+    factor_computed = [False] * len(factor_prototypes)
+        
+    for selectors in selector_list:
+        # print(selectors)
+        
+        # first, gather shape of meshgrid specified by selectors (meshgrid has len(selectors) dimensions)
+        # if variable addr matches one selector, we store its index i in variable_to_ix 
+        # (variable addr corresponds to dimension i in meshgrid)
+        maybe_variable_supports: List[Optional[IntArray]] = [None] * len(selectors)
+        variable_to_ix: Dict[str, int] = dict()
+        for addr in supports.keys():
+            support = _get_support(addr)
+            count = 0
+            for i, selector in enumerate(selectors):
+                if selector.contains(addr):
+                    # match: link variable addr to meshgrid dimension i
+                    variable_to_ix[addr] = i
+                    count += 1
+                    if maybe_variable_supports[i] is not None:
+                        # if another variable was already linked to this meshgrid dimension, they must have the same support
+                        assert (maybe_variable_supports[i] == support).all(), f"Variables that match to same selector must have same support {addr}: {maybe_variable_supports[i]} vs {support}"
+                    else:
+                        maybe_variable_supports[i] = support
+            # a variable should be linked to at most one meshdgrid dimension
+            assert count <= 1, f"Variable {addr} matches multiple selectors {selectors}"
+        # each selector should match at least one variable (we have to link at least variable to each meshgrid dimension)
+        variable_supports: List[IntArray] = []
+        for i, support in enumerate(maybe_variable_supports):
+            assert support is not None, f"No variable matched for {selectors[i]}"
+            variable_supports.append(support)
+        
+        # print("variable_supports", variable_supports)
+        # print("variable_to_ix", variable_to_ix)
+        
+        # construct meshgrid
+        meshgrids = jnp.meshgrid(*variable_supports, indexing="ij")
+        meshgrid_shape = meshgrids[0].shape
+        
+        # map meshgrid to trace
+        X = {}
+        for addr in supports.keys():
+            if addr in variable_to_ix:
+                # addr was linked to meshgrid dimension variable_to_ix[addr], we reshape to facilitate single vmap
+                X[addr] = meshgrids[variable_to_ix[addr]].reshape(-1)
+        # X does not need to contain variables taht affect branching if they do not affect the factors
+        # print("X", to_shaped_arrays_str_short(X))
+        
+        # figure out which factors can be computed from the meshgrid
+        compute_factor_i = [False] * len(factor_prototypes)
+        result_addresses: List[List[str]] = []
+        result_ixs: List[List[int | slice]] = []
+        for i, (_, factor_addresses) in enumerate(factor_prototypes):
+            if factor_computed[i]:
+                continue
+            # if a selector does not match any address for the factor, we want to remove this dimension later by selecting index 0
+            # (in this case, the factor was computed in a broadcasted manner, i.e. it has the same values across unmatched dimensions)
+            result_ix: List[int | slice] = [0] * len(selectors)
+            j = -1
+            n_found = 0
+            for addr in factor_addresses:
+                # try to match address to selectors, factor_addresses are sorted and we require that selectors respect this order
+                for _j, selector in enumerate(selectors):
+                    if selector.contains(addr):
+                        assert j < _j, f"Selectors {selectors} do not match in order {factor_addresses}"
+                        j = _j
+                        n_found += 1
+                        # we do not want to "select away" matched address in (1)
+                        result_ix[_j] = slice(None)
+                        break
+            if n_found == len(factor_addresses):
+                # we found a selector for each address -> factor can be computed from meshgrid
+                compute_factor_i[i] = True
+                factor_computed[i] = True
+                result_addresses.append(factor_addresses)
+                result_ixs.append(result_ix)
+        # print("compute_factor_i", compute_factor_i)
+        
+        # adapt all_facor_fn to only return factors that we want to compute (when jitting we remove redudant computation)
+        @jax.vmap
+        def _factor_fn(_partial_X: Trace) -> List[FloatArray]:
+            return [val for i, (val, _)  in enumerate(all_factors_fn(_partial_X)) if compute_factor_i[i]]
+        factor_fn = jax.jit(_factor_fn) if jit else _factor_fn
+
+        # gather results
+        result_tables = factor_fn(X)
+        for factor_addresses, ix, factor_table_unshaped in zip(result_addresses, result_ixs, result_tables):
+            # reshape factor to meshgrid shape and then select the indexes corresponding to factor_addresses
+            factor_table = factor_table_unshaped.reshape(meshgrid_shape)[*ix] # (1)
+            factor = Factor(factor_addresses, factor_table)
+            # print(factor)
+            factors.append(factor)
+        
+        # print()
+        
+    assert all(factor_computed)
+    return factors
+    
+    
+
 from pprint import pprint
 def variable_elimination(factors: List[Factor], elimination_order: List[str]):
     # print("\nvariable_elimination")
