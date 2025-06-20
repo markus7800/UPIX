@@ -5,25 +5,19 @@ from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_repres
 from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from dccxjax.infer.dcc.dcc_types import InferenceResult, InferenceTask, LogWeightEstimate
+import os
+import threading
+from queue import Queue, ShutDown
+from dccxjax.infer.dcc.cpu_multiprocess import process_worker, _export_flat
+from jax.tree_util import tree_flatten, tree_unflatten
+import jax.export
 
 __all__ = [
-    "InferenceResult",
-    "LogWeightEstimate",
 
 ]
 
-class InferenceResult(ABC):
-    @abstractmethod
-    def combine_results(self, other: "InferenceResult") -> "InferenceResult":
-        # fold left
-        raise NotImplementedError
-
-class LogWeightEstimate(ABC):
-    @abstractmethod
-    def combine_estimates(self, other: "LogWeightEstimate") -> "LogWeightEstimate":
-        raise NotImplementedError
-    
-    
 class BaseDCCResult:
     slp_log_weights: Dict[SLP, FloatArray]
     
@@ -86,13 +80,18 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
 
         self.verbose = verbose
 
+        self.parallelisation: str = self.config.get("parallelisation", "none")
+        self.num_processes: int = self.config.get("num_processes", os.cpu_count())
+        self.pin_cpus: bool = self.config.get("pin_cpus", False)
+
     @abstractmethod
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
         raise NotImplementedError
     
     @abstractmethod
-    def run_inference(self, slp: SLP, rng_key: PRNGKey) -> InferenceResult:
+    def make_inference_task(self, slp: SLP, rng_key: PRNGKey) -> InferenceTask:
         raise NotImplementedError
+
     
     @abstractmethod
     def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
@@ -129,12 +128,23 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         
     
     def run(self, rng_key: PRNGKey):
+        assert self.parallelisation in ("none", "multi-processing")
         # t0 = time()
         if self.verbose >= 2:
             tqdm.write("Start DCC:")
 
         self.active_slps: List[SLP] = []
         self.inactive_slps: List[SLP] = []
+
+        task_queue = Queue()
+        result_queue = Queue()
+        threads: List[threading.Thread] = []
+        if self.parallelisation == "multi-processing":
+            for i in range(self.num_processes):
+                t = threading.Thread(target=process_worker, args=(task_queue, result_queue, i, i if self.pin_cpus else None), daemon=True)
+                t.start()
+                threads.append(t)
+
 
         self.inference_method_cache: Dict[SLP, Any] = dict()
 
@@ -151,23 +161,72 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             if self.verbose >= 2:
                 tqdm.write(f"Iteration {self.iteration_counter}:")
 
-            for slp in self.active_slps:
+            if self.parallelisation == "none":
+                for slp in self.active_slps:
+                    rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
+                    
+                    inference_task = self.make_inference_task(slp, slp_inference_key)
+                    inference_result = inference_task.run()
+                    self.add_to_inference_results(slp, inference_result)
 
-                rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
+                    log_weight_estimate = self.estimate_log_weight(slp, slp_weight_estimate_key)
+                    self.add_to_log_weight_estimates(slp, log_weight_estimate)
+
+            if self.parallelisation == "multi-processing":
+                slp_weight_estimate_keys: List[jax.Array] = []
+                for slp_ix, slp in enumerate(self.active_slps):
+                    rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
+                    
+                    inference_task = self.make_inference_task(slp, slp_inference_key)
+                    
+                    # inference_task = InferenceTask(lambda x: x*2, (jax.random.normal(jax.random.PRNGKey(0), (10,)),))
+
+                    exported_fn, in_tree, out_tree = _export_flat(inference_task.f, ("cpu",), (), None)(*inference_task.args)
+                    flat_args, _in_tree = tree_flatten(inference_task.args)
+                    assert _in_tree == in_tree
+
+                    work_aux = (slp_ix, in_tree, out_tree)
+                    work = (exported_fn.serialize(), tuple(flat_args))
+                        
+
+                    # jax_serialised_fn, args = work 
+                    # jax_fn = jax.export.deserialize(jax_serialised_fn)
+                    # out = jax_fn.call(*args) # this will always compile
+                    # print(out)
+                    # result_queue.put((work_aux, out))
+
+                    task_queue.put(((work_aux, work)))
+                    slp_weight_estimate_keys.append(slp_weight_estimate_key)
+
+                task_queue.join()
+
+                while True:
+                    try:
+                        (slp_ix, in_tree, out_tree), response = result_queue.get()
+                        inference_result = tree_unflatten(out_tree, response)
+                        assert isinstance(inference_result, InferenceResult)
+                        slp = self.active_slps[slp_ix]
+                        self.add_to_inference_results(slp, inference_result)
+                    except ShutDown:
+                        break
+
+                # for now we do log_weight_estimate in sequence
+                for slp, slp_weight_estimate_key in zip(self.active_slps, slp_weight_estimate_keys):
+                    log_weight_estimate = self.estimate_log_weight(slp, slp_weight_estimate_key)
+                    self.add_to_log_weight_estimates(slp, log_weight_estimate)
+
                 
-                inference_result = self.run_inference(slp, slp_inference_key)
-                self.add_to_inference_results(slp, inference_result)
-
-                log_weight_estimate = self.estimate_log_weight(slp, slp_weight_estimate_key)
-                self.add_to_log_weight_estimates(slp, log_weight_estimate)
 
             rng_key, update_key = jax.random.split(rng_key)
             self.update_active_slps(self.active_slps, self.inactive_slps, self.inference_results, self.log_weight_estimates, update_key)
         
+        task_queue.shutdown()
+        result_queue.shutdown()
+        for t in threads:
+            t.join()
+
         combined_result = self.combine_results(self.inference_results, self.log_weight_estimates)
-        # t1 = time()
-        # if self.verbose >= 2:
-        #     tqdm.write(f"Finished in {t1-t0:.3f}s")
+        
         return combined_result
 
 def initialise_active_slps_from_prior(model: Model, verbose: int, init_n_samples: int, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):

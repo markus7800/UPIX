@@ -307,6 +307,14 @@ class ADVI(Generic[OPTIMIZER_STATE]):
     def run(self, rng_key: PRNGKey, *, n_iter: int):
         init_state = ADVIState(0, self.optimizer.init_fn(self.guide.get_params()))
         return self.continue_run(rng_key, init_state, n_iter=n_iter)
+    
+    def run_fn(self, rng_key: PRNGKey, *, n_iter: int):
+        keys = jax.random.split(rng_key, n_iter)
+        init_state = ADVIState(0, self.optimizer.init_fn(self.guide.get_params()))
+        scan_fn = get_advi_scan_without_progressbar(self.advi_step)
+        last_state, elbo = scan_fn(init_state, keys)
+        return last_state, elbo
+
         
     def get_updated_guide(self, state: ADVIState[OPTIMIZER_STATE]) -> Guide:
         p = self.optimizer.get_params_fn(state.optimizer_state)

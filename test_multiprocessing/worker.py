@@ -44,4 +44,4 @@ while True:
         del out
         del jax_fn
     except Exception as e:
-        write_error_transport_layer(sys.stdout.buffer, str(e))
+        write_error_transport_layer(sys.stdout.buffer, e)
