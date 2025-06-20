@@ -182,6 +182,28 @@ def step(carry, any):
 def f(seed):
   return jax.lax.scan(step, (jnp.array(0.,float), seed), length=10**7)[0][0]
 
+import jax.export
+import pickle
+
+# @jax.jit
+# def fn_to_export(seed):
+#     optimizer = Adam(0.005)
+#     X = (jnp.array(0.,float),jnp.array(0.,float),jnp.array(0.,float))
+#     g = Meanfield(X, 0.1)
+#     advi_step = make_advi_step(logdensity, g, optimizer)
+#     keys = jax.random.split(seed, 25_000)
+#     _, result = jax.lax.scan(advi_step, ADVIState(0, optimizer.init_fn(g.get_params())), keys)
+#     return result
+# exported = jax.export.export(fn_to_export)(jax.random.PRNGKey(0))
+# with open("tmp2.pickle", "wb") as file:
+#     pickle.dump((exported.serialize(), (jax.random.PRNGKey(0),)), file)
+
+# with open("tmp2.pickle", "rb") as file:
+#     exported_fn, args = pickle.load(file)
+#     out = jax.export.deserialize(exported_fn).call(*args)
+#     print(out)
+
+# exit()
 
 optimizer = Adam(0.005)
 X = (jnp.array(0.,float),jnp.array(0.,float),jnp.array(0.,float))
