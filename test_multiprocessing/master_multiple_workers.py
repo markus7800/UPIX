@@ -7,7 +7,7 @@ import jax.export
 import jax.numpy as jnp
 import pickle
 import threading
-from typing import IO
+from typing import IO, List
 from queue import Queue, ShutDown
 import time
 
@@ -61,14 +61,16 @@ def worker(in_queue: Queue, out_queue: Queue, pin: int | None):
             response = read_transport_layer(p.stdout)
             print("got response:", response)
             out_queue.put(response)
+            in_queue.task_done()
         except ShutDown:
             # By default, get() on a shut down queue will only raise once the queue is empty
-            write_close_transport_layer(p.stdin)
+            print("shutdown")
             break
         except Exception as e:
             print("Worker error:", e)
-        finally:
             in_queue.task_done()
+
+    write_close_transport_layer(p.stdin)
     p.wait()
     
 def main():
@@ -77,16 +79,21 @@ def main():
     out_queue = Queue()
 
     num_threads = 1
-    num_tasks = 10
+    num_tasks = 2
     
+    threads: List[threading.Thread] = []
     for i in range(num_threads):
         t = threading.Thread(target=worker, args=(in_queue, out_queue, i), daemon=True)
         t.start()
+        threads.append(t)
     
     for i in range(num_tasks):
         in_queue.put((f, (jax.random.PRNGKey(i),)))
+    in_queue.shutdown()
     
     in_queue.join()
+    for t in threads:
+        t.join()
     t1 = time.time()
     print(f"Finished in {t1-t0:.3f}s.")
     
