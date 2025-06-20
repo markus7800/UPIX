@@ -1,5 +1,7 @@
 import subprocess
 import sys
+import os
+os.environ["JAX_PLATFORMS"] = "cpu"
 import jax
 import jax.export
 import jax.numpy as jnp
@@ -40,9 +42,10 @@ def write_close_transport_layer(writer: IO[bytes]):
     writer.write("close\r\n".encode("utf8"))
     writer.flush()
 
-def worker(in_queue: Queue, out_queue: Queue):
+
+def worker(in_queue: Queue, out_queue: Queue, pin: int | None):
     p = subprocess.Popen(
-        [sys.executable,  "test_multiprocessing/worker.py"],
+        (["taskset",  "-c", str(pin)] if pin is not None else []) + [sys.executable,  "test_multiprocessing/worker.py"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE
     )
@@ -73,11 +76,11 @@ def main():
     in_queue = Queue()
     out_queue = Queue()
 
-    num_threads = 5
+    num_threads = 1
     num_tasks = 10
     
-    for _ in range(num_threads):
-        t = threading.Thread(target=worker, args=(in_queue, out_queue), daemon=True)
+    for i in range(num_threads):
+        t = threading.Thread(target=worker, args=(in_queue, out_queue, i), daemon=True)
         t.start()
     
     for i in range(num_tasks):

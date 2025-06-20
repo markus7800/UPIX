@@ -1,5 +1,7 @@
 import sys
 import pickle
+import os
+os.environ["JAX_PLATFORMS"] = "cpu"
 import jax
 import jax.export
 from typing import IO
