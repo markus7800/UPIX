@@ -1,19 +1,14 @@
-
-import os
-import time
-import sys
-
-if len(sys.argv) > 1:
-    if sys.argv[1].endswith("cpu"):
-        print("Force run on CPU.")
-        os.environ["JAX_PLATFORMS"] = "cpu"
-
-
+import jax.export
+import argparse
 import jax
 import jax.numpy as jnp
 from typing import Generic, NamedTuple, TypeVar, Callable, Tuple
 import jax.flatten_util
 from dataclasses import dataclass
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-export", action="store_true")
+args = parser.parse_args()
 
 xs = jnp.array([0.        , 0.00815146, 0.01551407, 0.02366553, 0.03155404,
        0.0397055 , 0.047594  , 0.05574546, 0.06389692, 0.07178544,
@@ -172,156 +167,23 @@ def make_advi_step(logdensity, guide: Meanfield, optimizer: Optimizer[OPTIMIZER_
 
 
 @jax.jit
-def step(carry, any):
-  val, key = carry
-  key1, key2 = jax.random.split(key)
-  val = val + jax.random.normal(key1)
-  return (val,key2), None
-  
-@jax.jit
-def f(seed):
-  return jax.lax.scan(step, (jnp.array(0.,float), seed), length=10**7)[0][0]
+def main_fn(seed):
+    optimizer = Adam(0.005)
+    X = (jnp.array(0.,float),jnp.array(0.,float),jnp.array(0.,float))
+    g = Meanfield(X, 0.1)
+    advi_step = make_advi_step(logdensity, g, optimizer)
+    keys = jax.random.split(seed, 5_000)
+    _, result = jax.lax.scan(advi_step, ADVIState(0, optimizer.init_fn(g.get_params())), keys)
+    return result
 
-optimizer = Adam(0.005)
-X = (jnp.array(0.,float),jnp.array(0.,float),jnp.array(0.,float))
-g = Meanfield(X, 0.1)
-advi_step = make_advi_step(logdensity, g, optimizer)
-keys = jax.random.split(jax.random.PRNGKey(0), 25_000)
-start_wall = time.perf_counter()
-start_cpu = time.process_time()
-# result = f(jax.random.PRNGKey(0))
-_, result = jax.lax.scan(advi_step, ADVIState(0, optimizer.init_fn(g.get_params())), keys)
-print(result)
-end_wall = time.perf_counter()
-end_cpu = time.process_time()
-cpu_count = os.cpu_count()
+if args.export:
+    exported_main = jax.export.export(main_fn)(jax.random.PRNGKey(0))
+    with open("tmp.bin", "wb") as file:
+        file.write(exported_main.serialize())
 
-wall_time = end_wall - start_wall
-cpu_time = end_cpu - start_cpu
-print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
-
-# Macbook M2 Pro
-# jax:    0.6.1
-# jaxlib: 0.6.1
-# numpy:  2.2.2
-# python: 3.13.3 (main, Apr  8 2025, 13:54:08) [Clang 16.0.0 (clang-1600.0.26.6)]
-# device info: cpu-1, 1 local devices"
-# process_count: 1
-# platform: uname_result(system='Darwin', node='Markuss-MacBook-Pro-14.local', release='24.2.0', version='Darwin Kernel Version 24.2.0: Fri Dec  6 18:56:34 PST 2024; root:xnu-11215.61.5~2/RELEASE_ARM64_T6020', machine='arm64')
-
-# jax:    0.6.1
-# jaxlib: 0.6.1
-# numpy:  2.2.4
-# python: 3.13.1 (main, Dec  9 2024, 00:00:00) [GCC 14.2.1 20240912 (Red Hat 14.2.1-3)]
-# device info: NVIDIA GeForce GTX 1070-1, 1 local devices"
-# process_count: 1
-# platform: uname_result(system='Linux', node='fedora', release='6.12.10-200.fc41.x86_64', version='#1 SMP PREEMPT_DYNAMIC Fri Jan 17 18:05:24 UTC 2025', machine='x86_64')
-
-# $ nvidia-smi
-# Mon Jun 16 20:58:05 2025       
-# +-----------------------------------------------------------------------------------------+
-# | NVIDIA-SMI 565.77                 Driver Version: 565.77         CUDA Version: 12.7     |
-# |-----------------------------------------+------------------------+----------------------+
-# | GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
-# | Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
-# |                                         |                        |               MIG M. |
-# |=========================================+========================+======================|
-# |   0  NVIDIA GeForce GTX 1070        Off |   00000000:2B:00.0  On |                  N/A |
-# |  0%   30C    P2             36W /  180W |     632MiB /   8192MiB |      8%      Default |
-# |                                         |                        |                  N/A |
-# +-----------------------------------------+------------------------+----------------------+
-                                                                                         
-# +-----------------------------------------------------------------------------------------+
-# | Processes:                                                                              |
-# |  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
-# |        ID   ID                                                               Usage      |
-# |=========================================================================================|
-# |    0   N/A  N/A      2504      G   /usr/bin/gnome-shell                          257MiB |
-# |    0   N/A  N/A      3473      G   /usr/bin/Xwayland                               3MiB |
-# |    0   N/A  N/A      3552      G   ...erProcess --variations-seed-version        107MiB |
-# |    0   N/A  N/A      3860      G   ...seed-version=20250612-050034.702000         96MiB |
-# |    0   N/A  N/A      5500      C   python3                                        88MiB |
-# +-----------------------------------------------------------------------------------------+
-
-# WARNING:2025-06-16 20:59:26,806:jax._src.xla_bridge:791: An NVIDIA GPU may be present on this machine, but a CUDA-enabled jaxlib is not installed. Falling back to cpu.
-# jax:    0.6.1
-# jaxlib: 0.6.1
-# numpy:  2.3.0
-# python: 3.13.1 (main, Dec  9 2024, 00:00:00) [GCC 14.2.1 20240912 (Red Hat 14.2.1-3)]
-# device info: cpu-1, 1 local devices"
-# process_count: 1
-# platform: uname_result(system='Linux', node='fedora', release='6.12.10-200.fc41.x86_64', version='#1 SMP PREEMPT_DYNAMIC Fri Jan 17 18:05:24 UTC 2025', machine='x86_64')
-
-# jax[cuda] GPU
-# [-25.38362  -27.829231 -26.376095 ... 110.65305  112.43516  110.49699 ]
-# cpu usage 1.0/32 wall_time:8.1s
-
-# jax[cuda] CPU
-# [-25.38362  -27.829231 -26.376095 ... 110.65344  112.4355   110.49655 ]
-# cpu usage 30.7/32 wall_time:13.3s
-
-# jax[cuda] CPU taskset -c 0
-# [-25.38362  -27.829231 -26.376095 ... 110.65363  112.43542  110.49643 ]
-# cpu usage 1.0/32 wall_time:5.1s
-
-# jax[cuda] CPU taskset -c 0-15
-# [-25.38362  -27.829231 -26.376095 ... 110.65334  112.43528  110.49664 ]
-# cpu usage 15.4/32 wall_time:8.4s
-
-# jax[cpu]
-# [-25.38362  -27.829231 -26.376095 ... 110.65344  112.4355   110.49655 ]
-# cpu usage 30.5/32 wall_time:14.5s
-
-# jax[cpu] taskset -c 0
-# [-25.38362  -27.829231 -26.376095 ... 110.65363  112.43542  110.49643 ]
-# cpu usage 1.0/32 wall_time:5.3s
-
-# jax[cpu] taskset -c 0-31
-# [-25.38362  -27.829231 -26.376095 ... 110.65344  112.4355   110.49655 ]
-# cpu usage 30.6/32 wall_time:15.1s
-
-# jax[cpu] taskset -c 0-15
-# [-25.38362  -27.829231 -26.376095 ... 110.65334  112.43528  110.49664 ]
-# cpu usage 15.3/32 wall_time:8.8s
-
-# jax[cpu] taskset -c 0-3
-# [-25.38362  -27.829231 -26.376095 ... 110.65319  112.43548  110.496475]
-# cpu usage 3.9/32 wall_time:6.6s
-
-
-
-# m2 pro
-# [-25.383612 -27.829231 -26.376095 ... 110.65322  112.43553  110.496506]
-# cpu usage 1.1/10 wall_time:5.9s
-
-
-# evaluation/gp/gp.py, exit after first phase
-
-# jax[cpu]
-# cpu usage 26.5/32 wall_time:335.4s
-# Total compilation time: 70.421s (20.99%)
-
-# jax[cpu] taskset -c 0
-# cpu usage 1.0/32 wall_time:233.1s
-# Total compilation time: 113.935s (48.89%)
-
-# jax[cuda] GPU
-# cpu usage 1.1/32 wall_time:188.4s
-# Total compilation time: 114.726s (60.88%)
-
-# jax[cuda] CPU
-# cpu usage 26.6/32 wall_time:342.1s
-# Total compilation time: 71.183s (20.81%)
-
-# m2 pro
-# cpu usage 1.6/10 wall_time:173.9s
-# Total compilation time: 65.693s (37.77%)
-
-# f
-
-# jax[cuda] GPU
-# cpu usage 1.0/32 wall_time:46.8s
-
-# jax[cuda] CPU
-# cpu usage 1.0/32 wall_time:4.1s
-
+with open("tmp.bin", "rb") as file:
+    exported_fn = bytearray(file.read())
+    rehydrated_fn = jax.export.deserialize(exported_fn)
+    print(rehydrated_fn)
+    out = rehydrated_fn.call(jax.random.PRNGKey(0)) # seg fault if not -export
+    print(out)
