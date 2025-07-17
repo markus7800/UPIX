@@ -90,7 +90,8 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             assert isinstance(advi, ADVI)
             return advi
         guide = self.get_guide(slp)
-        advi = ADVI(slp, guide, self.advi_optimizer, self.advi_L, progress_bar=self.verbose >= 1 and self.parallelisation == "none")
+        advi = ADVI(slp, guide, self.advi_optimizer, self.advi_L,
+                    progress_bar=self.verbose >= 1 and self.parallelisation == "none" and False)
         self.inference_method_cache[slp] = advi
         return advi
     
@@ -146,7 +147,7 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             return InferenceTask(_f_continue, (rng_key, last_result.last_state))
         else:
             def _f_run(rng_key):
-                last_state, elbo = advi.run_fn(rng_key, n_iter=self.advi_n_iter)
+                last_state, elbo = advi.run(rng_key, n_iter=self.advi_n_iter)
                 return ADVIInferenceResult(last_state)
             return InferenceTask(_f_run, (rng_key,))
         

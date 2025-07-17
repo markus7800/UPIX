@@ -13,7 +13,7 @@ jax.jit(jax.lax.linalg.cholesky).trace(jnp.eye(1)).lower()
 
 def read_transport_layer(reader: IO[bytes]):
     msg = reader.readline().decode("utf8").rstrip()
-    print("worker read msg:", msg, file=sys.stderr)
+    # print("worker read msg:", msg, file=sys.stderr)
     if msg == "":
         return None
     if msg == "close":
@@ -22,14 +22,14 @@ def read_transport_layer(reader: IO[bytes]):
     return obj
 
 def write_transport_layer(writer: IO[bytes], obj):
-    print("worker write ok:", file=sys.stderr)
+    # print("worker write ok:", file=sys.stderr)
     writer.write("OK\\r\\n".encode("utf8"))
     writer.flush()
     pickle.dump(obj, writer)
     writer.flush()
     
 def write_error_transport_layer(writer: IO[bytes], obj):
-    print("write error:", file=sys.stderr)
+    # print("write error:", file=sys.stderr)
     writer.write("ERROR\\r\\n".encode("utf8"))
     writer.flush()
     pickle.dump(obj, writer)
@@ -38,18 +38,14 @@ def write_error_transport_layer(writer: IO[bytes], obj):
 WORKER_ID = sys.argv[1]
 print(f"Starting worker ", WORKER_ID, "with", os.getpid(), file=sys.stderr)
 while True:
-    print("Worker loop.", file=sys.stderr)
     obj = read_transport_layer(sys.stdin.buffer)
     if obj is None:
-        print("Terminating worker.", file=sys.stderr)
+        # print("Terminating worker.", file=sys.stderr)
         break
     try:
         jax_serialised_fn, args = obj 
-        print("in", args, file=sys.stderr)
         jax_fn = jax.export.deserialize(jax_serialised_fn)
-        print("jax_fn", jax_fn, file=sys.stderr)
         out = jax_fn.call(*args) # this will always compile
-        print("out", out, file=sys.stderr)
         write_transport_layer(sys.stdout.buffer, out)
         del obj
         del out
@@ -76,7 +72,7 @@ import jax.flatten_util
 
 def read_transport_layer(reader: IO[bytes]):
     msg = reader.readline().decode("utf8").rstrip()
-    print("host read", msg)
+    # print("host read", msg)
     if msg != "OK":
         if msg != "":
             error = pickle.load(reader)
@@ -87,14 +83,14 @@ def read_transport_layer(reader: IO[bytes]):
     return obj
 
 def write_task_transport_layer(writer: IO[bytes], obj):
-    print("host write task")
+    # print("host write task")
     writer.write("task\r\n".encode("utf8"))
     writer.flush()
     pickle.dump(obj, writer)
     writer.flush()
 
 def write_close_transport_layer(writer: IO[bytes]):
-    print("host write close")
+    # print("host write close")
     writer.write("close\r\n".encode("utf8"))
     writer.flush()
 
@@ -163,7 +159,7 @@ def _export_flat(
   return do_export
 
 def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, pin: int | None):
-    print("Start worker with pin", pin)
+    # print("Start worker with pin", pin)
     p = subprocess.Popen(
         (["taskset",  "-c", str(pin)] if pin is not None else []) + [sys.executable,  "-c", worker_script, str(worker_id)],
         stdin=subprocess.PIPE,
@@ -181,14 +177,14 @@ def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, pin: int |
             write_task_transport_layer(p.stdin, work)
 
             response = read_transport_layer(p.stdout)
-            print("got response:", response)
+            # print("got response:", response)
 
             out_queue.put((work_aux, response))
             in_queue.task_done()
 
         except ShutDown:
             # By default, get() on a shut down queue will only raise once the queue is empty
-            print("shutdown")
+            # print("shutdown")
             break
         except Exception as e:
             print("Worker error:", e)

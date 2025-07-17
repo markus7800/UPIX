@@ -162,7 +162,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 tqdm.write(f"Iteration {self.iteration_counter}:")
 
             if self.parallelisation == "none":
-                for slp in self.active_slps:
+                for slp in tqdm(self.active_slps, total=len(self.active_slps), desc=f"Iteration {self.iteration_counter}", position=0):
                     rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
                     
                     inference_task = self.make_inference_task(slp, slp_inference_key)
@@ -174,7 +174,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
 
             if self.parallelisation == "multi-processing":
                 slp_weight_estimate_keys: List[jax.Array] = []
-                for slp_ix, slp in enumerate(self.active_slps):
+                for slp_ix, slp in tqdm(enumerate(self.active_slps), total=len(self.active_slps), desc=f"Iteration {self.iteration_counter}", position=0):
                     rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
                     
                     inference_task = self.make_inference_task(slp, slp_inference_key)
@@ -189,18 +189,12 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     work = (exported_fn.serialize(), tuple(flat_args))
                         
 
-                    # jax_serialised_fn, args = work 
-                    # jax_fn = jax.export.deserialize(jax_serialised_fn)
-                    # out = jax_fn.call(*args) # this will always compile
-                    # print(out)
-                    # result_queue.put((work_aux, out))
-
                     task_queue.put(((work_aux, work)))
                     slp_weight_estimate_keys.append(slp_weight_estimate_key)
 
                 task_queue.join()
 
-                for i in range(len(self.active_slps)):
+                for _ in range(len(self.active_slps)):
                     (slp_ix, in_tree, out_tree), response = result_queue.get()
                     inference_result = tree_unflatten(out_tree, response)
                     assert isinstance(inference_result, InferenceResult)
@@ -208,7 +202,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     self.add_to_inference_results(slp, inference_result)
 
                 # for now we do log_weight_estimate in sequence
-                for slp, slp_weight_estimate_key in zip(self.active_slps, slp_weight_estimate_keys):
+                for slp, slp_weight_estimate_key in tqdm(zip(self.active_slps, slp_weight_estimate_keys), total=len(self.active_slps)):
                     log_weight_estimate = self.estimate_log_weight(slp, slp_weight_estimate_key)
                     self.add_to_log_weight_estimates(slp, log_weight_estimate)
 
