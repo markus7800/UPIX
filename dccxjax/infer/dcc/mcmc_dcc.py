@@ -9,9 +9,10 @@ from dccxjax.infer.importance_sampling import estimate_log_Z_for_SLP_from_prior
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dccxjax.utils import broadcast_jaxtree, pprint_dtype_shape_of_tree
-from dccxjax.infer.dcc.abstract_dcc import InferenceResult, LogWeightEstimate, AbstractDCC
+from dccxjax.infer.dcc.abstract_dcc import InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC, ParallelisationType
 from dccxjax.infer.dcc.mc_dcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, LogWeightedSample
 from textwrap import indent
+import time
 
 __all__ = [
     "MCMCDCC",
@@ -19,6 +20,7 @@ __all__ = [
     "LogWeightEstimateFromPrior",
 ]
 
+@jax.tree_util.register_dataclass
 @dataclass
 class MCMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
     value_tree: None | Tuple[Trace,FloatArray] | DCC_COLLECT_TYPE # either None or Pytree with leading axes (n_samples_per_chain, n_chains,...)
@@ -77,6 +79,7 @@ class MCMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
         # print(pprint_dtype_shape_of_tree(weighted_samples.values.data))
         return weighted_samples
 
+@jax.tree_util.register_dataclass
 @dataclass
 class LogWeightEstimateFromPrior(MCLogWeightEstimate):
     log_Z: FloatArray
@@ -130,17 +133,25 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         mcmc = MCMC(slp, regime, self.mcmc_n_chains,
                     collect_inference_info=self.mcmc_collect_inference_info,
                     return_map=mcmc_return_map,
-                    progress_bar=self.verbose >= 1)
+                    show_progress=self.verbose >= 1 and self.parallelisation.type == ParallelisationType.Sequential,
+                    shared_progressbar=self.shared_progress_bar)
         self.inference_method_cache[slp] = mcmc
         return mcmc
     
-    def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
-        log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.estimate_weight_n_samples, rng_key)
-        if self.verbose >= 2:
-            tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():_.0f})")
-        return LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, self.estimate_weight_n_samples)
+    def make_estimate_log_weight_task(self, slp: SLP, rng_key: PRNGKey) -> EstimateLogWeightTask:
+        def _f(rng_key: PRNGKey):
+            log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.estimate_weight_n_samples, rng_key)
+            return LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, self.estimate_weight_n_samples)
+        
+        def _post_info(result: LogWeightEstimate):
+            assert isinstance(result, LogWeightEstimateFromPrior)
+            if self.verbose >= 2:
+                return f"Estimated log weight for {slp.formatted()}: {result.log_Z.item()} (ESS={result.ESS.item():_.0f})"
+            return ""
+        
+        return EstimateLogWeightTask(_f, (rng_key,), post_info=_post_info)
 
-    def run_inference(self, slp: SLP, rng_key: PRNGKey) -> InferenceResult:
+    def make_inference_task(self, slp: SLP, rng_key: PRNGKey) -> InferenceTask:
         mcmc = self.get_MCMC(slp)
         inference_results = self.inference_results.get(slp, [])
         if len(inference_results) > 0:
@@ -153,15 +164,19 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             init_log_prob = broadcast_jaxtree(slp.log_prob(slp.decision_representative), (mcmc.n_chains,))
         
         # TODO: continue_run ?
-        last_state, return_result = mcmc.run(rng_key, init_positions, init_log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
-        if self.verbose >= 2 and self.mcmc_collect_inference_info:
-            assert last_state.infos is not None
-            info_str = "MCMC Infos:\n"
-            info_str += indent(summarise_mcmc_infos(last_state.infos, self.mcmc_n_samples_per_chain), "\t")
-            tqdm.write(info_str)
+        def _task(rng_key: PRNGKey):
+            last_state, return_result = mcmc.run(rng_key, init_positions, init_log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
+            
+            # we do not apply return map here, because we want to be able to continue mcmc chain from last state
+            return MCMCInferenceResult(return_result, last_state, mcmc.n_chains, self.mcmc_n_samples_per_chain, self.mcmc_optimise_memory_with_early_return_map)
         
-        # TODO: only run MCMC on gpu and handle all result data on CPU
-        cpu = jax.devices("cpu")[0]
-        return_result = jax.device_put(return_result, cpu)
-        # we do not apply return map here, because we want to be able to continue mcmc chain from last state
-        return MCMCInferenceResult(return_result, last_state, mcmc.n_chains, self.mcmc_n_samples_per_chain, self.mcmc_optimise_memory_with_early_return_map)
+        def _post_info(result: InferenceResult):
+            assert isinstance(result, MCMCInferenceResult)
+            if self.verbose >= 2 and self.mcmc_collect_inference_info:
+                assert result.last_state.infos is not None
+                info_str = f"MCMC Infos for {slp.formatted()}:\n"
+                info_str += indent(summarise_mcmc_infos(result.last_state.infos, self.mcmc_n_samples_per_chain), "\t")
+                return info_str
+            return ""
+        
+        return InferenceTask(_task, (rng_key, ), post_info=_post_info)

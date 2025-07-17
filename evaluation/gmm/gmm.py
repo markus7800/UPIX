@@ -86,6 +86,7 @@ def formatter(slp: SLP):
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_K)
 
+@jax.tree_util.register_dataclass
 @dataclass
 class RJMCMCTransitionProbEstimate(LogWeightEstimate):
     transition_log_probs: Dict[Any, FloatArray]
@@ -134,7 +135,7 @@ class DCCConfig(MCMCDCC[T]):
             active_slps.append(slp)
             tqdm.write(f"Make SLP {slp.formatted()} active.")
 
-    def estimate_log_weight(self, slp: SLP, rng_key: jax.Array) -> RJMCMCTransitionProbEstimate:
+    def make_estimate_log_weight_task(self, slp: SLP, rng_key: jax.Array) -> EstimateLogWeightTask:
         last_inference_result = self.inference_results[slp][-1]
         assert isinstance(last_inference_result, MCMCInferenceResult)
         assert not self.config.get("mcmc_optimise_memory_with_early_return_map", False)
@@ -152,23 +153,34 @@ class DCCConfig(MCMCDCC[T]):
         def merge(X: Trace, lp: FloatArray, rng_key: PRNGKey):
             return merge_move(X, lp, rng_key, K, ys, self.model.log_prob)
         
-        transition_log_probs: Dict[Any, FloatArray] = dict()
-        n_samples = lps.size
-        split_transition_log_prob = jax.scipy.special.logsumexp(jax.jit(jax.vmap(split))(traces, lps, jax.random.split(rng_key, lps.shape[0]))) - jnp.log(n_samples)
-        if K == 0: 
-            transition_log_probs[(K, K+1)] = split_transition_log_prob
-            tqdm.write(f"Estimate log weight for {slp.formatted()}: split prob = {jnp.exp(split_transition_log_prob.item()):.6f}")
-        else:
-            merge_transition_log_prob = jax.scipy.special.logsumexp(jax.jit(jax.vmap(merge))(traces, lps, jax.random.split(rng_key, lps.shape[0]))) - jnp.log(n_samples)
+        def _task(rng_key: PRNGKey):
+            transition_log_probs: Dict[Any, FloatArray] = dict()
+            n_samples = lps.size
+            split_transition_log_prob = jax.scipy.special.logsumexp(jax.jit(jax.vmap(split))(traces, lps, jax.random.split(rng_key, lps.shape[0]))) - jnp.log(n_samples)
+            if K == 0: 
+                transition_log_probs[(K, K+1)] = split_transition_log_prob
+            else:
+                merge_transition_log_prob = jax.scipy.special.logsumexp(jax.jit(jax.vmap(merge))(traces, lps, jax.random.split(rng_key, lps.shape[0]))) - jnp.log(n_samples)
 
-            merge_transition_log_prob = merge_transition_log_prob - jnp.log(2)
-            split_transition_log_prob = split_transition_log_prob - jnp.log(2)
+                merge_transition_log_prob = merge_transition_log_prob - jnp.log(2)
+                split_transition_log_prob = split_transition_log_prob - jnp.log(2)
 
-            transition_log_probs[(K, K+1)] = split_transition_log_prob
-            transition_log_probs[(K, K-1)] = merge_transition_log_prob
-            tqdm.write(f"Estimate log weight for {slp.formatted()}: split prob = {jnp.exp(split_transition_log_prob).item():.6f} merge prob = {jnp.exp(merge_transition_log_prob).item():.6f}")
+                transition_log_probs[(K, K+1)] = split_transition_log_prob
+                transition_log_probs[(K, K-1)] = merge_transition_log_prob
 
-        return RJMCMCTransitionProbEstimate(transition_log_probs, n_samples)
+            return RJMCMCTransitionProbEstimate(transition_log_probs, n_samples)
+        
+        def _post_info(result: LogWeightEstimate):
+            assert isinstance(result, RJMCMCTransitionProbEstimate)
+            if K == 0:
+                split_transition_log_prob = result.transition_log_probs[(K, K+1)]
+                return f"Estimate log weight for {slp.formatted()}: split prob = {jnp.exp(split_transition_log_prob.item()):.6f}"
+            else:
+                split_transition_log_prob = result.transition_log_probs[(K, K+1)]
+                merge_transition_log_prob = result.transition_log_probs[(K, K-1)]
+                return f"Estimate log weight for {slp.formatted()}: split prob = {jnp.exp(split_transition_log_prob).item():.6f} merge prob = {jnp.exp(merge_transition_log_prob).item():.6f}"
+        
+        return EstimateLogWeightTask(_task, (rng_key,), post_info=_post_info)
 
     
     def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
@@ -204,7 +216,11 @@ dcc_obj = DCCConfig(m, verbose=2,
               mcmc_n_chains=10,
               mcmc_n_samples_per_chain=25_000,
               mcmc_collect_for_all_traces=True,
-              estimate_weight_n_samples=1000)
+              estimate_weight_n_samples=1000,
+            #   parallelisation = ParallelisationConfig(
+            #       type=ParallelisationType.MultiProcessingCPU,
+            #       num_workers=1)
+              )
 
 # takes ~185s for 10 * 25_000 * 11 samples
 result = timed(dcc_obj.run)(jax.random.PRNGKey(0))

@@ -13,6 +13,7 @@ from queue import Queue, ShutDown
 from dccxjax.infer.dcc.cpu_multiprocess import process_worker, ParallelisationConfig, ParallelisationType
 from jax.tree_util import tree_flatten, tree_unflatten
 import jax.export
+import time
 
 __all__ = [
 
@@ -162,12 +163,15 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         
         if self.parallelisation.type == ParallelisationType.Sequential and self.share_progress_bar:
             self.shared_progress_bar = tqdm(position=0, leave=False)
+        outer_bar = tqdm(position=1, leave=False)
 
         while len(self.active_slps) > 0:
             self.iteration_counter += 1
 
             if self.parallelisation.type == ParallelisationType.Sequential:
-                for slp in tqdm(self.active_slps, total=len(self.active_slps), desc=f"Iteration {self.iteration_counter}", position=0+self.share_progress_bar):
+                outer_bar.reset(total=len(self.active_slps))
+                outer_bar.set_description(f"Iteration {self.iteration_counter}")
+                for slp in self.active_slps:
                     rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
                     
                     inference_task = self.make_inference_task(slp, slp_inference_key)
@@ -181,6 +185,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     log_weight_estimate = log_weight_estimate_task.run()
                     self.maybe_write_info(log_weight_estimate_task.post_info(log_weight_estimate))
                     self.add_to_log_weight_estimates(slp, log_weight_estimate)
+                    outer_bar.update()
 
             if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
                 
@@ -199,7 +204,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 inference_task_gen_thread = threading.Thread(target=_make_inference_tasks, args=(slp_weight_inference_keys,), daemon=True)
                 inference_task_gen_thread.start()
 
-                for _ in tqdm(range(len(self.active_slps)), total=len(self.active_slps), desc=f"Iteration {self.iteration_counter} - Inference", position=0):
+                outer_bar.reset(total=len(self.active_slps))
+                outer_bar.set_description(f"Iteration {self.iteration_counter} - Inference")
+                for _ in range(len(self.active_slps)):
                     inference_result, slp_ix = result_queue.get()
                     assert isinstance(inference_result, InferenceResult)
                     slp = self.active_slps[slp_ix]
@@ -214,7 +221,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 estimate_log_weight_task_gen_thread = threading.Thread(target=_make_estimate_log_weight_tasks, args=(slp_weight_estimate_keys,), daemon=True)
                 estimate_log_weight_task_gen_thread.start()
                 
-                for _ in tqdm(range(len(self.active_slps)), total=len(self.active_slps), desc=f"Iteration {self.iteration_counter} - LogWeight", position=0):
+                outer_bar.reset(total=len(self.active_slps))
+                outer_bar.set_description(f"Iteration {self.iteration_counter} - LogWeight")
+                for _ in range(len(self.active_slps)):
                     log_weight_estimate_result, slp_ix = result_queue.get()
                     assert isinstance(log_weight_estimate_result, LogWeightEstimate)
                     slp = self.active_slps[slp_ix]
@@ -232,6 +241,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
 
         if self.shared_progress_bar is not None:
             self.shared_progress_bar.close()
+        outer_bar.close()
             
         combined_result = self.combine_results(self.inference_results, self.log_weight_estimates)
         

@@ -116,12 +116,12 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             last_result = inference_results[-1]
             assert isinstance(last_result, ADVIInferenceResult)
             guide = self.get_ADVI(slp).get_updated_guide(last_result.last_state)
-            def _f(rng_key: PRNGKey):
+            def _task(rng_key: PRNGKey):
                 Xs, lqs = guide.sample_and_log_prob(rng_key, shape=(self.elbo_estimate_n_samples,))
                 lps = jax.vmap(slp.log_prob)(Xs)
                 elbo = jnp.mean(lps - lqs)
                 return LogWeightEstimateFromADVI(elbo, self.elbo_estimate_n_samples)
-            return EstimateLogWeightTask(_f, (rng_key,))
+            return EstimateLogWeightTask(_task, (rng_key,))
         else:
             raise Exception("In VIDCC we should perform one run of ADVI before estimate_log_weight to estimate elbo from guide")
 
@@ -146,15 +146,15 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             assert isinstance(last_result, ADVIInferenceResult)
             # sets iteration count = 0 (may affect optimizers schedule)
             # iteration is also used in progressbar (so we would have to add additional counter if we want to set iteration to different start value)
-            def _f_continue(rng_key, last_state):
+            def _task_continue(rng_key, last_state):
                 last_state, elbo = advi.continue_run(rng_key, last_state, n_iter=self.advi_n_iter, iteration=0)
                 return ADVIInferenceResult(last_state)
-            return InferenceTask(_f_continue, (rng_key, last_result.last_state), _f_run_pre_info, _f_run_post_info)
+            return InferenceTask(_task_continue, (rng_key, last_result.last_state), _f_run_pre_info, _f_run_post_info)
         else:
-            def _f_run(rng_key):
+            def _task_run(rng_key):
                 last_state, elbo = advi.run(rng_key, n_iter=self.advi_n_iter)
                 return ADVIInferenceResult(last_state)
-            return InferenceTask(_f_run, (rng_key,), _f_run_pre_info, _f_run_post_info)
+            return InferenceTask(_task_run, (rng_key,), _f_run_pre_info, _f_run_post_info)
         
         
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):

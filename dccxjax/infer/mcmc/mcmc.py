@@ -14,6 +14,7 @@ from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
 from dccxjax.infer.variable_selector import AllVariables
 from dccxjax.infer.progress_bar import _add_progress_bar, ProgressbarManager
+from tqdm.auto import tqdm
 
 __all__ = [
     "MCMCRegime",
@@ -336,13 +337,14 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         data_annealing: AnnealingMask = dict(),
         reuse_kernel: Optional[MCMCKernel[MCMC_COLLECT_TYPE]] = None,
         reuse_kernel_init_carry_stat_names: Set[str] = set(),
-        progress_bar: bool = False) -> None:
+        show_progress: bool = False,
+        shared_progressbar: tqdm | None = None) -> None:
         
         self.slp = slp
         self.regime = regime
         self.n_chains = n_chains
-        self.progress_bar = progress_bar
-        self.progress_bar_mngr = ProgressbarManager("MCMC for "+self.slp.formatted())
+        self.show_progress = show_progress
+        self.progress_bar_mngr = ProgressbarManager("MCMC for "+self.slp.formatted(), shared_progressbar)
 
         self.temperature = temperature
         self.data_annealing = data_annealing
@@ -391,7 +393,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         else:
             scan_fn = (
                 get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr)
-                if self.progress_bar else
+                if self.show_progress else
                 get_mcmc_scan_without_progressbar(self.kernel)
             )
             self.cached_mcmc_scan = scan_fn

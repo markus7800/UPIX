@@ -8,7 +8,8 @@ from .export import export_flat
 __all__ = [
     "InferenceResult",
     "LogWeightEstimate",
-
+    "InferenceTask",
+    "EstimateLogWeightTask",
 ]
 
 class InferenceResult(ABC):
