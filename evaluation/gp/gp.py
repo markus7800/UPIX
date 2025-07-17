@@ -338,9 +338,9 @@ class VIConfig(VIDCC):
         super().initialise_active_slps(active_slps, inactive_slps, rng_key)
         self.n_phases = self.successive_halving.calculate_num_phases(len(active_slps))
         self.advi_n_iter = self.successive_halving.calculate_num_optimization_steps(len(active_slps))
-        self.advi_n_iter = 1000
-        self.n_phases = 1
-        print(f"{len(active_slps)=} {self.n_phases=} {self.advi_n_iter=}")
+        # self.advi_n_iter = 1000
+        # self.n_phases = 1
+        tqdm.write(f"{len(active_slps)=} {self.n_phases=} {self.advi_n_iter=}")
     
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         inactive_slps.clear()
@@ -360,7 +360,7 @@ class VIConfig(VIDCC):
             tqdm.write(f"Keep {slp.formatted()} with {log_weight}")
             active_slps.append(slp)
         self.advi_n_iter = self.successive_halving.calculate_num_optimization_steps(len(active_slps))
-        print(f"update active slps {len(active_slps)=} {self.advi_n_iter=}")        
+        tqdm.write(f"update active slps {len(active_slps)=} {self.advi_n_iter=}")        
         
         
 
@@ -373,9 +373,9 @@ vi_dcc_obj = VIConfig(m, verbose=2,
     elbo_estimate_n_samples=100, # 100
     successive_halving=SuccessiveHalving(1_000_000, 10),
     parallelisation = ParallelisationConfig(
-        type=ParallelisationType.MultiProcessingCDU,
-        num_workers=5
-    ),
+        type=ParallelisationType.MultiProcessingCPU,
+        num_workers=10
+    )
 )
 
 do_vi = True

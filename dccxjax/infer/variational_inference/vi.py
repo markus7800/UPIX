@@ -273,13 +273,14 @@ class ADVI(Generic[OPTIMIZER_STATE]):
                  optimizer: Optimizer[OPTIMIZER_STATE],
                  L: int,
                  *,
-                 progress_bar: bool = False) -> None:
+                 show_progress: bool = False,
+                 shared_progressbar: tqdm | None = None) -> None:
         self.slp = slp
         self.guide = guide
         self.optimizer = optimizer
         self.L = L
-        self.progress_bar = progress_bar
-        self.progressbar_mngr = ProgressbarManager("ADVI for "+self.slp.formatted())
+        self.show_progress = show_progress
+        self.progressbar_mngr = ProgressbarManager("ADVI for "+self.slp.formatted(), shared_progressbar)
 
         self.advi_step = make_advi_step(slp, guide, optimizer, L)
 
@@ -296,7 +297,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
         else:
             scan_fn = (
                 get_advi_scan_with_progressbar(self.advi_step, self.progressbar_mngr)
-                if self.progress_bar else
+                if self.show_progress else
                 get_advi_scan_without_progressbar(self.advi_step)
             )
             self.cached_advi_scan = scan_fn

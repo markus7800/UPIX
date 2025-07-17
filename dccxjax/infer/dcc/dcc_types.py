@@ -58,6 +58,16 @@ class JaxTask(Generic[TASK_RESULT]):
         
     def run(self) -> TASK_RESULT:
         return self.f(*self.args)
+    
+    def pre_info(self) -> str:
+        if self._pre_info is None:
+            return ""
+        return self._pre_info()
+        
+    def post_info(self, result: TASK_RESULT) -> str:
+        if self._post_info is None:
+            return ""
+        return self._post_info(result)
         
     def export(self) -> ExportedJaxTask[TASK_RESULT]:
         exported_fn, in_tree, out_tree = export_flat(self.f, ("cpu",), (), None)(*self.args)

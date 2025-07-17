@@ -79,6 +79,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         self.config: Dict[str, Any] = config_kwargs
 
         self.verbose = verbose
+        
+        self.share_progress_bar: bool = self.config.get("share_progress_bar", True)
+        self.shared_progress_bar: Optional[tqdm] = None
 
         self.parallelisation: ParallelisationConfig = self.config.get("parallelisation", ParallelisationConfig())
 
@@ -123,6 +126,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             self.log_weight_estimates[slp] = []
         return self.log_weight_estimates[slp]
         
+    def maybe_write_info(self, info: str | None):
+        if self.verbose > 1 and info is not None and info != "":
+            tqdm.write(info)
     
     def run(self, rng_key: PRNGKey):
         # t0 = time()
@@ -136,7 +142,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         result_queue = Queue()
         threads: List[threading.Thread] = []
 
-        if self.parallelisation.type == ParallelisationType.MultiProcessingCDU:
+            
+        if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
             for i in range(self.parallelisation.num_workers):
                 t = threading.Thread(target=process_worker, args=(task_queue, result_queue, i, self.parallelisation), daemon=True)
                 t.start()
@@ -152,25 +159,30 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         self.initialise_active_slps(self.active_slps, self.inactive_slps, init_key)
 
         self.iteration_counter = 0
+        
+        if self.parallelisation.type == ParallelisationType.Sequential and self.share_progress_bar:
+            self.shared_progress_bar = tqdm(position=0, leave=False)
 
         while len(self.active_slps) > 0:
             self.iteration_counter += 1
-            if self.verbose >= 2:
-                tqdm.write(f"Iteration {self.iteration_counter}:")
 
             if self.parallelisation.type == ParallelisationType.Sequential:
-                for slp in tqdm(self.active_slps, total=len(self.active_slps), desc=f"Iteration {self.iteration_counter}", position=0):
+                for slp in tqdm(self.active_slps, total=len(self.active_slps), desc=f"Iteration {self.iteration_counter}", position=1):
                     rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
                     
                     inference_task = self.make_inference_task(slp, slp_inference_key)
+                    self.maybe_write_info(inference_task.pre_info())
                     inference_result = inference_task.run()
+                    self.maybe_write_info(inference_task.post_info(inference_result))
                     self.add_to_inference_results(slp, inference_result)
 
                     log_weight_estimate_task = self.make_estimate_log_weight_task(slp, slp_weight_estimate_key)
+                    self.maybe_write_info(log_weight_estimate_task.pre_info())
                     log_weight_estimate = log_weight_estimate_task.run()
+                    self.maybe_write_info(log_weight_estimate_task.post_info(log_weight_estimate))
                     self.add_to_log_weight_estimates(slp, log_weight_estimate)
 
-            if self.parallelisation.type == ParallelisationType.MultiProcessingCDU:
+            if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
                 
                 slp_weight_inference_keys: List[jax.Array] = []
                 slp_weight_estimate_keys: List[jax.Array] = []
@@ -208,6 +220,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     slp = self.active_slps[slp_ix]
                     self.add_to_log_weight_estimates(slp, log_weight_estimate_result)
                 estimate_log_weight_task_gen_thread.join()
+            
 
             rng_key, update_key = jax.random.split(rng_key)
             self.update_active_slps(self.active_slps, self.inactive_slps, self.inference_results, self.log_weight_estimates, update_key)
@@ -217,6 +230,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         for t in threads:
             t.join()
 
+        if self.shared_progress_bar is not None:
+            self.shared_progress_bar.close()
+            
         combined_result = self.combine_results(self.inference_results, self.log_weight_estimates)
         
         return combined_result

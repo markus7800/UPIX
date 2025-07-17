@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model
 from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
-from dccxjax.infer.dcc.abstract_dcc import JaxTask, InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
+from dccxjax.infer.dcc.abstract_dcc import JaxTask, InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior, ParallelisationType
 from dataclasses import dataclass
 from dccxjax.infer.variational_inference.vi import Guide, ADVI, ADVIState, Optimizer
 from dccxjax.infer.variational_inference.optimizers import Adagrad
@@ -92,7 +92,8 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             return advi
         guide = self.get_guide(slp)
         advi = ADVI(slp, guide, self.advi_optimizer, self.advi_L,
-                    progress_bar=self.verbose >= 1 and self.parallelisation == "none" and False)
+                    show_progress=self.verbose >= 1 and self.parallelisation.type == ParallelisationType.Sequential,
+                    shared_progressbar=self.shared_progress_bar)
         self.inference_method_cache[slp] = advi
         return advi
     
@@ -124,49 +125,32 @@ class VIDCC(AbstractDCC[VIDCCResult]):
         else:
             raise Exception("In VIDCC we should perform one run of ADVI before estimate_log_weight to estimate elbo from guide")
 
-
-    # def run_inference(self, slp: SLP, rng_key: PRNGKey) -> InferenceResult:
-    #     advi = self.get_ADVI(slp)
-    #     inference_results = self.inference_results.get(slp, [])
-    #     if len(inference_results) > 0:
-    #         last_result = inference_results[-1]
-    #         assert isinstance(last_result, ADVIInferenceResult)
-    #         # sets iteration count = 0 (may affect optimizers schedule)
-    #         # iteration is also used in porgressbar (so we would have to add additional counter if we want to set iteration to different start value)
-    #         last_state, elbo = advi.continue_run(rng_key, last_result.last_state, n_iter=self.advi_n_iter, iteration=0)
-    #     else:
-    #         last_state, elbo = advi.run(rng_key, n_iter=self.advi_n_iter)
-    #     # import matplotlib.pyplot as plt
-    #     # print(last_state)
-    #     # print(elbo)
-    #     # print(f"{elbo.shape=}")
-    #     # plt.plot(elbo)
-    #     # plt.show()
-        
-    #     if self.verbose >= 2:
-    #         # TODO: report some stats
-    #         pass
-    #     return ADVIInferenceResult(last_state)
     
     def make_inference_task(self, slp: SLP, rng_key: PRNGKey) -> InferenceTask:
         advi = self.get_ADVI(slp)
         inference_results = self.inference_results.get(slp, [])
+        
+        def _f_run_pre_info():
+            # if self.parallelisation.type != ParallelisationType.Sequential:
+            #     return f"Start ADVI for {slp.formatted()}"
+            return ""
+        def _f_run_post_info(result: InferenceResult):
+            assert isinstance(result, ADVIInferenceResult)
+            if self.share_progress_bar:
+                return f"Finished ADIV for {slp.formatted()}"
+            else:
+                return ""
+            
         if len(inference_results) > 0:
             last_result = inference_results[-1]
             assert isinstance(last_result, ADVIInferenceResult)
             # sets iteration count = 0 (may affect optimizers schedule)
-            # iteration is also used in porgressbar (so we would have to add additional counter if we want to set iteration to different start value)
-            raise NotImplementedError
+            # iteration is also used in progressbar (so we would have to add additional counter if we want to set iteration to different start value)
             def _f_continue(rng_key, last_state):
                 last_state, elbo = advi.continue_run(rng_key, last_state, n_iter=self.advi_n_iter, iteration=0)
                 return ADVIInferenceResult(last_state)
-            return InferenceTask(_f_continue, (rng_key, last_result.last_state))
+            return InferenceTask(_f_continue, (rng_key, last_result.last_state), _f_run_pre_info, _f_run_post_info)
         else:
-            def _f_run_pre_info():
-                return f"Start ADVI for {slp.formatted()}"
-            def _f_run_post_info(result: InferenceResult):
-                assert isinstance(result, ADVIInferenceResult)
-                return f"Finished ADIV for {slp.formatted()}"
             def _f_run(rng_key):
                 last_state, elbo = advi.run(rng_key, n_iter=self.advi_n_iter)
                 return ADVIInferenceResult(last_state)

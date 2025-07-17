@@ -80,7 +80,7 @@ __all__ = [
     
 class ParallelisationType(Enum):
     Sequential = 0
-    MultiProcessingCDU = 1
+    MultiProcessingCPU = 1
     MultiThreadingJAXDevices = 2
 
 @dataclass

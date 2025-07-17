@@ -8,22 +8,27 @@ __all__ = [
 ]
 
 class ProgressbarManager:
-    def __init__(self, desc: str) -> None:
+    def __init__(self, desc: str, shared_tqdm_bar: tqdm | None) -> None:
         self.desc = desc
-        self.tqdm_bar: Optional[tqdm] = None
+        self.tqdm_bar: Optional[tqdm] = shared_tqdm_bar
+        self.share_bar: bool = shared_tqdm_bar is not None
         self.num_samples = 0
 
     def set_num_samples(self, num_samples: int):
         self.num_samples = num_samples # affects for tqdm bar lenght, not print rate
 
     def start_progress(self):
-        assert self.tqdm_bar is None
-        self.tqdm_bar = tqdm(range(self.num_samples), position=0)
+        if self.tqdm_bar is None:
+            self.tqdm_bar = tqdm(total=self.num_samples, position=0)
+        else:
+            self.tqdm_bar.reset(total=self.num_samples)
         self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=True)
 
     def _init_tqdm(self, increment):
         if self.tqdm_bar is None: 
-            self.tqdm_bar = tqdm(range(self.num_samples), position=0)
+            self.tqdm_bar = tqdm(total=self.num_samples, position=0)
+        else:
+            self.tqdm_bar.reset(total=self.num_samples)
         increment = int(increment)
         self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
         self.tqdm_bar.update(increment)
@@ -40,8 +45,9 @@ class ProgressbarManager:
                 else:
                     self.tqdm_bar.update(remainder)
                 # tqdm_auto.write(f"Close pbar {self}")
-                self.tqdm_bar.close()
-                self.tqdm_bar = None
+                if not self.share_bar:
+                    self.tqdm_bar.close()
+                    self.tqdm_bar = None
             else:
                 self.tqdm_bar.update(increment)
 
