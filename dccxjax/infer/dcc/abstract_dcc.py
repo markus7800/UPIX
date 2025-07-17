@@ -167,7 +167,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             self.iteration_counter += 1
 
             if self.parallelisation.type == ParallelisationType.Sequential:
-                for slp in tqdm(self.active_slps, total=len(self.active_slps), desc=f"Iteration {self.iteration_counter}", position=1):
+                for slp in tqdm(self.active_slps, total=len(self.active_slps), desc=f"Iteration {self.iteration_counter}", position=0+self.share_progress_bar):
                     rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
                     
                     inference_task = self.make_inference_task(slp, slp_inference_key)

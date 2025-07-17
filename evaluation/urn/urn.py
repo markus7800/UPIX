@@ -85,9 +85,12 @@ class Config(ExactDCC):
     
     
 config = Config(m, verbose=2,
-    parallelisation = "multi-processing",
-    num_processes = 5,
-    pin_cpus = False,)
+    # parallelisation = ParallelisationConfig(
+    #     type=ParallelisationType.MultiProcessingCPU,
+    #     num_workers=15),
+    jit_inference=True,
+    share_progress_bar=False
+)
 
 result = timed(config.run)(jax.random.PRNGKey(0))
 result.pprint(sortkey="slp")
