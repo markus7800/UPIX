@@ -66,4 +66,4 @@ class JaxTask(Generic[TASK_RESULT]):
         )
     
 InferenceTask = JaxTask[InferenceResult]
-LogWeightEstimateTask = JaxTask[LogWeightEstimate]
+EstimateLogWeightTask = JaxTask[LogWeightEstimate]

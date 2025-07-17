@@ -60,7 +60,7 @@ import jax.export
 import jax.numpy as jnp
 import pickle
 import threading
-from typing import IO, List, Callable, Tuple, Dict
+from typing import IO, List, Callable, Tuple, Dict, Generic, TypeVar
 from queue import Queue, ShutDown
 import time
 import subprocess
@@ -77,7 +77,7 @@ __all__ = [
     "ParallelisationType",
     "ParallelisationConfig"
 ]
-
+    
 class ParallelisationType(Enum):
     Sequential = 0
     MultiProcessingCDU = 1
@@ -141,7 +141,7 @@ def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, config: Pa
             assert isinstance(task, ExportedJaxTask)
             if config.verbose:
                 pre_info = task.pre_info()
-                if pre_info: tqdm.write(f"Worker {worker_id}:" + pre_info)
+                if pre_info: tqdm.write(f"Worker {worker_id}: " + pre_info)
                 
             flat_args, _in_tree = tree_flatten(task.args)
             assert _in_tree == task.in_tree
@@ -154,7 +154,7 @@ def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, config: Pa
             result = tree_unflatten(task.out_tree, response)
             if config.verbose:
                 post_info = task.post_info(result)
-                if post_info: tqdm.write(f"Worker {worker_id}:" + post_info)
+                if post_info: tqdm.write(f"Worker {worker_id}: " + post_info)
 
             out_queue.put((result, task_aux))
             in_queue.task_done()

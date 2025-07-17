@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model
 from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
-from dccxjax.infer.dcc.abstract_dcc import JaxTask, InferenceTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
+from dccxjax.infer.dcc.abstract_dcc import JaxTask, InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
 from dataclasses import dataclass
 from dccxjax.infer.variational_inference.vi import Guide, ADVI, ADVIState, Optimizer
 from dccxjax.infer.variational_inference.optimizers import Adagrad
@@ -28,6 +28,7 @@ class ADVIInferenceResult(InferenceResult):
             return self
 
 
+@jax.tree_util.register_dataclass
 @dataclass
 class LogWeightEstimateFromADVI(LogWeightEstimate):
     log_Z: FloatArray
@@ -95,16 +96,31 @@ class VIDCC(AbstractDCC[VIDCCResult]):
         self.inference_method_cache[slp] = advi
         return advi
     
-    def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
+    # def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
+    #     inference_results = self.inference_results.get(slp, [])
+    #     if len(inference_results) > 0:
+    #         last_result = inference_results[-1]
+    #         assert isinstance(last_result, ADVIInferenceResult)
+    #         guide = self.get_ADVI(slp).get_updated_guide(last_result.last_state)
+    #         Xs, lqs = guide.sample_and_log_prob(rng_key, shape=(self.elbo_estimate_n_samples,))
+    #         lps = jax.vmap(slp.log_prob)(Xs)
+    #         elbo = jnp.mean(lps - lqs)
+    #         return LogWeightEstimateFromADVI(elbo, self.elbo_estimate_n_samples)
+    #     else:
+    #         raise Exception("In VIDCC we should perform one run of ADVI before estimate_log_weight to estimate elbo from guide")
+        
+    def make_estimate_log_weight_task(self, slp: SLP, rng_key: PRNGKey) -> EstimateLogWeightTask:
         inference_results = self.inference_results.get(slp, [])
         if len(inference_results) > 0:
             last_result = inference_results[-1]
             assert isinstance(last_result, ADVIInferenceResult)
             guide = self.get_ADVI(slp).get_updated_guide(last_result.last_state)
-            Xs, lqs = guide.sample_and_log_prob(rng_key, shape=(self.elbo_estimate_n_samples,))
-            lps = jax.vmap(slp.log_prob)(Xs)
-            elbo = jnp.mean(lps - lqs)
-            return LogWeightEstimateFromADVI(elbo, self.elbo_estimate_n_samples)
+            def _f(rng_key: PRNGKey):
+                Xs, lqs = guide.sample_and_log_prob(rng_key, shape=(self.elbo_estimate_n_samples,))
+                lps = jax.vmap(slp.log_prob)(Xs)
+                elbo = jnp.mean(lps - lqs)
+                return LogWeightEstimateFromADVI(elbo, self.elbo_estimate_n_samples)
+            return EstimateLogWeightTask(_f, (rng_key,))
         else:
             raise Exception("In VIDCC we should perform one run of ADVI before estimate_log_weight to estimate elbo from guide")
 
