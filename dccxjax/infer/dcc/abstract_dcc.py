@@ -163,7 +163,10 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         
         if self.parallelisation.type == ParallelisationType.Sequential and self.share_progress_bar:
             self.shared_progress_bar = tqdm(position=0, leave=False)
-        outer_bar = tqdm(position=1, leave=False)
+            outer_bar = tqdm(position=1, leave=False)
+        else:
+            outer_bar = tqdm(position=0, leave=False)
+
 
         while len(self.active_slps) > 0:
             self.iteration_counter += 1
@@ -211,6 +214,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     assert isinstance(inference_result, InferenceResult)
                     slp = self.active_slps[slp_ix]
                     self.add_to_inference_results(slp, inference_result)
+                    outer_bar.update()
                 inference_task_gen_thread.join()
                 
                 def _make_estimate_log_weight_tasks(slp_weight_estimate_keys: List[jax.Array]):
@@ -228,6 +232,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     assert isinstance(log_weight_estimate_result, LogWeightEstimate)
                     slp = self.active_slps[slp_ix]
                     self.add_to_log_weight_estimates(slp, log_weight_estimate_result)
+                    outer_bar.update()
                 estimate_log_weight_task_gen_thread.join()
             
 
