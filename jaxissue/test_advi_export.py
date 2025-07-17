@@ -185,5 +185,7 @@ with open("tmp.bin", "rb") as file:
     exported_fn = bytearray(file.read())
     rehydrated_fn = jax.export.deserialize(exported_fn)
     print(rehydrated_fn)
+    # main_fn.trace(jax.random.PRNGKey(0)).lower() # makes seg fault go away
     out = rehydrated_fn.call(jax.random.PRNGKey(0)) # seg fault if not -export
+    out.block_until_ready()
     print(out)
