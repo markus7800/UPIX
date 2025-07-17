@@ -200,15 +200,12 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
 
                 task_queue.join()
 
-                while True:
-                    try:
-                        (slp_ix, in_tree, out_tree), response = result_queue.get()
-                        inference_result = tree_unflatten(out_tree, response)
-                        assert isinstance(inference_result, InferenceResult)
-                        slp = self.active_slps[slp_ix]
-                        self.add_to_inference_results(slp, inference_result)
-                    except ShutDown:
-                        break
+                for i in range(len(self.active_slps)):
+                    (slp_ix, in_tree, out_tree), response = result_queue.get()
+                    inference_result = tree_unflatten(out_tree, response)
+                    assert isinstance(inference_result, InferenceResult)
+                    slp = self.active_slps[slp_ix]
+                    self.add_to_inference_results(slp, inference_result)
 
                 # for now we do log_weight_estimate in sequence
                 for slp, slp_weight_estimate_key in zip(self.active_slps, slp_weight_estimate_keys):

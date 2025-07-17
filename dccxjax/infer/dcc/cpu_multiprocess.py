@@ -8,6 +8,9 @@ import jax
 import jax.export
 from typing import IO
 
+import jax.numpy as jnp
+jax.jit(jax.lax.linalg.cholesky).trace(jnp.eye(1)).lower()
+
 def read_transport_layer(reader: IO[bytes]):
     msg = reader.readline().decode("utf8").rstrip()
     print("worker read msg:", msg, file=sys.stderr)

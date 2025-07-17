@@ -339,14 +339,13 @@ class VIConfig(VIDCC):
         self.n_phases = self.successive_halving.calculate_num_phases(len(active_slps))
         self.advi_n_iter = self.successive_halving.calculate_num_optimization_steps(len(active_slps))
         self.advi_n_iter = 1000
+        self.n_phases = 1
         print(f"{len(active_slps)=} {self.n_phases=} {self.advi_n_iter=}")
     
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         inactive_slps.clear()
         inactive_slps.extend(active_slps)
         active_slps.clear()
-        if self.iteration_counter == 1:
-            return
         
         if self.iteration_counter == self.n_phases:
             return
@@ -367,7 +366,7 @@ class VIConfig(VIDCC):
 
 from dccxjax.infer.variational_inference.optimizers import Adagrad, SGD, Adam
 vi_dcc_obj = VIConfig(m, verbose=2,
-    init_n_samples=10, # 1_000
+    init_n_samples=1_000, # 1_000
     advi_n_iter=1_000, # set by successive halving
     advi_L=1, # 1
     advi_optimizer=Adam(0.005), # Adam(0.005)
@@ -375,8 +374,8 @@ vi_dcc_obj = VIConfig(m, verbose=2,
     successive_halving=SuccessiveHalving(1_000_000, 10),
     parallelisation = "multi-processing",
     # parallelisation = "none",
-    num_processes = 1,
-    pin_cpus = True,
+    num_processes = 5,
+    pin_cpus = False,
 )
 
 do_vi = True
