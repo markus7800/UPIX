@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model
 from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
-from dccxjax.infer.dcc.abstract_dcc import InferenceTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
+from dccxjax.infer.dcc.abstract_dcc import JaxTask, InferenceTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
 from dataclasses import dataclass
 from dccxjax.infer.variational_inference.vi import Guide, ADVI, ADVIState, Optimizer
 from dccxjax.infer.variational_inference.optimizers import Adagrad
@@ -146,10 +146,15 @@ class VIDCC(AbstractDCC[VIDCCResult]):
                 return ADVIInferenceResult(last_state)
             return InferenceTask(_f_continue, (rng_key, last_result.last_state))
         else:
+            def _f_run_pre_info():
+                return f"Start ADVI for {slp.formatted()}"
+            def _f_run_post_info(result: InferenceResult):
+                assert isinstance(result, ADVIInferenceResult)
+                return f"Finished ADIV for {slp.formatted()}"
             def _f_run(rng_key):
                 last_state, elbo = advi.run(rng_key, n_iter=self.advi_n_iter)
                 return ADVIInferenceResult(last_state)
-            return InferenceTask(_f_run, (rng_key,))
+            return InferenceTask(_f_run, (rng_key,), _f_run_pre_info, _f_run_post_info)
         
         
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):

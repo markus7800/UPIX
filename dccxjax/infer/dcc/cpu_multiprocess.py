@@ -60,15 +60,44 @@ import jax.export
 import jax.numpy as jnp
 import pickle
 import threading
-from typing import IO, List, Callable, Tuple
+from typing import IO, List, Callable, Tuple, Dict
 from queue import Queue, ShutDown
 import time
 import subprocess
 import sys
-from dccxjax.infer.dcc.dcc_types import InferenceResult, InferenceTask, LogWeightEstimate
-import jax.flatten_util
+from dccxjax.infer.dcc.dcc_types import JaxTask, ExportedJaxTask
+from dataclasses import dataclass, field
+from enum import Enum
+import os
+from jax.tree_util import tree_flatten, tree_unflatten
+from tqdm.auto import tqdm
 
 
+__all__ = [
+    "ParallelisationType",
+    "ParallelisationConfig"
+]
+
+class ParallelisationType(Enum):
+    Sequential = 0
+    MultiProcessingCDU = 1
+    MultiThreadingJAXDevices = 2
+
+@dataclass
+class ParallelisationConfig:
+    type: ParallelisationType = ParallelisationType.Sequential
+    num_workers: int = os.cpu_count() or 1
+    cpu_affinity: bool = False
+    environ: Dict[str, str] = field(default_factory= lambda: {
+        "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "JAX_PLATFORMS": "cpu"
+    })
+    verbose: bool = True
+    
 
 def read_transport_layer(reader: IO[bytes]):
     msg = reader.readline().decode("utf8").rstrip()
@@ -95,88 +124,39 @@ def write_close_transport_layer(writer: IO[bytes]):
     writer.flush()
 
 
-from jax.tree_util import tree_flatten, tree_unflatten
-from jax._src.linear_util import Store
 
-from jax.stages import Traced, Wrapped
-from typing import Sequence, Any
-from jax._src.export._export import DisabledSafetyCheck, Exported, default_export_platform, check_symbolic_scope_errors, _export_lowered
-import jax._src.interpreters.mlir as mlir
-import jax._src.config as jax_config
-
-def trace_to_flat(f: Callable, args: Tuple) -> Tuple[Traced, Any,Any]:
-    args_flat, in_tree = tree_flatten(args)
-
-    tree_store = Store()
-    @jax.jit
-    def f_flat(*_args_flat):
-        _args = tree_unflatten(in_tree, _args_flat)
-        out = f(*_args)
-        out_flat, out_tree = tree_flatten(out)
-        tree_store.store((in_tree, out_tree))
-        return out_flat
-    
-    traced = f_flat.trace(*args_flat)
-    # print(traced.jaxpr)
-    assert isinstance(tree_store.val, Tuple)
-
-    check_symbolic_scope_errors(f_flat, args_flat, {})
-
-    return traced, *tree_store.val
-
-
-def _export_flat(
-    fun: Callable,
-    platforms: Sequence[str] | None = None,
-    disabled_checks: Sequence[DisabledSafetyCheck] = (),
-    _device_assignment_for_internal_jax2tf_use_only=None,
-    override_lowering_rules=None,
-    ) -> Callable[..., Tuple[Exported,Any,Any]]:
-  
-  
-  def do_export(*args_specs) -> Tuple[Exported, Any,Any]:
-    if platforms is not None:
-      actual_lowering_platforms = tuple(platforms)
-    else:
-      actual_lowering_platforms = (default_export_platform(),)
-
-    # check_symbolic_scope_errors(fun_jit, args_specs, kwargs_specs)
-
-    traced, in_tree, out_tree = trace_to_flat(fun, args_specs)
-
-
-    lowered = traced.lower(
-        lowering_platforms=actual_lowering_platforms,
-        _private_parameters=mlir.LoweringParameters(
-            override_lowering_rules=override_lowering_rules,
-            for_export=True,
-            export_ignore_forward_compatibility=jax_config.export_ignore_forward_compatibility.value))
-    export_lowered = _export_lowered(
-        lowered, traced.jaxpr, traced.fun_name,
-        disabled_checks=disabled_checks,
-        _device_assignment_for_internal_jax2tf_use_only=_device_assignment_for_internal_jax2tf_use_only)
-    return export_lowered, in_tree, out_tree
-  return do_export
-
-def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, pin: int | None):
-    # print("Start worker with pin", pin)
+def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, config: ParallelisationConfig):
+    # print("Start worker with id", worker_id)
     p = subprocess.Popen(
-        (["taskset",  "-c", str(pin)] if pin is not None else []) + [sys.executable,  "-c", worker_script, str(worker_id)],
+        (["taskset",  "-c", str(worker_id)] if config.cpu_affinity else []) + [sys.executable,  "-c", worker_script, str(worker_id)],
         stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE
+        stdout=subprocess.PIPE,
+        env = config.environ
     )
     assert p.stdin is not None
     assert p.stdout is not None
     while True:
         try:
-            work_aux, work = in_queue.get()
+            task, task_aux = in_queue.get()
+            assert isinstance(task, ExportedJaxTask)
+            if config.verbose:
+                pre_info = task.pre_info()
+                if pre_info: tqdm.write(f"Worker {worker_id}:" + pre_info)
                 
-            write_task_transport_layer(p.stdin, work)
+            flat_args, _in_tree = tree_flatten(task.args)
+            assert _in_tree == task.in_tree
+                    
+            write_task_transport_layer(p.stdin, (task.exported_fn.serialize(), tuple(flat_args)))
 
             response = read_transport_layer(p.stdout)
             # print("got response:", response)
+            
+            result = tree_unflatten(task.out_tree, response)
+            if config.verbose:
+                post_info = task.post_info(result)
+                if post_info: tqdm.write(f"Worker {worker_id}:" + post_info)
 
-            out_queue.put((work_aux, response))
+            out_queue.put((result, task_aux))
             in_queue.task_done()
 
         except ShutDown:

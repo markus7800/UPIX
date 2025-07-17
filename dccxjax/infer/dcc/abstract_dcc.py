@@ -6,11 +6,11 @@ from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from dccxjax.infer.dcc.dcc_types import InferenceResult, InferenceTask, LogWeightEstimate
+from dccxjax.infer.dcc.dcc_types import InferenceResult, JaxTask, InferenceTask, LogWeightEstimate
 import os
 import threading
 from queue import Queue, ShutDown
-from dccxjax.infer.dcc.cpu_multiprocess import process_worker, _export_flat
+from dccxjax.infer.dcc.cpu_multiprocess import process_worker, ParallelisationConfig, ParallelisationType
 from jax.tree_util import tree_flatten, tree_unflatten
 import jax.export
 
@@ -80,9 +80,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
 
         self.verbose = verbose
 
-        self.parallelisation: str = self.config.get("parallelisation", "none")
-        self.num_processes: int = self.config.get("num_processes", os.cpu_count())
-        self.pin_cpus: bool = self.config.get("pin_cpus", False)
+        self.parallelisation: ParallelisationConfig = self.config.get("parallelisation", ParallelisationConfig())
 
     @abstractmethod
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
@@ -128,7 +126,6 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         
     
     def run(self, rng_key: PRNGKey):
-        assert self.parallelisation in ("none", "multi-processing")
         # t0 = time()
         if self.verbose >= 2:
             tqdm.write("Start DCC:")
@@ -139,9 +136,10 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         task_queue = Queue()
         result_queue = Queue()
         threads: List[threading.Thread] = []
-        if self.parallelisation == "multi-processing":
-            for i in range(self.num_processes):
-                t = threading.Thread(target=process_worker, args=(task_queue, result_queue, i, i if self.pin_cpus else None), daemon=True)
+
+        if self.parallelisation.type == ParallelisationType.MultiProcessingCDU:
+            for i in range(self.parallelisation.num_workers):
+                t = threading.Thread(target=process_worker, args=(task_queue, result_queue, i, self.parallelisation), daemon=True)
                 t.start()
                 threads.append(t)
 
@@ -161,7 +159,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             if self.verbose >= 2:
                 tqdm.write(f"Iteration {self.iteration_counter}:")
 
-            if self.parallelisation == "none":
+            if self.parallelisation.type == ParallelisationType.Sequential:
                 for slp in tqdm(self.active_slps, total=len(self.active_slps), desc=f"Iteration {self.iteration_counter}", position=0):
                     rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
                     
@@ -172,31 +170,27 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     log_weight_estimate = self.estimate_log_weight(slp, slp_weight_estimate_key)
                     self.add_to_log_weight_estimates(slp, log_weight_estimate)
 
-            if self.parallelisation == "multi-processing":
+            if self.parallelisation.type == ParallelisationType.MultiProcessingCDU:
                 slp_weight_estimate_keys: List[jax.Array] = []
                 for slp_ix, slp in tqdm(enumerate(self.active_slps), total=len(self.active_slps), desc=f"Iteration {self.iteration_counter}", position=0):
                     rng_key, slp_inference_key, slp_weight_estimate_key = jax.random.split(rng_key, 3)
                     
                     inference_task = self.make_inference_task(slp, slp_inference_key)
                     
-                    # inference_task = InferenceTask(lambda x: x*2, (jax.random.normal(jax.random.PRNGKey(0), (10,)),))
+                    # exporting is not threadsafe becasue of global SampleContext
+                    exported_task = inference_task.export()
+    
+                    work_aux = slp_ix
+                    work = exported_task
+                    # work = (exported_fn.serialize(), tuple(flat_args))
 
-                    exported_fn, in_tree, out_tree = _export_flat(inference_task.f, ("cpu",), (), None)(*inference_task.args)
-                    flat_args, _in_tree = tree_flatten(inference_task.args)
-                    assert _in_tree == in_tree
-
-                    work_aux = (slp_ix, in_tree, out_tree)
-                    work = (exported_fn.serialize(), tuple(flat_args))
-                        
-
-                    task_queue.put(((work_aux, work)))
+                    task_queue.put(((work, work_aux)))
                     slp_weight_estimate_keys.append(slp_weight_estimate_key)
 
                 task_queue.join()
 
                 for _ in range(len(self.active_slps)):
-                    (slp_ix, in_tree, out_tree), response = result_queue.get()
-                    inference_result = tree_unflatten(out_tree, response)
+                    inference_result, slp_ix = result_queue.get()
                     assert isinstance(inference_result, InferenceResult)
                     slp = self.active_slps[slp_ix]
                     self.add_to_inference_results(slp, inference_result)

@@ -1,5 +1,6 @@
 from .abstract_dcc import *
 from .dcc_types import *
+from .cpu_multiprocess import *
 from .exact_dcc import *
 from .mc_dcc import *
 from .mcmc_dcc import *
