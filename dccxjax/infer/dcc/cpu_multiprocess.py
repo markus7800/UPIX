@@ -170,9 +170,6 @@ def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, pin: int |
     while True:
         try:
             work_aux, work = in_queue.get()
-
-            with open("tmp.pickle", "wb") as f:
-                pickle.dump(work, f)
                 
             write_task_transport_layer(p.stdin, work)
 

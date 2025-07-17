@@ -1,10 +1,10 @@
 from abc import abstractmethod
-from typing import List, Dict
-from dccxjax.types import FloatArray
+from typing import List, Dict, Optional
+from dccxjax.types import FloatArray, IntArray
 from dccxjax.core import Model, SLP
 from dccxjax.types import PRNGKey
-from dccxjax.infer.exact import Factor, compute_factors, get_greedy_elimination_order, variable_elimination
-from dccxjax.infer.dcc.abstract_dcc import InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
+from dccxjax.infer.exact import Factor, compute_factors, get_greedy_elimination_order, variable_elimination, get_supports
+from dccxjax.infer.dcc.abstract_dcc import InferenceTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
 from tqdm.auto import tqdm
 from dataclasses import dataclass
 import jax
@@ -16,6 +16,7 @@ __all__ = [
 ]
 
 
+@jax.tree_util.register_dataclass
 @dataclass
 class ExactInferenceResult(InferenceResult,LogWeightEstimate):
     factor: Factor
@@ -69,13 +70,8 @@ class ExactDCC(AbstractDCC[ExactDCCResult]):
         else:
             raise Exception("In SMCDCC we should perform one run of SMC before estimate_log_weight to reuse estimate")
     
-    def get_factors(self, slp: SLP) -> List[Factor]:
-        t0 = time.time()
-        factors = compute_factors(slp, True)
-        t1 = time.time()
-        if self.verbose >= 2:
-            tqdm.write(f"Computed factors in {t1-t0:.3f}s")
-        return factors
+    def get_factors(self, slp: SLP, supports: Dict[str, Optional[IntArray]]) -> List[Factor]:
+        return compute_factors(slp, supports, True)
     
     def get_elimination_order(self, slp: SLP, factors: List[Factor]) -> List[str]:
         t0 = time.time()
@@ -86,24 +82,33 @@ class ExactDCC(AbstractDCC[ExactDCCResult]):
             tqdm.write(f"Computed elimination order in {t1-t0:.3f}s")
         return elimination_order
     
-    def run_inference(self, slp: SLP, rng_key: PRNGKey) -> InferenceResult:
+    def make_inference_task(self, slp: SLP, rng_key: PRNGKey) -> InferenceTask:
         inference_results = self.inference_results.get(slp, [])
         if len(inference_results) > 0:
-            return inference_results[0]
-        else:
-            factors = self.get_factors(slp)
-            elimination_order = self.get_elimination_order(slp, factors)
-            t0 = time.time()
-            @jax.jit
-            def _ve_jitted(factors: List[Factor]):
-                return variable_elimination(factors, elimination_order)
-            result_factor, log_evidence = _ve_jitted(factors)
-            t1 = time.time()
-            if self.verbose >= 2:
-                tqdm.write(f"Performed variable_elimination in {t1-t0:.3f}s")
-                tqdm.write(f"Log-evidence: {log_evidence.item():.6f}")
-            
-            return ExactInferenceResult(result_factor, log_evidence)
+            def _return_last():
+                return inference_results[0]
+            return InferenceTask(_return_last, ())
+        else:            
+            supports = get_supports(slp)
+            def _compute_exact(supports):
+                t0 = time.time()
+                factors = self.get_factors(slp, supports)
+                t1 = time.time()
+                # if self.verbose >= 2:
+                #     tqdm.write(f"Computed factors in {t1-t0:.3f}s")
+                elimination_order = self.get_elimination_order(slp, factors)
+                t0 = time.time()
+                @jax.jit
+                def _ve_jitted(factors: List[Factor]):
+                    return variable_elimination(factors, elimination_order)
+                result_factor, log_evidence = _ve_jitted(factors)
+                t1 = time.time()
+                # if self.verbose >= 2:
+                #     tqdm.write(f"Performed variable_elimination in {t1-t0:.3f}s")
+                #     tqdm.write(f"Log-evidence: {log_evidence.item():.6f}")
+                
+                return ExactInferenceResult(result_factor, log_evidence)
+            return InferenceTask(_compute_exact, (supports, ))
                 
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: FloatArray):
         inactive_slps.extend(active_slps)

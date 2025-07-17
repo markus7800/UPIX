@@ -9,7 +9,7 @@ if len(sys.argv) > 1:
         
 from dccxjax import *
 import dccxjax.distributions as dist
-from typing import List
+from typing import List, Dict, Optional
 import jax
 import jax.numpy as jnp
 import time
@@ -73,27 +73,21 @@ class Config(ExactDCC):
     #         tqdm.write(f"Computed factors in {t1-t0:.3f}s")
     #     return factors
     
-    def get_factors(self, slp: SLP) -> List[Factor]:
-        t0 = time.time()
-        
+    def get_factors(self, slp: SLP, supports: Dict[str, Optional[IntArray]]) -> List[Factor]:        
         N = int(slp.decision_representative["N"].item())
-        
         selectors: List[VariableSelector] = []
         selectors.append(SingleVariable("N"))
         for addr in sorted([f"ball_{n}" for n in range(N)]):
             selectors.append(SingleVariable(addr))
         selectors.append(PrefixSelector("draw_"))
-        factors = compute_factors_optimised(slp, [selectors], True)
+        return compute_factors_optimised(slp, [selectors], supports, True)
         
-        
-        t1 = time.time()
-        
-        if self.verbose >= 2:
-            tqdm.write(f"Computed factors in {t1-t0:.3f}s")
-        return factors
     
     
-config = Config(m, verbose=2)
+config = Config(m, verbose=2,
+    parallelisation = "multi-processing",
+    num_processes = 5,
+    pin_cpus = False,)
 
 result = timed(config.run)(jax.random.PRNGKey(0))
 result.pprint(sortkey="slp")

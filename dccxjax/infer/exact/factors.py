@@ -13,6 +13,7 @@ from dccxjax.infer.variable_selector import VariableSelector
 from dccxjax.utils import to_shaped_arrays_str_short
 
 __all__ = [
+    "get_supports",
     "compute_factors",
     "compute_factors_optimised",
     "Factor",
@@ -215,10 +216,10 @@ def factor_sum_out_addr(A: Factor, address_to_sum_out: str) -> Factor:
     table = jax.scipy.special.logsumexp(A.table, axis=axis)
     return Factor(variables, table)
   
-def compute_factors(slp: SLP, jit: bool = True):
+def compute_factors(slp: SLP, supports: Dict[str, Optional[IntArray]], jit: bool = True):
     all_factors_fn = make_all_factors_fn(slp)
     factor_prototypes = all_factors_fn(slp.decision_representative)
-    supports = get_supports(slp)
+    # supports = get_supports(slp)
     def _get_support(addr: str) -> IntArray:
         s = supports[addr]
         if s is None:
@@ -248,10 +249,10 @@ def compute_factors(slp: SLP, jit: bool = True):
     return factors
     
 
-def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelector]], jit: bool = True):
+def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelector]], supports: Dict[str,Optional[IntArray]], jit: bool = True):
     all_factors_fn = make_all_factors_fn(slp)
     factor_prototypes = all_factors_fn(slp.decision_representative)
-    supports = get_supports(slp)
+    # supports = get_supports(slp)
     def _get_support(addr: str) -> IntArray:
         s = supports[addr]
         if s is None:
@@ -280,7 +281,9 @@ def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelecto
                     count += 1
                     if maybe_variable_supports[i] is not None:
                         # if another variable was already linked to this meshgrid dimension, they must have the same support
-                        assert (maybe_variable_supports[i] == support).all(), f"Variables that match to same selector must have same support {addr}: {maybe_variable_supports[i]} vs {support}"
+                        # assert (maybe_variable_supports[i] == support).all(), f"Variables that match to same selector must have same support {addr}: {maybe_variable_supports[i]} vs {support}"
+                        # cannot check if jitted
+                        pass
                     else:
                         maybe_variable_supports[i] = support
             # a variable should be linked to at most one meshdgrid dimension
