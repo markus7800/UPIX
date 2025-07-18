@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["dccxjax", "dccxjax.core", "dccxjax.distributions", "dccxjax.infer", "dccxjax.viz"]
+package-dir = {"dccxjax" = "dccxjax"}
 
 [project]
 name = "dccxjax"
