@@ -1,6 +1,4 @@
 import sys
-sys.path.insert(0, ".")
-
 if len(sys.argv) > 1:
     if sys.argv[1].endswith("cpu"):
         print("Force run on CPU.")

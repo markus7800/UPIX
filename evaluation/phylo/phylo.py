@@ -1,6 +1,3 @@
-import sys
-sys.path.append(".")
-
 from dccxjax.all import *
 import dccxjax.distributions as dist
 import jax

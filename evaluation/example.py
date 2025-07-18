@@ -1,6 +1,3 @@
-import sys
-sys.path.insert(0, ".")
-
 from dccxjax.all import *
 from dccxjax.core import SLP
 import dccxjax.distributions as dist

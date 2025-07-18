@@ -2,7 +2,6 @@ import jax
 from typing import Dict, Union, NamedTuple, TypeVar, Generic, Callable
 from dataclasses import dataclass
 from .utils import broadcast_jaxtree
-from jax import Array
 from jax.typing import ArrayLike
 
 __all__ = [
@@ -36,13 +35,13 @@ __all__ = [
 # ]
 
 # just for annotation
-BoolArray = Array
-IntArray = Array
-FloatArray = Array
+BoolArray = jax.Array
+IntArray = jax.Array
+FloatArray = jax.Array
 
-BoolArrayLike = bool | Array
-IntArrayLike = int | Array
-FloatArrayLike = float | Array
+BoolArrayLike = bool | jax.Array
+IntArrayLike = int | jax.Array
+FloatArrayLike = float | jax.Array
 
 
 

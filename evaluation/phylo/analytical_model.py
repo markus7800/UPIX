@@ -1,6 +1,3 @@
-import sys
-sys.path.append(".")
-
 from dccxjax.all import *
 import dccxjax.distributions as dist
 import jax
@@ -35,7 +32,7 @@ mcmc_obj = MCMC(
     n_chains,
     collect_inference_info=True,
     return_map=lambda x: x.position,
-    progress_bar=True
+    show_progress=True
 )
 
 init_positions = StackedTrace(broadcast_jaxtree(slp.decision_representative, (n_chains,)), n_chains)
