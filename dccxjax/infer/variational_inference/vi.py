@@ -55,7 +55,7 @@ class GuideGenerateCtx(GuideContext):
         if observed is not None:
             raise Exception("Observations not supported for guides")
         self.rng_key, sample_key = jax.random.split(self.rng_key)
-        value = distribution.numpyro_base.rsample(sample_key)
+        value = cast(DIST_SUPPORT, distribution.numpyro_base.rsample(sample_key))
         self.X[address] = value
         self.log_prob += distribution.log_prob(value)
         return value
@@ -154,7 +154,7 @@ class MeanfieldNormalGuide(Guide):
        self.omega = params[self.n_latents:]
     def sample_and_log_prob(self, rng_key: PRNGKey, shape = ()) -> Tuple[Trace, FloatArray]:
         d = Normal(self.mu, jax.lax.exp(self.omega))
-        x = d.numpyro_base.rsample(rng_key, shape)
+        x = d.rsample(rng_key, shape)
         lp = d.log_prob(x).sum(axis=-1)
         # print(x.shape) # shape + (self.n_latents,)
         if shape == ():
@@ -198,7 +198,7 @@ class FullRankNormalGuide(Guide):
     def sample_and_log_prob(self, rng_key: PRNGKey, shape = ()) -> Tuple[Trace, FloatArray]:
         scale_tril = self.transform_to_cholesky(self.L)
         d = MultivariateNormal(self.mu, scale_tril=scale_tril)
-        x = d.numpyro_base.rsample(rng_key, shape)
+        x = d.rsample(rng_key, shape)
         lp = d.log_prob(x)
         if shape == ():
             X = self.unravel_fn(x) | self.Y
@@ -237,6 +237,7 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
                 X, lq = guide.sample_and_log_prob(sample_key)
                 lp = log_prob_fn(X)
                 return elbo + (lp - lq), None
+            # TODO: vmap
             elbo, _ = jax.lax.scan(_elbo_step, jnp.array(0., float), jax.random.split(rng_key, L))
             elbo = elbo / L
         return elbo

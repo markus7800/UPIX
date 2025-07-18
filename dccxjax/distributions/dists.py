@@ -48,11 +48,18 @@ class Distribution(Generic[DIST_SUPPORT,DIST_SUPPORT_LIKE]):
         self.numpyro_base = numpyro_base
     def sample(self, key: PRNGKey, sample_shape=()) -> DIST_SUPPORT:
         return self.numpyro_base.sample(key, sample_shape=sample_shape) # type: ignore
+    def rsample(self, key: PRNGKey, sample_shape=()) -> DIST_SUPPORT:
+        return self.numpyro_base.rsample(key, sample_shape=sample_shape) # type: ignore
     def log_prob(self, value: DIST_SUPPORT | DIST_SUPPORT_LIKE) -> FloatArray:
         return self.numpyro_base.log_prob(value)
     def biject_so_support(self) -> Transform[FloatArray, DIST_SUPPORT]:
         return Transform(numpyro_dists.biject_to(self.numpyro_base.support))
-
+    @property
+    def mean(self) -> DIST_SUPPORT:
+        return self.numpyro_base.mean # type: ignore
+    @property
+    def variance(self) -> DIST_SUPPORT:
+        return self.numpyro_base.variance # type: ignore
 
 class Normal(Distribution[FloatArray,FloatArrayLike]):
     def __init__(self, loc: FloatArrayLike, scale: FloatArrayLike) -> None:

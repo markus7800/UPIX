@@ -137,7 +137,7 @@ class VIDCC(AbstractDCC[VIDCCResult]):
         def _f_run_post_info(result: InferenceResult):
             assert isinstance(result, ADVIInferenceResult)
             if self.share_progress_bar:
-                return f"Finished ADIV for {slp.formatted()}"
+                return f"Finished ADVI for {slp.formatted()}"
             else:
                 return ""
             

@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields, field
-from dccxjax import FloatArrayLike, FloatArray
+from dccxjax.types import FloatArrayLike, FloatArray
 import dccxjax.distributions as dist
 from typing import List
 
@@ -59,7 +59,7 @@ class GPKernel(ABC):
     
 
 def mvnormal_quantiles(distribution: dist.MultivariateNormal, quantiles: List[float]):
-    broadcasted_normal = dist.Normal(distribution.numpyro_base.mean, jnp.sqrt(distribution.numpyro_base.variance))
+    broadcasted_normal = dist.Normal(distribution.mean, jnp.sqrt(distribution.variance))
     return [broadcasted_normal.numpyro_base.icdf(q) for q in quantiles]
 def mvnormal_quantile(distribution: dist.MultivariateNormal, quantile: float):
     return mvnormal_quantiles(distribution, [quantile])[0]
