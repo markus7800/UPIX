@@ -2,7 +2,7 @@ import pickle
 import jax
 import jax.export
 
-with open("tmp.pickle", "rb") as f:
+with open("tmp2.pickle", "rb") as f:
     work = pickle.load(f)
     jax_serialised_fn, args = work
 

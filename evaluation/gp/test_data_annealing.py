@@ -5,7 +5,7 @@ from data import *
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-from dccxjax import *
+from dccxjax.all import *
 import dccxjax.distributions as dist
 import numpyro.distributions as numpyro_dist
 from kernels import *

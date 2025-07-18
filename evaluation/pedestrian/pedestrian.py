@@ -9,7 +9,7 @@ if len(sys.argv) > 1:
         set_platform("cpu")
 
 
-from dccxjax import *
+from dccxjax.all import *
 import jax
 import jax.numpy as jnp
 import dccxjax.distributions as dist

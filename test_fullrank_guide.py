@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpyro.distributions as dist
 from typing import Callable
 from time import time
-from dccxjax import *
+from dccxjax.all import *
 import dccxjax.distributions as dist
 import dccxjax.distributions.constraints as constraints
 from dccxjax.infer.optimizers import Adagrad

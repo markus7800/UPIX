@@ -1,4 +1,4 @@
-from dccxjax import *
+from dccxjax.all import *
 import jax
 import dccxjax.distributions as dist
 

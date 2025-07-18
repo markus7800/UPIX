@@ -1,4 +1,4 @@
-from dccxjax import *
+from dccxjax.all import *
 import dccxjax.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt

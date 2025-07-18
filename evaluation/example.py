@@ -1,7 +1,7 @@
 import sys
 sys.path.insert(0, ".")
 
-from dccxjax import *
+from dccxjax.all import *
 from dccxjax.core import SLP
 import dccxjax.distributions as dist
 import jax.numpy as jnp

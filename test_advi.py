@@ -70,7 +70,7 @@ ps = ps / true_Z
 
 N = 1_000_000
 
-from dccxjax import *
+from dccxjax.all import *
 import dccxjax.distributions as dist
 import dccxjax.distributions.constraints as constraints
 from dccxjax.infer.optimizers import Adagrad

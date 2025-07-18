@@ -1,5 +1,5 @@
 
-from dccxjax import *
+from dccxjax.all import *
 
 regime = MCMCSteps(
     MCMCStep(SingleVariable("x"), MH()),

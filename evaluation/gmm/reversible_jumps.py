@@ -1,4 +1,4 @@
-from dccxjax import *
+from dccxjax.all import *
 import numpyro.distributions as numpyro_dists
 from typing import NamedTuple, Callable
 from jax.flatten_util import ravel_pytree

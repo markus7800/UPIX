@@ -1,4 +1,4 @@
-from dccxjax import *
+from dccxjax.all import *
 import dccxjax.distributions as dist
 import jax.numpy as jnp
 import matplotlib.pyplot as plt

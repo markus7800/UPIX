@@ -11,7 +11,7 @@ from data import *
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-from dccxjax import *
+from dccxjax.all import *
 import dccxjax.distributions as dist
 from kernels import *
 from dataclasses import fields
@@ -372,10 +372,11 @@ vi_dcc_obj = VIConfig(m, verbose=2,
     advi_optimizer=Adam(0.005), # Adam(0.005)
     elbo_estimate_n_samples=100, # 100
     successive_halving=SuccessiveHalving(1_000_000, 10),
-    # parallelisation = ParallelisationConfig(
-    #     type=ParallelisationType.MultiProcessingCPU,
-    #     num_workers=10
-    # )
+    parallelisation = ParallelisationConfig(
+        type=ParallelisationType.MultiProcessingCPU,
+        num_workers=32,
+        cpu_affinity=True
+    )
 )
 
 do_vi = True

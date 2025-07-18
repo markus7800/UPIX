@@ -11,7 +11,7 @@ if len(sys.argv) > 1:
     if sys.argv[1] == "cpu":
         os.environ["JAX_PLATFORMS"] = "cpu"
 
-from dccxjax import *
+from dccxjax.all import *
 import jax
 import jax.numpy as jnp
 import dccxjax.distributions as dist

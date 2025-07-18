@@ -1,5 +1,5 @@
 #%%
-from dccxjax import *
+from dccxjax.all import *
 from dccxjax.core.samplecontext import GenerateCtx
 import dccxjax.distributions as dist
 import jax.numpy as jnp

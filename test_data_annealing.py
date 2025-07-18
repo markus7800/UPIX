@@ -5,7 +5,7 @@ from typing import Callable
 from time import time
 from dccxjax.infer.smc import *
 
-from dccxjax import *
+from dccxjax.all import *
 from dccxjax.infer.ais import *
 from dccxjax.infer.mcmc import get_mcmc_kernel, MCMCState
 import dccxjax.distributions as dist

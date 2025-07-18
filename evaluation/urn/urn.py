@@ -7,13 +7,14 @@ if len(sys.argv) > 1:
         from dccxjax.backend import *
         set_platform("cpu")
         
-from dccxjax import *
+from dccxjax.all import *
 import dccxjax.distributions as dist
 from typing import List, Dict, Optional
 import jax
 import jax.numpy as jnp
 import time
 from tqdm.auto import tqdm
+
 
 @model
 def urn(obs: IntArray, biased: bool):
@@ -85,9 +86,10 @@ class Config(ExactDCC):
     
     
 config = Config(m, verbose=2,
-    # parallelisation = ParallelisationConfig(
-    #     type=ParallelisationType.MultiProcessingCPU,
-    #     num_workers=15),
+    parallelisation = ParallelisationConfig(
+        type=ParallelisationType.MultiProcessingCPU,
+        num_workers=15,
+        cpu_affinity=True),
     jit_inference=True,
     share_progress_bar=False
 )

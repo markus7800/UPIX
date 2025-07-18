@@ -1,5 +1,5 @@
 
-from dccxjax import *
+from dccxjax.all import *
 from dccxjax.core.branching_tracer import trace_branching, retrace_branching, BranchingDecisions
 import dccxjax.distributions as dist
 import jax

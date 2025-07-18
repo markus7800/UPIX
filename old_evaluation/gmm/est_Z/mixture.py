@@ -1,5 +1,5 @@
 import jax.scipy.special
-from dccxjax import *
+from dccxjax.all import *
 import numpyro.distributions as dist
 from data import *
 

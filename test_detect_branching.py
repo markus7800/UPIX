@@ -1,6 +1,6 @@
 
 import jax
-from dccxjax import *
+from dccxjax.all import *
 import jax._src.core as jax_core
 import jax.numpy as jnp
 from typing import List, Tuple, Any

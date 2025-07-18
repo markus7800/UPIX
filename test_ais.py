@@ -327,7 +327,7 @@ def sigmoid(z):
 # print(f"Finished AIS in {t1-t0:.3f}s")
 
 
-from dccxjax import *
+from dccxjax.all import *
 from dccxjax.infer.ais import *
 from dccxjax.infer.mcmc import get_mcmc_kernel, MCMCState
 import dccxjax.distributions as dist

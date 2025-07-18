@@ -1,4 +1,4 @@
-from dccxjax import *
+from dccxjax.all import *
 import numpyro.distributions as dist
 
 # for 0...K \ j_star returns numbers in ascending order A = 0...K+1, where j1 and j2 are missing
