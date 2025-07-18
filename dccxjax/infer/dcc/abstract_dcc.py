@@ -203,7 +203,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     for slp_ix, slp in enumerate(self.active_slps):            
                         slp_inference_key = slp_weight_inference_keys[slp_ix]
                         inference_task = self.make_inference_task(slp, slp_inference_key)            
-                        task_queue.put(((inference_task.export(), slp_ix))) # exporting is not thread safe becasue of global SampleContext
+                        task_queue.put(((inference_task.export(), slp_ix)))
                 inference_task_gen_thread = threading.Thread(target=_make_inference_tasks, args=(slp_weight_inference_keys,), daemon=True)
                 inference_task_gen_thread.start()
 

@@ -14,6 +14,17 @@ __all__ = [
     "param"
 ]
 
+import threading
+class SampleContextStore(threading.local):
+    def __init__(self):
+        self.ctx: Optional[SampleContext] = None
+    def get(self):
+        return self.ctx
+    def set(self, ctx: Optional["SampleContext"]):
+        self.ctx = ctx
+
+SAMPLE_CONTEXT_STORE = SampleContextStore()
+
 class SampleContext(ABC):
     @abstractmethod
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
@@ -22,25 +33,26 @@ class SampleContext(ABC):
     def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         raise NotImplementedError
     def __enter__(self):
-        global SAMPLE_CONTEXT
-        SAMPLE_CONTEXT = self
+        global SAMPLE_CONTEXT_STORE
+        SAMPLE_CONTEXT_STORE.set(self)
         return self
     def __exit__(self, *args):
-        global SAMPLE_CONTEXT
-        SAMPLE_CONTEXT = None
+        global SAMPLE_CONTEXT_STORE
+        SAMPLE_CONTEXT_STORE.set(None)
 
-SAMPLE_CONTEXT: Optional[SampleContext] = None
 def sample(address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
-    global SAMPLE_CONTEXT
-    if SAMPLE_CONTEXT is not None:
-        return SAMPLE_CONTEXT.sample(address, distribution, observed)
+    global SAMPLE_CONTEXT_STORE
+    ctx = SAMPLE_CONTEXT_STORE.get()
+    if ctx is not None:
+        return ctx.sample(address, distribution, observed)
     else:
         raise Exception("Probabilistic program run without sample context")
     
 def logfactor(f: FloatArrayLike, address: str = "__log_factor__") -> None:
-    global SAMPLE_CONTEXT
-    if SAMPLE_CONTEXT is not None:
-        return SAMPLE_CONTEXT.logfactor(f, address)
+    global SAMPLE_CONTEXT_STORE
+    ctx = SAMPLE_CONTEXT_STORE.get()
+    if ctx is not None:
+        return ctx.logfactor(f, address)
     else:
         raise Exception("Probabilistic program run without sample context")
 
@@ -254,9 +266,10 @@ class GuideContext(SampleContext, ABC):
         raise Exception("logfactor not supported for guides")
     
 def param(address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:
-    global SAMPLE_CONTEXT
-    if SAMPLE_CONTEXT is not None:
-        assert isinstance(SAMPLE_CONTEXT, GuideContext)
-        return SAMPLE_CONTEXT.param(address, init_value, constraint)
+    global SAMPLE_CONTEXT_STORE
+    ctx = SAMPLE_CONTEXT_STORE.get()
+    if ctx is not None:
+        assert isinstance(ctx, GuideContext)
+        return ctx.param(address, init_value, constraint)
     else:
         raise Exception("Probabilistic program run without guide context")

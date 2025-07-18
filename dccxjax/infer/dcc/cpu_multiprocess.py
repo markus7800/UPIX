@@ -138,22 +138,23 @@ def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, config: Pa
     while True:
         try:
             task, task_aux = in_queue.get()
-            assert isinstance(task, ExportedJaxTask)
+            assert isinstance(task, (JaxTask, ExportedJaxTask))
+            exported_task = task.export() if isinstance(task, JaxTask) else task
             if config.verbose:
-                pre_info = task.pre_info()
+                pre_info = exported_task.pre_info()
                 if pre_info: tqdm.write(f"Worker {worker_id}: " + pre_info)
                 
-            flat_args, _in_tree = tree_flatten(task.args)
-            assert _in_tree == task.in_tree
+            flat_args, _in_tree = tree_flatten(exported_task.args)
+            assert _in_tree == exported_task.in_tree
                     
-            write_task_transport_layer(p.stdin, (task.exported_fn.serialize(), tuple(flat_args)))
+            write_task_transport_layer(p.stdin, (exported_task.exported_fn.serialize(), tuple(flat_args)))
 
             response = read_transport_layer(p.stdout)
             # print("got response:", response)
             
-            result = tree_unflatten(task.out_tree, response)
+            result = tree_unflatten(exported_task.out_tree, response)
             if config.verbose:
-                post_info = task.post_info(result)
+                post_info = exported_task.post_info(result)
                 if post_info: tqdm.write(f"Worker {worker_id}: " + post_info)
 
             out_queue.put((result, task_aux))
