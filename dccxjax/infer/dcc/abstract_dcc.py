@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from dccxjax.infer.dcc.dcc_types import InferenceResult, LogWeightEstimate, JaxTask, InferenceTask, EstimateLogWeightTask
 import os
 import threading
-from queue import Queue, ShutDown
+from queue import Queue
 from dccxjax.infer.dcc.cpu_multiprocess import process_worker, ParallelisationConfig, ParallelisationType
 from jax.tree_util import tree_flatten, tree_unflatten
 import jax.export
@@ -239,10 +239,10 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             rng_key, update_key = jax.random.split(rng_key)
             self.update_active_slps(self.active_slps, self.inactive_slps, self.inference_results, self.log_weight_estimates, update_key)
         
-        task_queue.shutdown()
-        result_queue.shutdown()
-        for t in threads:
-            t.join()
+        # task_queue.shutdown()
+        # result_queue.shutdown()
+        # for t in threads:
+        #     t.join()
 
         if self.shared_progress_bar is not None:
             self.shared_progress_bar.close()

@@ -61,7 +61,7 @@ import jax.numpy as jnp
 import pickle
 import threading
 from typing import IO, List, Callable, Tuple, Dict, Generic, TypeVar
-from queue import Queue, ShutDown
+from queue import Queue
 import time
 import subprocess
 import sys
@@ -160,10 +160,10 @@ def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, config: Pa
             out_queue.put((result, task_aux))
             in_queue.task_done()
 
-        except ShutDown:
-            # By default, get() on a shut down queue will only raise once the queue is empty
-            # print("shutdown")
-            break
+        # except ShutDown:
+        #     # By default, get() on a shut down queue will only raise once the queue is empty
+        #     # print("shutdown")
+        #     break
         except Exception as e:
             print("Worker error:", e)
             in_queue.task_done()
