@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["dccxjax"]
+
+[project]
+name = "dccxjax"
+version = "0.0.1"
+requires-python = ">=3.13"
+dependencies = [
+    "tqdm>=4.67.1",
+    "matplotlib>=3.10.3",
+    "flatbuffers>=25.2.10",
+    "numpyro>=0.18.0",
+    "jax==0.6.2"
+]

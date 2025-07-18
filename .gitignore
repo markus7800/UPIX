@@ -7,3 +7,4 @@ evaluation/pedestrian/nonparametric-hmc/samples_produced
 *.pdf
 *.bin
 tmp.txt
+dccxjax.egg-info
