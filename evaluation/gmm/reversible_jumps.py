@@ -136,9 +136,10 @@ def merge_randomness_logQ(aux: MergeAux, K: int):
 
 def compute_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2):
     return (w * (mu2 - mu1) * var1 * var2) / (u2 * (1 - jnp.square(u2)) * u3 * (1 - u3) * var)
-
 def compute_log_abs_det_J_split(w, mu, var, u1, u2, u3, w1, w2, mu1, mu2, var1, var2):
-    return jnp.log(w) + jnp.log((mu2 - mu1) / u2) + jnp.log(var1) + jnp.log(var2) - jnp.log(1 - jnp.square(u2)) - jnp.log(u3) - jnp.log(1 - u3) - jnp.log(var)
+    d = (mu2 - mu1)
+    r = jax.lax.select(d == u2, jax.lax.full_like(d, 1.), d / u2) # handle u2 == 0, mu1 == mu2
+    return jnp.log(w) + jnp.log(r) + jnp.log(var1) + jnp.log(var2) - jnp.log(1 - jnp.square(u2)) - jnp.log(u3) - jnp.log(1 - u3) - jnp.log(var)
 
 def split_move(X: Trace, lp: FloatArrayLike, rng_key: PRNGKey, K: int, ys: jax.Array, model_log_prob: Callable[[Trace],FloatArray], check=False):
     split_aux, split_params = split_randomness(rng_key, X, K, ys)
