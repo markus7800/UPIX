@@ -1,4 +1,3 @@
-
 worker_script = """
 import sys
 import pickle
@@ -125,7 +124,8 @@ def write_close_transport_layer(writer: IO[bytes]):
 
 
 
-def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, config: ParallelisationConfig):
+def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, config: ParallelisationConfig):
+    assert config.type == ParallelisationType.MultiProcessingCPU
     # print("Start worker with id", worker_id)
     p = subprocess.Popen(
         (["taskset",  "-c", str(worker_id)] if config.cpu_affinity else []) + [sys.executable,  "-c", worker_script, str(worker_id)],
@@ -169,5 +169,29 @@ def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, config: Pa
         except Exception as e:
             print("Worker error:", e)
             in_queue.task_done()
-    write_close_transport_layer(p.stdin)
-    p.wait()
+            
+def start_worker_thread(in_queue: Queue, out_queue: Queue, worker_id: int, config: ParallelisationConfig):
+    assert config.type == ParallelisationType.MultiThreadingJAXDevices
+    thread_device = jax.devices()[worker_id]
+
+    while True:
+        task, task_aux = in_queue.get()
+        assert isinstance(task, JaxTask)
+        if config.verbose:
+            pre_info = task.pre_info()
+            if pre_info: tqdm.write(f"Thread {worker_id}: " + pre_info)
+
+        t0 = time.monotonic()
+        device_args = jax.device_put(task.args, thread_device)
+        device_results = task.f(*device_args)
+        elapsed_time = time.monotonic() - t0
+        leaf = jax.tree.leaves(device_results)[0]
+        assert leaf.device == thread_device
+        if config.verbose:
+            post_info = task.post_info(device_results)
+            if post_info: tqdm.write(f"Worker {worker_id}: " + post_info + f"\n    finished in {elapsed_time:.3f}s on device {thread_device}")
+
+        out_queue.put((device_results, task_aux))
+        in_queue.task_done()
+
+        del task

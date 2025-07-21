@@ -5,15 +5,24 @@ from jax._src.core import full_lower
 import contextlib
 from typing import Sequence, TypeVar, List, Optional, Callable
 from tqdm.contrib.logging import logging_redirect_tqdm
+from tqdm.auto import tqdm
 import os
 
 __all__ = [
+    "get_backend",
+    "get_default_device",
     "setup_logging",
     "track_compilation_time",
     "CompilationTimeTracker",
     "broadcast_jaxtree",
     "timed"
 ]
+
+import jax.extend.backend
+def get_backend():
+    return jax.extend.backend.get_backend()
+def get_default_device():
+    return jax.extend.backend.get_default_device()
 
 logger = logging.getLogger("dccxjax")
 
@@ -107,6 +116,8 @@ class CompilationTimeTracker(EventDurationListenerWithMetadata):
         if event == JAXPR_TO_MLIR_MODULE_EVENT:
             self.lower_time += duration_secs
         if event == BACKEND_COMPILE_EVENT:
+            # fun_name = kwargs["fun_name"]
+            # tqdm.write(f"Compiled {fun_name} in {duration_secs:.3f}s")
             self.compile_time += duration_secs
 
 @contextlib.contextmanager

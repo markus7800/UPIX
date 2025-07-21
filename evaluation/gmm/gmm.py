@@ -233,19 +233,19 @@ class StaticDCCConfig(DCCConfig):
         inactive_slps.extend(active_slps)
         active_slps.clear()
 
-    def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
-        return {slp: jnp.array(0., float) for slp in log_weight_estimates.keys()}
+    # def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
+    #     return {slp: jnp.array(0., float) for slp in log_weight_estimates.keys()}
 
 
 
-dcc_obj = StaticDCCConfig(m, verbose=2,
+dcc_obj = StaticDCCConfig(m, verbose=0,
               mcmc_n_chains=100,
               mcmc_n_samples_per_chain=25_000,
               mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=1000,
-            #   parallelisation = ParallelisationConfig(
-            #       type=ParallelisationType.MultiProcessingCPU,
-            #       num_workers=1)
+              parallelisation = ParallelisationConfig(
+                  type=ParallelisationType.MultiThreadingJAXDevices,
+                  num_workers=1)
               )
 
 # takes ~185s for 10 * 25_000 * 11 samples

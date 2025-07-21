@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
 from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray
+from dccxjax.utils import get_backend, get_default_device
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -10,7 +11,7 @@ from dccxjax.infer.dcc.dcc_types import InferenceResult, LogWeightEstimate, JaxT
 import os
 import threading
 from queue import Queue
-from dccxjax.infer.dcc.cpu_multiprocess import process_worker, ParallelisationConfig, ParallelisationType
+from dccxjax.infer.dcc.cpu_multiprocess import start_worker_process, start_worker_thread, ParallelisationConfig, ParallelisationType
 from jax.tree_util import tree_flatten, tree_unflatten
 import jax.export
 import time
@@ -135,8 +136,6 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
     
     def run(self, rng_key: PRNGKey):
         # t0 = time()
-        if self.verbose >= 2:
-            tqdm.write("Start DCC:")
 
         self.active_slps: List[SLP] = []
         self.inactive_slps: List[SLP] = []
@@ -146,12 +145,21 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         threads: List[threading.Thread] = []
 
             
+        if self.parallelisation.type == ParallelisationType.Sequential:
+            tqdm.write(f"Start DCC - parallelisation=Sequential(device={get_default_device()}):")
         if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
+            tqdm.write(f"Start DCC - parallelisation=MultiProcessingCPU(num_workers={self.parallelisation.num_workers}):")
             for i in range(self.parallelisation.num_workers):
-                t = threading.Thread(target=process_worker, args=(task_queue, result_queue, i, self.parallelisation), daemon=True)
+                t = threading.Thread(target=start_worker_process, args=(task_queue, result_queue, i, self.parallelisation), daemon=True)
                 t.start()
                 threads.append(t)
-
+        if self.parallelisation.type == ParallelisationType.MultiThreadingJAXDevices:
+            tqdm.write(f"Start DCC - parallelisation=MultiThreadingJAXDevices(devices={jax.devices()}):")
+            assert self.parallelisation.num_workers <= len(jax.devices())
+            for i in range(self.parallelisation.num_workers):
+                t = threading.Thread(target=start_worker_thread, args=(task_queue, result_queue, i, self.parallelisation), daemon=True)
+                t.start()
+                threads.append(t)
 
         self.inference_method_cache: Dict[SLP, Any] = dict()
 
@@ -198,7 +206,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     self.add_to_log_weight_estimates(slp, log_weight_estimate)
                     outer_bar.update()
 
-            if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
+            if (self.parallelisation.type == ParallelisationType.MultiProcessingCPU or 
+                self.parallelisation.type == ParallelisationType.MultiThreadingJAXDevices):
                 
                 slp_weight_inference_keys: List[jax.Array] = []
                 slp_weight_estimate_keys: List[jax.Array] = []
@@ -210,8 +219,11 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 def _make_inference_tasks(slp_weight_inference_keys: List[jax.Array]):
                     for slp_ix, slp in enumerate(self.active_slps):            
                         slp_inference_key = slp_weight_inference_keys[slp_ix]
-                        inference_task = self.make_inference_task(slp, slp_inference_key)            
-                        task_queue.put(((inference_task.export(), slp_ix)))
+                        inference_task = self.make_inference_task(slp, slp_inference_key)    
+                        if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
+                            task_queue.put((inference_task.export(), slp_ix))
+                        else:        
+                            task_queue.put((inference_task, slp_ix))
                         del inference_task
                 inference_task_gen_thread = threading.Thread(target=_make_inference_tasks, args=(slp_weight_inference_keys,), daemon=True)
                 inference_task_gen_thread.start()
@@ -230,7 +242,10 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     for slp_ix, slp in enumerate(self.active_slps):
                         slp_weight_estimate_key = slp_weight_estimate_keys[slp_ix]
                         log_weight_estimate_task = self.make_estimate_log_weight_task(slp, slp_weight_estimate_key)
-                        task_queue.put(((log_weight_estimate_task.export(), slp_ix)))
+                        if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
+                            task_queue.put((log_weight_estimate_task.export(), slp_ix))
+                        else:
+                            task_queue.put((log_weight_estimate_task, slp_ix))
                         del log_weight_estimate_task
                 estimate_log_weight_task_gen_thread = threading.Thread(target=_make_estimate_log_weight_tasks, args=(slp_weight_estimate_keys,), daemon=True)
                 estimate_log_weight_task_gen_thread.start()
@@ -244,6 +259,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     self.add_to_log_weight_estimates(slp, log_weight_estimate_result)
                     outer_bar.update()
                 estimate_log_weight_task_gen_thread.join()
+
+            
             
 
             rng_key, update_key = jax.random.split(rng_key)
