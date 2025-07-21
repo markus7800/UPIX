@@ -89,13 +89,25 @@ from jax._src.dispatch import JAXPR_TRACE_EVENT, JAXPR_TO_MLIR_MODULE_EVENT, BAC
 
 class CompilationTimeTracker(EventDurationListenerWithMetadata):
     def __init__(self) -> None:
-        self.total_time = 0.
-    def get_total_compilation_time_secs(self):
-        return self.total_time
+        self.trace_time = 0.
+        self.lower_time = 0.
+        self.compile_time = 0.
+    def get_trace_time_secs(self):
+        return self.trace_time
+    def get_lower_time_secs(self):
+        return self.lower_time
+    def get_compile_time_secs(self):
+        return self.compile_time
+    def get_total_time_secs(self):
+        return self.trace_time + self.lower_time + self.compile_time
     def __call__(self, event: str, duration_secs: float,
                **kwargs: str | int) -> None:
-        if event in (JAXPR_TRACE_EVENT, JAXPR_TO_MLIR_MODULE_EVENT, BACKEND_COMPILE_EVENT):
-            self.total_time += duration_secs
+        if event == JAXPR_TRACE_EVENT:
+            self.trace_time += duration_secs
+        if event == JAXPR_TO_MLIR_MODULE_EVENT:
+            self.lower_time += duration_secs
+        if event == BACKEND_COMPILE_EVENT:
+            self.compile_time += duration_secs
 
 @contextlib.contextmanager
 def track_compilation_time():
@@ -125,8 +137,9 @@ def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...
         cpu_count = os.cpu_count()
         print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
         if compilation:
-            comp_time = compilation_time_tracker.get_total_compilation_time_secs()
-            print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (wall_time) * 100:.2f}%)")
+            comp_time = compilation_time_tracker.get_total_time_secs()
+            print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (wall_time) * 100:.2f}%)", end="")
+            print(f"    (trace={compilation_time_tracker.get_trace_time_secs():.3f}s, lower={compilation_time_tracker.get_lower_time_secs():.3f}s, compile={compilation_time_tracker.get_compile_time_secs():.3f}s)")
             _unregister_event_duration_listener_by_callback(compilation_time_tracker)
         return out
     return wrapped
