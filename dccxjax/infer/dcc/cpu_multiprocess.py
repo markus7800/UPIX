@@ -175,23 +175,27 @@ def start_worker_thread(in_queue: Queue, out_queue: Queue, worker_id: int, confi
     thread_device = jax.devices()[worker_id]
 
     while True:
+        tqdm.write(f"Thread {worker_id}: waiting for task ...")
         task, task_aux = in_queue.get()
         assert isinstance(task, JaxTask)
         if config.verbose:
             pre_info = task.pre_info()
             if pre_info: tqdm.write(f"Thread {worker_id}: " + pre_info)
+        tqdm.write(f"Thread {worker_id}: start task ...")
 
         t0 = time.monotonic()
         device_args = jax.device_put(task.args, thread_device)
         device_results = task.f(*device_args)
-        elapsed_time = time.monotonic() - t0
         leaf = jax.tree.leaves(device_results)[0]
         assert leaf.device == thread_device
+        results = jax.device_get(device_results)
+        del device_results
+        elapsed_time = time.monotonic() - t0
         if config.verbose:
-            post_info = task.post_info(device_results)
+            post_info = task.post_info(results)
             if post_info: tqdm.write(f"Worker {worker_id}: " + post_info + f"\n    finished in {elapsed_time:.3f}s on device {thread_device}")
-
-        out_queue.put((device_results, task_aux))
+    
+        out_queue.put((results, task_aux))
         in_queue.task_done()
 
         del task

@@ -237,6 +237,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     self.add_to_inference_results(slp, inference_result)
                     outer_bar.update()
                 inference_task_gen_thread.join()
+                if self.debug_memory:
+                    jax.profiler.save_device_memory_profile(f"memory_{self.iteration_counter}_post_inf.prof")
+
                 
                 def _make_estimate_log_weight_tasks(slp_weight_estimate_keys: List[jax.Array]):
                     for slp_ix, slp in enumerate(self.active_slps):

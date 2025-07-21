@@ -154,22 +154,7 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
     def make_inference_task(self, slp: SLP, rng_key: PRNGKey) -> InferenceTask:
         mcmc = self.get_MCMC(slp)
         inference_results = self.inference_results.get(slp, [])
-        if len(inference_results) > 0:
-            last_result = inference_results[-1]
-            assert isinstance(last_result, MCMCInferenceResult)
-            init_positions = StackedTrace(last_result.last_state.position, mcmc.n_chains)
-            init_log_prob = last_result.last_state.log_prob
-        else:
-            init_positions = StackedTrace(broadcast_jaxtree(slp.decision_representative, (mcmc.n_chains,)), mcmc.n_chains)
-            init_log_prob = broadcast_jaxtree(slp.log_prob(slp.decision_representative), (mcmc.n_chains,))
-        
-        # TODO: continue_run ?
-        def _task(rng_key: PRNGKey):
-            last_state, return_result = mcmc.run(rng_key, init_positions, init_log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
-            
-            # we do not apply return map here, because we want to be able to continue mcmc chain from last state
-            return MCMCInferenceResult(return_result, last_state, mcmc.n_chains, self.mcmc_n_samples_per_chain, self.mcmc_optimise_memory_with_early_return_map)
-        
+
         def _post_info(result: InferenceResult):
             assert isinstance(result, MCMCInferenceResult)
             if self.verbose >= 2 and self.mcmc_collect_inference_info:
@@ -179,4 +164,26 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
                 return info_str
             return ""
         
-        return InferenceTask(_task, (rng_key, ), post_info=_post_info)
+        if len(inference_results) > 0:
+            last_result = inference_results[-1]
+            assert isinstance(last_result, MCMCInferenceResult)
+            # init_positions = StackedTrace(last_result.last_state.position, mcmc.n_chains)
+            # init_log_prob = last_result.last_state.log_prob
+            # TODO: test this
+            def _task_continue(rng_key: PRNGKey, state: MCMCState):
+                last_state, return_result = mcmc.continue_run(rng_key, state, n_samples_per_chain=self.mcmc_n_samples_per_chain)
+                return MCMCInferenceResult(return_result, last_state, mcmc.n_chains, self.mcmc_n_samples_per_chain, self.mcmc_optimise_memory_with_early_return_map)
+            
+            return InferenceTask(_task_continue, (rng_key, last_result.last_state), post_info=_post_info)
+        else:
+            def _task_run(rng_key: PRNGKey):
+                init_positions = StackedTrace(broadcast_jaxtree(slp.decision_representative, (mcmc.n_chains,)), mcmc.n_chains)
+                init_log_prob = broadcast_jaxtree(slp.log_prob(slp.decision_representative), (mcmc.n_chains,))
+
+                last_state, return_result = mcmc.run(rng_key, init_positions, init_log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
+                
+                # we do not apply return map here, because we want to be able to continue mcmc chain from last state
+                return MCMCInferenceResult(return_result, last_state, mcmc.n_chains, self.mcmc_n_samples_per_chain, self.mcmc_optimise_memory_with_early_return_map)
+            return InferenceTask(_task_run, (rng_key, ), post_info=_post_info)
+
+        

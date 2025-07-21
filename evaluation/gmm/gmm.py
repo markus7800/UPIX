@@ -144,11 +144,6 @@ class DCCConfig(MCMCDCC[T]):
         last_inference_result = self.inference_results[slp][-1]
         assert isinstance(last_inference_result, MCMCInferenceResult)
         assert not self.config.get("mcmc_optimise_memory_with_early_return_map", False)
-        assert last_inference_result.value_tree is not None
-        traces: Trace = last_inference_result.value_tree[0]
-        lps: FloatArray = last_inference_result.value_tree[1]
-        traces = jax.tree.map(_unstack_sample_data, traces)
-        lps = _unstack_sample_data(lps)
 
         K = find_K(slp)
 
@@ -158,7 +153,13 @@ class DCCConfig(MCMCDCC[T]):
         def merge(X: Trace, lp: FloatArray, rng_key: PRNGKey):
             return merge_move(X, lp, rng_key, K, ys, self.model.log_prob)
         
-        def _task(rng_key: PRNGKey):
+        def _task(rng_key: PRNGKey, last_inference_result: MCMCInferenceResult):
+            assert last_inference_result.value_tree is not None
+            traces: Trace = last_inference_result.value_tree[0]
+            lps: FloatArray = last_inference_result.value_tree[1]
+            traces = jax.tree.map(_unstack_sample_data, traces)
+            lps = _unstack_sample_data(lps)
+
             transition_log_probs: Dict[Any, FloatArray] = dict()
             n_samples = lps.size
             
@@ -191,7 +192,7 @@ class DCCConfig(MCMCDCC[T]):
                 merge_transition_log_prob = result.transition_log_probs[(K, K-1)]
                 return f"Estimate log weight for {slp.formatted()}: split prob = {jnp.exp(split_transition_log_prob).item():.6f} merge prob = {jnp.exp(merge_transition_log_prob).item():.6f}"
         
-        return EstimateLogWeightTask(_task, (rng_key,), post_info=_post_info)
+        return EstimateLogWeightTask(_task, (rng_key,last_inference_result), post_info=_post_info)
 
     
     def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
@@ -238,15 +239,17 @@ class StaticDCCConfig(DCCConfig):
 
 
 
-dcc_obj = StaticDCCConfig(m, verbose=0,
+dcc_obj = StaticDCCConfig(m, verbose=2,
               mcmc_n_chains=100,
               mcmc_n_samples_per_chain=25_000,
               mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=1000,
               parallelisation = ParallelisationConfig(
                   type=ParallelisationType.MultiThreadingJAXDevices,
-                  num_workers=1)
-              )
+                  num_workers=len(jax.devices())
+                  ),
+            #   debug_memory=True,
+)
 
 # takes ~185s for 10 * 25_000 * 11 samples
 result = timed(dcc_obj.run)(jax.random.PRNGKey(0))
