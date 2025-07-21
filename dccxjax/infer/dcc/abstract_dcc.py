@@ -154,7 +154,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 t.start()
                 threads.append(t)
         if self.parallelisation.type == ParallelisationType.MultiThreadingJAXDevices:
-            tqdm.write(f"Start DCC - parallelisation=MultiThreadingJAXDevices(devices={jax.devices()}):")
+            device_str = "    ,\n".join(map(str, jax.devices()))
+            tqdm.write(f"Start DCC - parallelisation=MultiThreadingJAXDevices(devices=\n    {device_str}\n):")
             assert self.parallelisation.num_workers <= len(jax.devices())
             for i in range(self.parallelisation.num_workers):
                 t = threading.Thread(target=start_worker_thread, args=(task_queue, result_queue, i, self.parallelisation), daemon=True)

@@ -175,13 +175,11 @@ def start_worker_thread(in_queue: Queue, out_queue: Queue, worker_id: int, confi
     thread_device = jax.devices()[worker_id]
 
     while True:
-        tqdm.write(f"Thread {worker_id}: waiting for task ...")
         task, task_aux = in_queue.get()
         assert isinstance(task, JaxTask)
         if config.verbose:
             pre_info = task.pre_info()
-            if pre_info: tqdm.write(f"Thread {worker_id}: " + pre_info)
-        tqdm.write(f"Thread {worker_id}: start task ...")
+            tqdm.write(f"Thread {worker_id}: starting task. " + pre_info)
 
         t0 = time.monotonic()
         device_args = jax.device_put(task.args, thread_device)
