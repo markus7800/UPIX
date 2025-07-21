@@ -159,6 +159,8 @@ def process_worker(in_queue: Queue, out_queue: Queue, worker_id: int, config: Pa
 
             out_queue.put((result, task_aux))
             in_queue.task_done()
+            del task
+            del exported_task
 
         # except ShutDown:
         #     # By default, get() on a shut down queue will only raise once the queue is empty

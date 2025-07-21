@@ -84,6 +84,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         self.share_progress_bar: bool = self.config.get("share_progress_bar", True)
         self.shared_progress_bar: Optional[tqdm] = None
 
+        self.debug_memory: bool = self.config.get("debug_memory", False)
+
         self.parallelisation: ParallelisationConfig = self.config.get("parallelisation", ParallelisationConfig())
 
     @abstractmethod
@@ -170,6 +172,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
 
         while len(self.active_slps) > 0:
             self.iteration_counter += 1
+            if self.debug_memory:
+                jax.profiler.save_device_memory_profile(f"memory_{self.iteration_counter}.prof")
 
             if self.parallelisation.type == ParallelisationType.Sequential:
                 outer_bar.reset(total=len(self.active_slps))
@@ -179,14 +183,18 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     
                     inference_task = self.make_inference_task(slp, slp_inference_key)
                     self.maybe_write_info(inference_task.pre_info())
-                    inference_result = inference_task.run()
+                    # we do not have to put input to task on device, by default all jitted functions are on device
+                    # if we call jitted function with cpu allocated array it will be put on device
+                    inference_result = jax.device_get(inference_task.run()) # device_get puts pytree on host (cpu)
                     self.maybe_write_info(inference_task.post_info(inference_result))
+                    del inference_task # tasks may close over device allocated arrays
                     self.add_to_inference_results(slp, inference_result)
 
                     log_weight_estimate_task = self.make_estimate_log_weight_task(slp, slp_weight_estimate_key)
                     self.maybe_write_info(log_weight_estimate_task.pre_info())
-                    log_weight_estimate = log_weight_estimate_task.run()
+                    log_weight_estimate = jax.device_get(log_weight_estimate_task.run())
                     self.maybe_write_info(log_weight_estimate_task.post_info(log_weight_estimate))
+                    del log_weight_estimate_task
                     self.add_to_log_weight_estimates(slp, log_weight_estimate)
                     outer_bar.update()
 
@@ -204,6 +212,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                         slp_inference_key = slp_weight_inference_keys[slp_ix]
                         inference_task = self.make_inference_task(slp, slp_inference_key)            
                         task_queue.put(((inference_task.export(), slp_ix)))
+                        del inference_task
                 inference_task_gen_thread = threading.Thread(target=_make_inference_tasks, args=(slp_weight_inference_keys,), daemon=True)
                 inference_task_gen_thread.start()
 
@@ -222,6 +231,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                         slp_weight_estimate_key = slp_weight_estimate_keys[slp_ix]
                         log_weight_estimate_task = self.make_estimate_log_weight_task(slp, slp_weight_estimate_key)
                         task_queue.put(((log_weight_estimate_task.export(), slp_ix)))
+                        del log_weight_estimate_task
                 estimate_log_weight_task_gen_thread = threading.Thread(target=_make_estimate_log_weight_tasks, args=(slp_weight_estimate_keys,), daemon=True)
                 estimate_log_weight_task_gen_thread.start()
                 
