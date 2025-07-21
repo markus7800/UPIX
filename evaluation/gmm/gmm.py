@@ -5,8 +5,15 @@ if len(sys.argv) > 1:
         from dccxjax.backend import *
         set_platform("cpu")
 
-from dccxjax.all import *
 import jax
+from dccxjax.all import *
+
+# jax.config.update("jax_compilation_cache_dir", "./jax_cache")
+# jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+# jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+# jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
+# jax.config.update("jax_explain_cache_misses", True)
+
 import jax.numpy as jnp
 import dccxjax.distributions as dist
 from tqdm.auto import tqdm
@@ -154,11 +161,17 @@ class DCCConfig(MCMCDCC[T]):
         def _task(rng_key: PRNGKey):
             transition_log_probs: Dict[Any, FloatArray] = dict()
             n_samples = lps.size
-            split_transition_log_prob = jax.scipy.special.logsumexp(jax.jit(jax.vmap(split))(traces, lps, jax.random.split(rng_key, lps.shape[0]))) - jnp.log(n_samples)
+            
+            assert n_samples % self.mcmc_n_samples_per_chain == 0
+            _split_transition_log_prob = jax.lax.map(lambda xs: split(*xs), (traces, lps, jax.random.split(rng_key, lps.shape[0])), batch_size=self.mcmc_n_samples_per_chain)
+            # _split_transition_log_prob = jax.jit(jax.vmap(split))(traces, lps, jax.random.split(rng_key, lps.shape[0]))
+            split_transition_log_prob = jax.scipy.special.logsumexp(_split_transition_log_prob) - jnp.log(n_samples)
             if K == 0: 
                 transition_log_probs[(K, K+1)] = split_transition_log_prob
             else:
-                merge_transition_log_prob = jax.scipy.special.logsumexp(jax.jit(jax.vmap(merge))(traces, lps, jax.random.split(rng_key, lps.shape[0]))) - jnp.log(n_samples)
+                _merge_transition_log_prob = jax.lax.map(lambda xs: merge(*xs), (traces, lps, jax.random.split(rng_key, lps.shape[0])), batch_size=self.mcmc_n_samples_per_chain)
+                #_merge_transition_log_prob = jax.jit(jax.vmap(merge))(traces, lps, jax.random.split(rng_key, lps.shape[0]))
+                merge_transition_log_prob = jax.scipy.special.logsumexp(_merge_transition_log_prob) - jnp.log(n_samples)
 
                 merge_transition_log_prob = merge_transition_log_prob - jnp.log(2)
                 split_transition_log_prob = split_transition_log_prob - jnp.log(2)
@@ -207,11 +220,26 @@ class DCCConfig(MCMCDCC[T]):
 
         return result
 
-        
+class StaticDCCConfig(DCCConfig):
+    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
+        for i in range(10):
+            rng_key, generate_key = jax.random.split(rng_key)
+            trace, _ = self.model.generate(generate_key, {"K": jnp.array(i,int)})
+            slp = slp_from_decision_representative(self.model, trace)
+            active_slps.append(slp)
+            tqdm.write(f"Make SLP {slp.formatted()} active.")
+
+    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
+        inactive_slps.extend(active_slps)
+        active_slps.clear()
+
+    def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
+        return {slp: jnp.array(0., float) for slp in log_weight_estimates.keys()}
 
 
-dcc_obj = DCCConfig(m, verbose=2,
-              mcmc_n_chains=10,
+
+dcc_obj = StaticDCCConfig(m, verbose=2,
+              mcmc_n_chains=100,
               mcmc_n_samples_per_chain=25_000,
               mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=1000,
@@ -223,3 +251,6 @@ dcc_obj = DCCConfig(m, verbose=2,
 # takes ~185s for 10 * 25_000 * 11 samples
 result = timed(dcc_obj.run)(jax.random.PRNGKey(0))
 result.pprint(sortkey="slp")
+
+
+# jax.profiler.save_device_memory_profile("memory.prof")
