@@ -35,7 +35,7 @@ def write_error_transport_layer(writer: IO[bytes], obj):
     writer.flush()
 
 WORKER_ID = sys.argv[1]
-print(f"Starting worker ", WORKER_ID, "with", os.getpid(), file=sys.stderr)
+print(f"Starting worker ", WORKER_ID, "with pid", os.getpid(), file=sys.stderr)
 while True:
     obj = read_transport_layer(sys.stdin.buffer)
     if obj is None:
@@ -44,7 +44,11 @@ while True:
     try:
         jax_serialised_fn, args = obj 
         jax_fn = jax.export.deserialize(jax_serialised_fn)
+        # args will be on CPU device, of course
+        # print("worker", WORKER_ID, [arg.device for arg in args], file=sys.stderr)
         out = jax_fn.call(*args) # this will always compile
+        # out will be on CPU device, of course
+        # print("worker", WORKER_ID, out[0].device, file=sys.stderr)
         write_transport_layer(sys.stdout.buffer, out)
         del obj
         del out
@@ -55,10 +59,8 @@ while True:
 """
 
 import jax
-import jax.export
 import jax.numpy as jnp
 import pickle
-import threading
 from typing import IO, List, Callable, Tuple, Dict, Generic, TypeVar
 from queue import Queue
 import time
@@ -151,6 +153,8 @@ def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, conf
 
             response = read_transport_layer(p.stdout)
             # print("got response:", response)
+            # response will be copied to default device not host (cpu)!
+            # tqdm.write(f"Response device {response[0].device}")
             
             result = tree_unflatten(exported_task.out_tree, response)
             if config.verbose:

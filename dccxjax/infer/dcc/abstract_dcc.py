@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
 from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray
-from dccxjax.utils import get_backend, get_default_device
+from dccxjax.utils import get_backend, get_default_device, bcolors
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -144,18 +144,21 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         result_queue = Queue()
         threads: List[threading.Thread] = []
 
-            
+        tqdm.write(f"Start DCC:") 
         if self.parallelisation.type == ParallelisationType.Sequential:
-            tqdm.write(f"Start DCC - parallelisation=Sequential(device={get_default_device()}):")
+            tqdm.write(f"parallelisation=Sequential(device={get_default_device()})")
         if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
-            tqdm.write(f"Start DCC - parallelisation=MultiProcessingCPU(num_workers={self.parallelisation.num_workers}):")
+            tqdm.write(f"parallelisation=MultiProcessingCPU(num_workers={self.parallelisation.num_workers})")
+            backend_platform = get_backend().devices()[0].platform
+            if backend_platform != "cpu":
+                raise Exception(f"Using MultiProcessingCPU parallelisation, but backend platform ({backend_platform}) is not CPU!")
             for i in range(self.parallelisation.num_workers):
                 t = threading.Thread(target=start_worker_process, args=(task_queue, result_queue, i, self.parallelisation), daemon=True)
                 t.start()
                 threads.append(t)
         if self.parallelisation.type == ParallelisationType.MultiThreadingJAXDevices:
             device_str = "    ,\n".join(map(str, jax.devices()))
-            tqdm.write(f"Start DCC - parallelisation=MultiThreadingJAXDevices(devices=\n    {device_str}\n):")
+            tqdm.write(f"parallelisation=MultiThreadingJAXDevices(\ndevices=\n    {device_str}\n)")
             assert self.parallelisation.num_workers <= len(jax.devices())
             for i in range(self.parallelisation.num_workers):
                 t = threading.Thread(target=start_worker_thread, args=(task_queue, result_queue, i, self.parallelisation), daemon=True)
@@ -174,10 +177,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         
         if self.parallelisation.type == ParallelisationType.Sequential and self.share_progress_bar:
             self.shared_progress_bar = tqdm(position=0, leave=False)
-            outer_bar = tqdm(position=1, leave=False)
+            outer_bar = tqdm(total=0, position=1, leave=False, desc="Iteration 0")
         else:
-            outer_bar = tqdm(position=0, leave=False)
-
+            outer_bar = tqdm(total=0, position=0, leave=False, desc="Iteration 0")
 
         while len(self.active_slps) > 0:
             self.iteration_counter += 1
@@ -217,33 +219,26 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     slp_weight_inference_keys.append(slp_inference_key)
                     slp_weight_estimate_keys.append(slp_weight_estimate_key)
                     
-                def _make_inference_tasks(slp_weight_inference_keys: List[jax.Array]):
-                    for slp_ix, slp in enumerate(self.active_slps):            
-                        slp_inference_key = slp_weight_inference_keys[slp_ix]
-                        inference_task = self.make_inference_task(slp, slp_inference_key)    
-                        if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
-                            task_queue.put((inference_task.export(), slp_ix))
-                        else:        
-                            task_queue.put((inference_task, slp_ix))
-                        del inference_task
-                inference_task_gen_thread = threading.Thread(target=_make_inference_tasks, args=(slp_weight_inference_keys,), daemon=True)
-                inference_task_gen_thread.start()
+                for slp_ix, slp in enumerate(self.active_slps):            
+                    slp_inference_key = slp_weight_inference_keys[slp_ix]
+                    inference_task = self.make_inference_task(slp, slp_inference_key)
+                    # make inference task (does not block)
+                    if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
+                        task_queue.put((inference_task.export(), slp_ix))
+                    else:        
+                        task_queue.put((inference_task, slp_ix))
+                    del inference_task
 
                 outer_bar.reset(total=len(self.active_slps))
-                outer_bar.set_description(f"Iteration {self.iteration_counter} - Inference")
-                for _ in range(len(self.active_slps)):
-                    inference_result, slp_ix = result_queue.get()
-                    assert isinstance(inference_result, InferenceResult)
-                    slp = self.active_slps[slp_ix]
-                    self.add_to_inference_results(slp, inference_result)
-                    outer_bar.update()
-                inference_task_gen_thread.join()
-                if self.debug_memory:
-                    jax.profiler.save_device_memory_profile(f"memory_{self.iteration_counter}_post_inf.prof")
+                outer_bar.set_description(f"Iteration {self.iteration_counter}")
+                for _ in range(2*len(self.active_slps)):
 
-                
-                def _make_estimate_log_weight_tasks(slp_weight_estimate_keys: List[jax.Array]):
-                    for slp_ix, slp in enumerate(self.active_slps):
+                    result, slp_ix = result_queue.get()
+                    slp = self.active_slps[slp_ix]
+                    
+                    if isinstance(result, InferenceResult):
+                        self.add_to_inference_results(slp, jax.device_get(result))
+                        # make logweight estimate task
                         slp_weight_estimate_key = slp_weight_estimate_keys[slp_ix]
                         log_weight_estimate_task = self.make_estimate_log_weight_task(slp, slp_weight_estimate_key)
                         if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
@@ -251,22 +246,14 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                         else:
                             task_queue.put((log_weight_estimate_task, slp_ix))
                         del log_weight_estimate_task
-                estimate_log_weight_task_gen_thread = threading.Thread(target=_make_estimate_log_weight_tasks, args=(slp_weight_estimate_keys,), daemon=True)
-                estimate_log_weight_task_gen_thread.start()
-                
-                outer_bar.reset(total=len(self.active_slps))
-                outer_bar.set_description(f"Iteration {self.iteration_counter} - LogWeight")
-                for _ in range(len(self.active_slps)):
-                    log_weight_estimate_result, slp_ix = result_queue.get()
-                    assert isinstance(log_weight_estimate_result, LogWeightEstimate)
-                    slp = self.active_slps[slp_ix]
-                    self.add_to_log_weight_estimates(slp, log_weight_estimate_result)
-                    outer_bar.update()
-                estimate_log_weight_task_gen_thread.join()
+
+                    if isinstance(result, LogWeightEstimate):
+                        self.add_to_log_weight_estimates(slp, jax.device_get(result))
+
+                    outer_bar.update(0.5)
 
             
             
-
             rng_key, update_key = jax.random.split(rng_key)
             self.update_active_slps(self.active_slps, self.inactive_slps, self.inference_results, self.log_weight_estimates, update_key)
         
