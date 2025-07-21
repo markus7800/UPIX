@@ -195,7 +195,7 @@ def start_worker_thread(in_queue: Queue, out_queue: Queue, worker_id: int, confi
         elapsed_time = time.monotonic() - t0
         if config.verbose:
             post_info = task.post_info(results)
-            if post_info: tqdm.write(f"Worker {worker_id}: " + post_info + f"\n    finished in {elapsed_time:.3f}s on device {thread_device}")
+            if post_info: tqdm.write(f"Thread {worker_id}: " + post_info + f"\n    finished in {elapsed_time:.3f}s on device {thread_device}")
     
         out_queue.put((results, task_aux))
         in_queue.task_done()

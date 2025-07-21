@@ -157,7 +157,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 t.start()
                 threads.append(t)
         if self.parallelisation.type == ParallelisationType.MultiThreadingJAXDevices:
-            device_str = "    ,\n".join(map(str, jax.devices()))
+            device_str = ",\n    ".join(map(str, jax.devices()))
             tqdm.write(f"parallelisation=MultiThreadingJAXDevices(\ndevices=\n    {device_str}\n)")
             assert self.parallelisation.num_workers <= len(jax.devices())
             for i in range(self.parallelisation.num_workers):
