@@ -26,7 +26,7 @@ __all__ = [
     "init_inference_infos_for_chains",
     "summarise_mcmc_info",
     "summarise_mcmc_infos",
-    "pprint_mcmc_regime"
+    "pprint_mcmc_regime",
 ]
 
 InferenceInfo = NamedTuple
