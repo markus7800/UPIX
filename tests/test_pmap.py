@@ -54,26 +54,33 @@ initial_states = mcmc.MCMCState(jnp.array(0, int), jnp.array(1.,float), dict(), 
 t0 = time.monotonic()
 last_state, res = jax.lax.scan(fkernel, initial_states, keys)
 print(res["x"])
-print(res["x"].shape, last_state.position["x"].shape)
+print(res["x"].shape, last_state.position["x"].shape) # always puts chain at axis 1
 t1 = time.monotonic()
 print(f"fkernel {t1-t0:.3f}")
 
 t0 = time.monotonic()
-last_state, res = jax.lax.scan(vkernel, initial_states, keys)
+last_state, res = jax.lax.scan(vkernel, initial_states, keys) # always puts chain at axis 1
 print(res["x"])
 print(res["x"].shape, last_state.position["x"].shape)
 t1 = time.monotonic()
 print(f"vkernel {t1-t0:.3f}")
 
 # exit()
+@jax.jit
 def chain(initial_state, keys):
     # print(initial_state, keys)
     return jax.lax.scan(okernel, initial_state, keys)
 _axes = mcmc.MCMCState(None,None,None,0,0,0,0) # type: ignore
-two_d_keys = jax.random.split(jax.random.key(0), (n_samples_per_chain,n_chains))
+
+CHAIN_AXIS = 1
+
+if CHAIN_AXIS == 0:
+    two_d_keys = jax.random.split(jax.random.key(0), (n_chains,n_samples_per_chain))
+else:
+    two_d_keys = jax.random.split(jax.random.key(0), (n_samples_per_chain,n_chains))
 
 t0 = time.monotonic()
-last_state, res = jax.vmap(chain, in_axes=(_axes,1), out_axes=(_axes,1))(initial_states, two_d_keys)
+last_state, res = jax.vmap(chain, in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS))(initial_states, two_d_keys)
 print(res["x"])
 print(res["x"].shape, last_state.position["x"].shape)
 t1 = time.monotonic()
@@ -81,7 +88,7 @@ print(f"okernel {t1-t0:.3f}")
 
 if n_chains == N_CPU:
     t0 = time.monotonic()
-    last_state, res = jax.pmap(chain, in_axes=(_axes,1), out_axes=(_axes,1))(initial_states, two_d_keys)
+    last_state, res = jax.pmap(chain, in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS))(initial_states, two_d_keys)
     print(res["x"])
     print(res["x"].shape, last_state.position["x"].shape)
     t1 = time.monotonic()
@@ -96,14 +103,16 @@ if n_chains == N_CPU:
     # print(f"pkernel {t1-t0:.3f}")
 else:
     t0 = time.monotonic()
+    three_d_key_shape = (N_CPU, n_chains // N_CPU, n_samples_per_chain) if CHAIN_AXIS == 0 else (n_samples_per_chain, N_CPU, n_chains // N_CPU)
     vinitial_states = jax.tree.map(lambda v: v.reshape((N_CPU, n_chains // N_CPU) + v.shape[1:]) if len(v.shape) > 0 else v, initial_states)
     last_state, res = jax.pmap(
-        jax.vmap(chain, in_axes=(_axes,1), out_axes=(_axes,1)),
-        in_axes=(_axes,1), out_axes=(_axes,1)
-    )(vinitial_states, two_d_keys.reshape((n_samples_per_chain, N_CPU, n_chains // N_CPU)))
+        jax.vmap(chain, in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS)),
+        in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS)
+    )(vinitial_states, two_d_keys.reshape(three_d_key_shape))
     # print(res["x"])
     # print(res["x"].shape, last_state.position["x"].shape) # (n_samples_per_chain, N_CPU, n_chains // N_CPU, ...)
-    res = jax.tree.map(lambda v: v.reshape((n_samples_per_chain, n_chains,) + v.shape[3:]) if len(v.shape) > 0 else v, res)
+    out_shape = (n_chains, n_samples_per_chain) if CHAIN_AXIS == 0 else (n_samples_per_chain, n_chains,)
+    res = jax.tree.map(lambda v: v.reshape(out_shape + v.shape[3:]) if len(v.shape) > 0 else v, res)
     last_state = jax.tree.map(lambda v: v.reshape((n_chains,) + v.shape[2:]) if len(v.shape) > 0 else v, last_state)
     print(res["x"])
     print(res["x"].shape, last_state.position["x"].shape)
@@ -111,18 +120,25 @@ else:
     print(f"pkernel {t1-t0:.3f}")
 
 
-from jax.experimental import mesh_utils
+# from jax._src.mesh_utils import create_device_mesh
+# from jax import shard_map
+
+from jax.experimental.mesh_utils import create_device_mesh
 from jax.experimental.shard_map import shard_map
+
+
 from jax.sharding import Mesh, PartitionSpec as P
 
 # shard_map leaves the rank the same, whereas vmap would reduce the rank
 
 
-mesh = Mesh(mesh_utils.create_device_mesh((N_CPU,)), axis_names=("i"))
-_specs = mcmc.MCMCState(P(),P(),P(),P("i"),P("i"),P("i"),P("i")) # type: ignore
+mesh = Mesh(create_device_mesh((N_CPU,)), axis_names=("i"))
+print(mesh)
 
+_specs = mcmc.MCMCState(P(),P(),P(),P("i"),P("i"),P("i"),P("i")) # type: ignore
+key_spec = P("i") if CHAIN_AXIS == 0 else P(None,"i")
 t0 = time.monotonic()
-last_state, res = shard_map(jax.vmap(chain, in_axes=(_axes,1), out_axes=(_axes,1)), mesh=mesh, in_specs=(_specs,P(None,"i")), out_specs=(_specs,P(None,"i")))(initial_states, two_d_keys)
+last_state, res = shard_map(jax.vmap(chain, in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS)), mesh=mesh, in_specs=(_specs,key_spec), out_specs=(_specs,key_spec))(initial_states, two_d_keys)
 print(res["x"])
 print(res["x"].shape, last_state.position["x"].shape) # (n_chains, n_samples_per_chain) this is backwards
 t1 = time.monotonic()
@@ -136,11 +152,14 @@ print(f"skernel {t1-t0:.3f}")
 # print(f"skernel {t1-t0:.3f}")
 
 
-# works but is a little bit slower
 t0 = time.monotonic()
-last_state, res = jax.lax.scan(shard_map(jax.vmap(okernel, in_axes=(_axes,0), out_axes=(_axes,0)), mesh=mesh, in_specs=(_specs,P("i")), out_specs=(_specs,P("i"))), initial_states, two_d_keys)
+# scan is always over axis 0
+scan_two_d_keys = jax.random.split(jax.random.key(0),(n_samples_per_chain,n_chains)).block_until_ready()
+last_state, res = jax.lax.scan(
+    shard_map(jax.vmap(okernel, in_axes=(_axes,0), out_axes=(_axes,0)), mesh=mesh, in_specs=(_specs,P("i")), out_specs=(_specs,P("i"))),
+    initial_states, scan_two_d_keys)
 print(res["x"])
-print(res["x"].shape)
+print(res["x"].shape, last_state.position["x"].shape) # always puts chain at axis 1
 t1 = time.monotonic()
 print(f"sokernel {t1-t0:.3f}")
 
@@ -148,14 +167,14 @@ print(f"sokernel {t1-t0:.3f}")
 t0 = time.monotonic()
 last_state, res = jax.lax.scan(shard_map(vkernel, mesh=mesh, in_specs=(_specs,P()), out_specs=(_specs,P("i"))), initial_states, keys)
 print(res["x"])
-print(res["x"].shape)
+print(res["x"].shape, last_state.position["x"].shape) # always puts chain at axis 1
 t1 = time.monotonic()
 print(f"svkernel {t1-t0:.3f}")
 
 t0 = time.monotonic()
 last_state, res = jax.lax.scan(shard_map(fkernel, mesh=mesh, in_specs=(_specs,P()), out_specs=(_specs,P("i"))), initial_states, keys)
 print(res["x"])
-print(res["x"].shape)
+print(res["x"].shape, last_state.position["x"].shape) # always puts chain at axis 1
 t1 = time.monotonic()
 print(f"sfkernel {t1-t0:.3f}")
 
