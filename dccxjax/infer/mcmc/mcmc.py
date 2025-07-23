@@ -217,11 +217,15 @@ def pprint_mcmc_regime(regime: MCMCRegime, slp: Optional[SLP]=None):
     for stat in sorted(curr_stats | next_stats):
         s += _get_sym_for_stat(stat, curr_stats, next_stats) + stat + " "
     print("\t", s)
+    
+from jax.experimental import shard_map, mesh_utils
+from jax.sharding import Mesh, PartitionSpec as P
+from jax._src.shard_map import smap
 
 def get_mcmc_kernel(
         slp: SLP, regime: MCMCRegime, *,
         collect_inference_info: bool = False, 
-        vectorised: bool = True,
+        vectorised: int = 1,
         return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> Tuple[MCMCKernel[MCMC_COLLECT_TYPE], Set[str]]:
     
     regime_steps: List[MCMCStep] = list(regime)
@@ -260,7 +264,7 @@ def get_mcmc_kernel(
             assert step.algo.requires_stats() <= carry_stats.keys()
             kernel_state = KernelState(carry_stats, infos[i] if collect_inference_info and infos is not None else None)
 
-            if vectorised:
+            if vectorised > 0:
                 # for some reason this is significantly faster
                 # re-compilation time for different number of chains should be okay since sub-kernels are always cached
                 t = state.log_prob.shape[0]
@@ -268,9 +272,16 @@ def get_mcmc_kernel(
                     kernel_keys = jax.lax.broadcast(kernel_key, (1,))
                 else:
                     kernel_keys = jax.random.split(kernel_key, t)
-                new_kernel_state = jax.vmap(kernel, in_axes=(0,None,None,0))(kernel_keys, state.temperature, state.data_annealing, kernel_state) # (1)
+                if vectorised == 1:
+                    new_kernel_state = jax.vmap(kernel, in_axes=(0,None,None,0))(kernel_keys, state.temperature, state.data_annealing, kernel_state) # (1)
+                elif vectorised == 2:
+                    mesh = Mesh(mesh_utils.create_device_mesh((jax.device_count(),)), axis_names=("i"))
+                    new_kernel_state = shard_map.shard_map(jax.vmap(kernel, in_axes=(0,None,None,0)), mesh=mesh, in_specs=(P("i"),P(),P(),P("i")), out_specs=P("i"))(kernel_keys, state.temperature, state.data_annealing, kernel_state)
+                else:
+                    new_kernel_state = smap(jax.vmap(kernel, in_axes=(0,None,None,0)), in_axes=(0,None,None,0), out_axes=0, axis_name="i")(kernel_keys, state.temperature, state.data_annealing, kernel_state)
             else:
                 new_kernel_state = kernel(kernel_key, state.temperature, state.data_annealing, kernel_state) # (2)
+                
 
             carry_stats = new_kernel_state.carry_stats
             assert carry_stats.keys() <= step.algo.provides_stats()
