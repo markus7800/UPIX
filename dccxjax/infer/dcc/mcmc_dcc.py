@@ -4,7 +4,7 @@ from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, Typ
 from dccxjax.core import SLP, Model
 from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
 from dataclasses import dataclass
-from dccxjax.infer.mcmc.mcmc import MCMCRegime, MCMC, MCMCState, summarise_mcmc_infos
+from dccxjax.infer.mcmc.mcmc_core import MCMCRegime, MCMC, MCMCState, summarise_mcmc_infos
 from dccxjax.infer.importance_sampling import estimate_log_Z_for_SLP_from_prior
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod

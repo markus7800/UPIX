@@ -122,7 +122,7 @@ def distance_position(X: Trace):
             distance += jax.lax.abs(value)
     return distance, position
 
-from dccxjax.infer.mcmc import InferenceCarry, InferenceInfos, InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
+from dccxjax.infer.mcmc.mcmc_core import InferenceCarry, InferenceInfos, InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
 from dccxjax.infer.dcc import DCC_Result
 from dccxjax.infer.estimate_Z import estimate_Z_for_SLP_from_sparse_mixture
 

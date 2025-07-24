@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Callable, Dict, Optional, Set, Tuple, NamedTuple, List
 from dccxjax.types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
 import dccxjax.distributions as dist
-from .mcmc import InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, CarryStats, AnnealingMask
+from .mcmc_core import InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, CarryStats, AnnealingMask
 import math
 from dccxjax.utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
 from dccxjax.infer.gibbs_model import GibbsModel

@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import Callable, Dict, Optional, Tuple, NamedTuple
 from dccxjax.types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
-from .mcmc import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, AnnealingMask
+from .mcmc_core import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, AnnealingMask
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
 from dccxjax.infer.gibbs_model import GibbsModel, SLP

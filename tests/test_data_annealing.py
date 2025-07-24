@@ -7,7 +7,7 @@ from dccxjax.infer.smc import *
 
 from dccxjax.all import *
 from dccxjax.infer.ais import *
-from dccxjax.infer.mcmc import get_mcmc_kernel, MCMCState
+from dccxjax.infer.mcmc.mcmc_core import get_mcmc_kernel, MCMCState
 import dccxjax.distributions as dist
 
 import logging

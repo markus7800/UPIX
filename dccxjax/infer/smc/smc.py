@@ -2,7 +2,7 @@ import jax
 from typing import NamedTuple, Tuple, Set, Dict, Callable, Optional
 from dccxjax.types import PRNGKey, Trace, FloatArray, IntArray, StackedTrace, BoolArray
 from dccxjax.core.model_slp import SLP, AnnealingMask
-from dccxjax.infer.mcmc.mcmc import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains
+from dccxjax.infer.mcmc.mcmc_core import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains
 from dccxjax.utils import broadcast_jaxtree
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
