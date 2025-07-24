@@ -9,6 +9,8 @@ import jax
 import jax.numpy as jnp
 from dccxjax.all import *
 import dccxjax.distributions as dist
+from dccxjax.infer.mcmc.mcmc_core import get_mcmc_kernel, CarryStats, map_carry_stats, MCMCState
+from dccxjax.infer.gibbs_model import GibbsModel
 import time
 
 # from jax._src.mesh_utils import create_device_mesh
@@ -33,18 +35,18 @@ slp = SLP_from_branchless_model(m)
 regime =  MCMCStep(SingleVariable("x"), RW(gaussian_random_walk(1.)))
 return_map = lambda x: x.position
 
-fkernel, init_carry_stat_names = mcmc.get_mcmc_kernel(slp, regime, vectorised=1, return_map=return_map)
+fkernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, vectorisation="vmap", return_map=return_map)
 
 # slower
-okernel, init_carry_stat_names = mcmc.get_mcmc_kernel(slp, regime, vectorised=0, return_map=return_map)
+okernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, vectorisation="none", return_map=return_map)
 vkernel = vectorise_kernel_over_chains(okernel)
 
-skernel, init_carry_stat_names = mcmc.get_mcmc_kernel(slp, regime, vectorised=2, return_map=return_map)
+skernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, vectorisation="smap", return_map=return_map)
 
-sskernel, init_carry_stat_names = mcmc.get_mcmc_kernel(slp, regime, vectorised=3, return_map=return_map)
+# sskernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, vectorised=3, return_map=return_map)
 
 n_chains = 100
-n_samples_per_chain = 1_000_000
+n_samples_per_chain = 1_000
 assert n_chains % N_CPU == 0
 
 
@@ -56,11 +58,11 @@ log_prob = jax.vmap(slp.log_prob, in_axes=(0,None,None))(init_positions, jnp.arr
 
 infos = None
 
-carry_stats = mcmc.CarryStats(position=init_positions, log_prob=log_prob)
+carry_stats = CarryStats(position=init_positions, log_prob=log_prob)
 
-carry_stats = jax.vmap(mcmc.map_carry_stats, in_axes=(0,None,None,None,None))(carry_stats, gibbs_model.GibbsModel(slp, AllVariables()), jnp.array(1.,float), dict(), init_carry_stat_names)
+carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None,None))(carry_stats, GibbsModel(slp, AllVariables()), jnp.array(1.,float), dict(), init_carry_stat_names)
 
-initial_states = mcmc.MCMCState(jnp.array(0, int), jnp.array(1.,float), dict(), init_positions, log_prob, carry_stats, infos)
+initial_states = MCMCState(jnp.array(0, int), jnp.array(1.,float), dict(), init_positions, log_prob, carry_stats, infos)
 
 # expected shape = (n_samples_per_chain,n_chains,...)
 
@@ -68,9 +70,8 @@ experiments = (
     # "fkernel",
     # "vkernel",
     # "skernel",
-    "sskernel",
     # "okernel",
-    # "pmap",
+    "pmap",
     # "shard_map",
     # "shard_map okernel",
     # "shard_map vkernel",
@@ -111,21 +112,11 @@ if "skernel" in experiments:
     t1 = time.monotonic()
     print(f"skernel {t1-t0:.3f}")
 
-if "sskernel" in experiments:
-    mesh = Mesh(create_device_mesh((N_CPU,)), axis_names=("i"))
-    with jax.sharding.use_mesh(mesh):
-        t0 = time.monotonic()
-        last_state, res = jax.lax.scan(sskernel, initial_states, keys) # always puts chain at axis 1
-        print(res["x"])
-        print(res["x"].shape, last_state.position["x"].shape)
-        t1 = time.monotonic()
-        print(f"skernel {t1-t0:.3f}")
-
 @jax.jit
 def chain(initial_state, keys):
     # print(initial_state, keys)
     return jax.lax.scan(okernel, initial_state, keys)
-_axes = mcmc.MCMCState(None,None,None,0,0,0,0) # type: ignore
+_axes = MCMCState(None,None,None,0,0,0,0) # type: ignore
 
 CHAIN_AXIS = 1
 
@@ -159,6 +150,26 @@ if "pmap" in experiments:
         # t1 = time.monotonic()
         # print(f"pkernel {t1-t0:.3f}")
     else:
+        # print("in", jax.tree.map(lambda v: v.shape, (initial_states, two_d_keys)))
+        # last_state, res = jax.vmap(chain, in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS))(initial_states, two_d_keys)
+        # print("out", res["x"].shape, last_state.position["x"].shape)
+        
+        three_d_key_shape = (N_CPU, n_chains // N_CPU, n_samples_per_chain) if CHAIN_AXIS == 0 else (n_samples_per_chain, N_CPU, n_chains // N_CPU)
+        three_d_keys = two_d_keys.reshape(three_d_key_shape)
+        vinitial_states = jax.tree.map(lambda v: v.reshape((N_CPU, n_chains // N_CPU) + v.shape[1:]) if len(v.shape) > 0 else v, initial_states)
+        
+        print("in", jax.tree.map(lambda v: v.shape, (vinitial_states, three_d_keys)))
+        last_state, res = jax.pmap(
+            jax.vmap(chain, in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS)),
+            in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS), axis_name="i"
+        )(vinitial_states, three_d_keys)
+        print("out", res["x"].shape, last_state.position["x"].shape)
+        print()
+        
+        pmap_vmap(chain, axis_name="i", batch_size=N_CPU, in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS))(initial_states, two_d_keys)
+
+        exit()
+        
         t0 = time.monotonic()
         three_d_key_shape = (N_CPU, n_chains // N_CPU, n_samples_per_chain) if CHAIN_AXIS == 0 else (n_samples_per_chain, N_CPU, n_chains // N_CPU)
         vinitial_states = jax.tree.map(lambda v: v.reshape((N_CPU, n_chains // N_CPU) + v.shape[1:]) if len(v.shape) > 0 else v, initial_states)
@@ -185,7 +196,7 @@ device_mesh = create_device_mesh((N_CPU,))
 mesh = Mesh(device_mesh, axis_names=("i"))
 # print(device_mesh, mesh)
 
-_specs = mcmc.MCMCState(P(),P(),P(),P("i"),P("i"),P("i"),P("i")) # type: ignore
+_specs = MCMCState(P(),P(),P(),P("i"),P("i"),P("i"),P("i")) # type: ignore
 key_spec = P("i") if CHAIN_AXIS == 0 else P(None,"i")
 
 if "shard_map" in experiments:

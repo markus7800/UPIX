@@ -53,6 +53,8 @@ class JitVariationTracker:
     def has_variation(self):
         return len(self.variations) > 0
 
+from jax._src.config import trace_context
+
 def maybe_jit_warning(tracker: JitVariationTracker, input: str):
     msg = f"Compile {tracker.name} and for input: {input}"
     with logging_redirect_tqdm(loggers=[logger]):
@@ -71,13 +73,15 @@ def maybe_jit_warning(tracker: JitVariationTracker, input: str):
 # def to_shaped_arrays_str_short(tree):
 #     return jax.tree.map(lambda v: full_lower(v).str_short(), tree)
 
+# TODO: rename or rewrite maybe_jit_warning
 def pprint_dtype_shape_of_tree(tree):
     def _dtype_shape(v):
-        v = full_lower(v)
-        shape_str = ",".join(f"{d:_}" for d in v.shape)
-        return f"{v.dtype}[{shape_str}]"
+        # v = full_lower(v)
+        # shape_str = ",".join(f"{d:_}" for d in v.shape)
+        # return f"{v.dtype}[{shape_str}]"
+        return str(jax.typeof(v))
     s = repr(jax.tree.map(_dtype_shape, tree))
-    return s.replace("'", "")
+    return s.replace("'", "") + f" with axis-env {trace_context()[0]}"
 
 def to_shaped_arrays_str_short(tree):
     return pprint_dtype_shape_of_tree(tree)
@@ -144,13 +148,13 @@ def track_compilation_time():
 import time
 RETURN_VAL = TypeVar("RETURN_VAL")
 def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...,RETURN_VAL]:
-    def wrapped(*args) -> RETURN_VAL:
+    def wrapped(*args, **kwargs) -> RETURN_VAL:
         compilation_time_tracker = CompilationTimeTracker()
         if compilation:
             jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
         start_wall = time.perf_counter()
         start_cpu = time.process_time()
-        out = f(*args)
+        out = f(*args, **kwargs)
         repr(out) # block until ready
         end_wall = time.perf_counter()
         end_cpu = time.process_time()

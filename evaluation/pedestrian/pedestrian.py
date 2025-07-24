@@ -1,11 +1,8 @@
 #%%
 import sys
-if len(sys.argv) > 1:
-    if sys.argv[1].endswith("cpu"):
-        print("Force run on CPU.")
-        from dccxjax.backend import *
-        set_platform("cpu")
-
+sys.path.append("evaluation")
+from parse_args import parse_args_and_setup
+args = parse_args_and_setup()
 
 from dccxjax.all import *
 import jax
@@ -15,12 +12,14 @@ from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List, Dict
 from time import time
+from setup_parallelisation import get_parallelisation_config
 
 import logging
 setup_logging(logging.WARNING)
 
 compilation_time_tracker = CompilationTimeTracker()
 jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
+
 
 
 def pedestrian():
@@ -77,7 +76,7 @@ class DCCConfig(MCMCDCC[T]):
         # regime = MCMCStep(AllVariables(), HMC(10, 0.05, unconstrained=True))
         # regime = MCMCStep(AllVariables(), DHMC(10, 0.05, 0.15, unconstrained=False)) # this is very good W1 = 0.01796, L_inf = 0.0008
         regime = MCMCStep(AllVariables(), DHMC(50, 0.05, 0.15, unconstrained=False)) # W1 = 0.01503, L_inf = 0.001072 for comparison takes ~90s for 25_000 * 10 * 6 samples
-        pprint_mcmc_regime(regime, slp)
+        tqdm.write(pprint_mcmc_regime(regime, slp))
         return regime
     
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
@@ -108,6 +107,7 @@ class DCCConfig(MCMCDCC[T]):
 
 
 dcc_obj = DCCConfig(m, verbose=2,
+              parallelisation=get_parallelisation_config(args),
               init_n_samples=250,
               init_estimate_weight_n_samples=1_000_000,
               mcmc_n_chains=10,
@@ -121,6 +121,8 @@ dcc_obj = DCCConfig(m, verbose=2,
 
 result = timed(dcc_obj.run)(jax.random.PRNGKey(0))
 result.pprint(sortkey="slp")
+
+exit()
 
 
 gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")

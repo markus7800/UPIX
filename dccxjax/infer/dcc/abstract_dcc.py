@@ -11,10 +11,8 @@ from dccxjax.infer.dcc.dcc_types import InferenceResult, LogWeightEstimate, JaxT
 import os
 import threading
 from queue import Queue
-from dccxjax.infer.dcc.cpu_multiprocess import start_worker_process, start_worker_thread, ParallelisationConfig, ParallelisationType
-from jax.tree_util import tree_flatten, tree_unflatten
-import jax.export
-import time
+from dccxjax.infer.dcc.cpu_multiprocess import start_worker_process, start_worker_thread
+from dccxjax.infer.dcc.parallelisation import ParallelisationConfig, ParallelisationType, is_sequential, is_parallel
 
 __all__ = [
 
@@ -145,8 +143,16 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         threads: List[threading.Thread] = []
 
         tqdm.write(f"Start DCC:") 
-        if self.parallelisation.type == ParallelisationType.Sequential:
-            tqdm.write(f"parallelisation=Sequential(device={get_default_device()})")
+        
+        devices_str = ",\n    ".join(map(str, jax.devices()))
+        if self.parallelisation.type == ParallelisationType.SequentialVMAP:
+            tqdm.write(f"parallelisation=Sequential(vmapped, device={get_default_device()})")
+        if self.parallelisation.type == ParallelisationType.SequentialPMAP:
+            tqdm.write(f"parallelisation=Sequential(pmapped, \ndevices=\n    {devices_str}\n)")
+        if self.parallelisation.type == ParallelisationType.SequentialSMAP:
+            tqdm.write(f"parallelisation=Sequential(sharded,\ndevices=\n    {devices_str}\n)")
+        if self.parallelisation.type == ParallelisationType.SequentialGlobalSMAP:
+            tqdm.write(f"parallelisation=Sequential(globally sharded,\ndevices=\n    {devices_str}\n)")
         if self.parallelisation.type == ParallelisationType.MultiProcessingCPU:
             tqdm.write(f"parallelisation=MultiProcessingCPU(num_workers={self.parallelisation.num_workers})")
             backend_platform = get_backend().devices()[0].platform
@@ -157,8 +163,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 t.start()
                 threads.append(t)
         if self.parallelisation.type == ParallelisationType.MultiThreadingJAXDevices:
-            device_str = ",\n    ".join(map(str, jax.devices()))
-            tqdm.write(f"parallelisation=MultiThreadingJAXDevices(\ndevices=\n    {device_str}\n)")
+            tqdm.write(f"parallelisation=MultiThreadingJAXDevices(\ndevices=\n    {devices_str}\n)")
             assert self.parallelisation.num_workers <= len(jax.devices())
             for i in range(self.parallelisation.num_workers):
                 t = threading.Thread(target=start_worker_thread, args=(task_queue, result_queue, i, self.parallelisation), daemon=True)
@@ -175,7 +180,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
 
         self.iteration_counter = 0
         
-        if self.parallelisation.type == ParallelisationType.Sequential and self.share_progress_bar:
+        if is_sequential(self.parallelisation.type) and self.share_progress_bar:
             self.shared_progress_bar = tqdm(position=0, leave=False)
             outer_bar = tqdm(total=0, position=1, leave=False, desc="Iteration 0")
         else:
@@ -186,7 +191,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             if self.debug_memory:
                 jax.profiler.save_device_memory_profile(f"memory_{self.iteration_counter}.prof")
 
-            if self.parallelisation.type == ParallelisationType.Sequential:
+            if is_sequential(self.parallelisation.type):
                 outer_bar.reset(total=len(self.active_slps))
                 outer_bar.set_description(f"Iteration {self.iteration_counter}")
                 for slp in self.active_slps:
@@ -209,8 +214,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     self.add_to_log_weight_estimates(slp, log_weight_estimate)
                     outer_bar.update()
 
-            if (self.parallelisation.type == ParallelisationType.MultiProcessingCPU or 
-                self.parallelisation.type == ParallelisationType.MultiThreadingJAXDevices):
+            if is_parallel(self.parallelisation.type):
                 
                 slp_weight_inference_keys: List[jax.Array] = []
                 slp_weight_estimate_keys: List[jax.Array] = []

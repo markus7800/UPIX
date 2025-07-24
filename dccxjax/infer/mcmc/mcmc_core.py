@@ -15,6 +15,8 @@ from jax.flatten_util import ravel_pytree
 from dccxjax.infer.variable_selector import AllVariables
 from dccxjax.infer.progress_bar import _add_progress_bar, ProgressbarManager
 from tqdm.auto import tqdm
+from dccxjax.jax_utils import smap_vmap, pmap_vmap
+from dccxjax.infer.dcc.parallelisation import ParallelisationConfig, ParallelisationType, create_default_device_mesh
 
 __all__ = [
     "MCMCRegime",
@@ -186,37 +188,39 @@ def pprint_mcmc_regime(regime: MCMCRegime, slp: Optional[SLP]=None):
 
     init_carry_stat_names = (regime_steps[0].algo.requires_stats() & regime_steps[-1].algo.provides_stats()) - {"position", "log_prob"}
 
-    print("MCMC Regime:")
+    s = "MCMC Regime:\n"
     curr_stats = init_carry_stat_names | {"position", "log_prob"}
-    s = "Call stats: "
+    s += "\tCall stats: "
     for stat in sorted(curr_stats):
         s += stat + " "
-    print("\t", s)
+    s += "\n"
 
     next_stats = regime_steps[0].algo.requires_stats()
-    s = "Init: "
+    s += "\tInit: "
     for stat in sorted(curr_stats | next_stats):
         s += _get_sym_for_stat(stat, curr_stats, next_stats) + stat + " "
-    print("\t", s)
+    s += "\n"
 
     for i in range(0, len(regime_steps)-1):
         curr_step = regime_steps[i]
         next_step = regime_steps[i+1]
         curr_stats = curr_step.algo.provides_stats()
         next_stats = next_step.algo.requires_stats()
-        s = "Transfer: "
+        s += "\tTransfer: "
         for stat in sorted(curr_stats | next_stats):
             s += _get_sym_for_stat(stat, curr_stats, next_stats) + stat + " "
-        print("\t", f"Step {i}.", curr_step.description(slp))
-        print("\t", s)
-    print("\t", f"Step {len(regime_steps)-1}.", regime_steps[-1].description(slp))
+        s += f"\tStep {i}. " + curr_step.description(slp)
+        s += "\n"
+    s += f"\tStep {len(regime_steps)-1}. " + regime_steps[-1].description(slp) + "\n"
 
     curr_stats = regime_steps[-1].algo.provides_stats()
     next_stats = regime_steps[0].algo.requires_stats() | {"position", "log_prob"}
-    s = "Wrap: "
+    s += "\tWrap: "
     for stat in sorted(curr_stats | next_stats):
         s += _get_sym_for_stat(stat, curr_stats, next_stats) + stat + " "
-    print("\t", s)
+    s += "\n"
+
+    return s
     
 from jax.experimental import shard_map, mesh_utils
 from jax.sharding import Mesh, PartitionSpec as P
@@ -225,8 +229,9 @@ from jax._src.shard_map import smap
 def get_mcmc_kernel(
         slp: SLP, regime: MCMCRegime, *,
         collect_inference_info: bool = False, 
-        vectorised: int = 1,
+        vectorisation: str = "vmap",
         return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> Tuple[MCMCKernel[MCMC_COLLECT_TYPE], Set[str]]:
+    assert vectorisation in ("none", "vmap", "smap")
     
     regime_steps: List[MCMCStep] = list(regime)
     kernels: List[Kernel] = []
@@ -255,7 +260,7 @@ def get_mcmc_kernel(
 
         infos = state.infos
 
-        _map_carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None,None)) if vectorised else map_carry_stats
+        _map_carry_stats = jax.vmap(map_carry_stats, in_axes=(0,None,None,None,None)) if vectorisation != "none" else map_carry_stats
 
         for i, (step, kernel) in enumerate(zip(regime_steps, kernels)):
             rng_key, kernel_key = jax.random.split(rng_key)
@@ -264,7 +269,7 @@ def get_mcmc_kernel(
             assert step.algo.requires_stats() <= carry_stats.keys()
             kernel_state = KernelState(carry_stats, infos[i] if collect_inference_info and infos is not None else None)
 
-            if vectorised > 0:
+            if vectorisation == "vmap" or vectorisation == "smap":
                 # for some reason this is significantly faster
                 # re-compilation time for different number of chains should be okay since sub-kernels are always cached
                 t = state.log_prob.shape[0]
@@ -272,13 +277,10 @@ def get_mcmc_kernel(
                     kernel_keys = jax.lax.broadcast(kernel_key, (1,))
                 else:
                     kernel_keys = jax.random.split(kernel_key, t)
-                if vectorised == 1:
-                    new_kernel_state = jax.vmap(kernel, in_axes=(0,None,None,0))(kernel_keys, state.temperature, state.data_annealing, kernel_state) # (1)
-                elif vectorised == 2:
-                    mesh = Mesh(mesh_utils.create_device_mesh((jax.device_count(),)), axis_names=("i"))
-                    new_kernel_state = shard_map.shard_map(jax.vmap(kernel, in_axes=(0,None,None,0)), mesh=mesh, in_specs=(P("i"),P(),P(),P("i")), out_specs=P("i"))(kernel_keys, state.temperature, state.data_annealing, kernel_state)
+                if vectorisation == "vmap":
+                    new_kernel_state = jax.vmap(kernel, in_axes=(0,None,None,0), out_axes=0)(kernel_keys, state.temperature, state.data_annealing, kernel_state) # (1)
                 else:
-                    new_kernel_state = smap(jax.vmap(kernel, in_axes=(0,None,None,0)), in_axes=(0,None,None,0), out_axes=0, axis_name="i")(kernel_keys, state.temperature, state.data_annealing, kernel_state)
+                    new_kernel_state = smap_vmap(kernel, axis_name="i", in_axes=(0,None,None,0), out_axes=0)(kernel_keys, state.temperature, state.data_annealing, kernel_state)
             else:
                 new_kernel_state = kernel(kernel_key, state.temperature, state.data_annealing, kernel_state) # (2)
                 
@@ -315,9 +317,8 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
         n_chains = state.log_prob.shape[0]
         maybe_jit_warning(jit_tracker, f"n_chains={n_chains}")
         chain_keys = jax.random.split(rng_key, n_chains)
-        axes = (MCMCState(None,None,None,0,0,0,0),0) # type: ignore
-        # can use the same for in and out, but once refers to rng_keys and once to mcmc collect object
-        return jax.vmap(kernel, in_axes=axes, out_axes=axes)(state, chain_keys)
+        mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
+        return jax.vmap(kernel, in_axes=(mcmc_state_axes,0), out_axes=(mcmc_state_axes,0))(state, chain_keys)
     return _vectorised_kernel
 
 def get_mcmc_scan_with_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], progressbar_mngr: ProgressbarManager) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
@@ -334,6 +335,29 @@ def get_mcmc_scan_without_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> 
         return jax.lax.scan(kernel, init, xs)
     return jax.jit(scan_without_bar)
 
+# def get_mcmc_scan(kernel: MCMCKernel[MCMC_COLLECT_TYPE], vectorised: bool, n_chains: int, n_samples_per_chain: int, progressbar_mngr: Optional[ProgressbarManager] = None) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
+            
+#     def _mcmc_scan(init: MCMCState, key: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
+#         # key is a scalar
+#         if vectorised:
+#             # kernel has been vectorised
+#             keys = jax.random.split(key, n_samples_per_chain)
+#         else:
+#             # kernel has not been vectorised
+#             keys =  jax.random.split(key, (n_samples_per_chain, n_chains))
+            
+#         if progressbar_mngr is not None:
+#             _kernel = _add_progress_bar(kernel, progressbar_mngr, progressbar_mngr.num_samples)
+#             progressbar_mngr.start_progress()
+#             jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, init.iteration)
+#         else:
+#             _kernel = kernel
+        
+#         return jax.lax.scan(_kernel, init, keys)
+        
+#     return jax.jit(_mcmc_scan)
+    
+        
 
 class MCMC(Generic[MCMC_COLLECT_TYPE]):
     def __init__(self,
@@ -341,10 +365,10 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         regime: MCMCRegime,
         n_chains: int,
         *,
+        parallelisation: ParallelisationConfig,
         collect_inference_info: bool = False,
-        vectorised: bool = True,
         return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None,
-        temperature: FloatArray = jnp.array(1.0),
+        temperature: FloatArray = jnp.array(1.0,float),
         data_annealing: AnnealingMask = dict(),
         reuse_kernel: Optional[MCMCKernel[MCMC_COLLECT_TYPE]] = None,
         reuse_kernel_init_carry_stat_names: Set[str] = set(),
@@ -361,13 +385,19 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         self.data_annealing = data_annealing
 
         self.collect_inference_info = collect_inference_info
-        self.vectorised = vectorised
+        self.parallelisation = parallelisation
 
         if reuse_kernel is not None:
             kernel = reuse_kernel
             init_carry_stat_names = reuse_kernel_init_carry_stat_names
         else:
-            kernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, collect_inference_info=collect_inference_info, vectorised=vectorised, return_map=return_map)
+            if parallelisation.type == ParallelisationType.SequentialPMAP or parallelisation.type == ParallelisationType.SequentialGlobalSMAP:
+                self.vectorisation = "none"
+            elif parallelisation.type == ParallelisationType.SequentialSMAP:
+                self.vectorisation = "smap"
+            else:
+                self.vectorisation = "vmap"
+            kernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, collect_inference_info=collect_inference_info, vectorisation=self.vectorisation, return_map=return_map)
 
         self.kernel: MCMCKernel[MCMC_COLLECT_TYPE] = kernel
         self.init_carry_stat_names: Set[str] = init_carry_stat_names
@@ -392,7 +422,6 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         return self.continue_run(rng_key, initial_state, n_samples_per_chain=n_samples_per_chain)
         
     def continue_run(self, rng_key: PRNGKey, state: MCMCState, *, n_samples_per_chain: int, reset_info: bool=True):
-        keys = jax.random.split(rng_key, n_samples_per_chain)
         if reset_info:
             infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
             state = MCMCState(jnp.array(0, int), self.temperature, self.data_annealing, state.position, state.log_prob, state.carry_stats, infos)
@@ -400,16 +429,47 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         self.progress_bar_mngr.set_num_samples(n_samples_per_chain)
             
         if self.cached_mcmc_scan:
-            last_state, return_values = self.cached_mcmc_scan(state, keys)
+            scan_fn = self.cached_mcmc_scan
         else:
-            scan_fn = (
-                get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr)
-                if self.show_progress else
-                get_mcmc_scan_without_progressbar(self.kernel)
-            )
+            # scan_fn = (
+            #     get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr)
+            #     if self.show_progress else
+            #     get_mcmc_scan_without_progressbar(self.kernel)
+            # )
+            scan_fn = get_mcmc_scan_without_progressbar(self.kernel)
             self.cached_mcmc_scan = scan_fn
+        
+        if self.vectorisation == "none":
+            keys =  jax.random.split(rng_key, (n_samples_per_chain, self.n_chains))
+        else:
+            keys = jax.random.split(rng_key, n_samples_per_chain)
+            
+        if self.parallelisation.type == ParallelisationType.SequentialSMAP:
+            with jax.sharding.use_mesh(create_default_device_mesh(self.n_chains)):
+                last_state, return_values = scan_fn(state, keys)
+        elif self.parallelisation.type == ParallelisationType.SequentialGlobalSMAP:
+            with jax.sharding.use_mesh(create_default_device_mesh(self.n_chains)):
+                mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
+                last_state, return_values = smap_vmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
+        elif self.parallelisation.type == ParallelisationType.SequentialPMAP:
+            device_count = jax.device_count()
+            mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
+            if self.n_chains <= device_count:
+                last_state, return_values = jax.pmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
+            else:
+                assert self.n_chains % device_count == 0
+                batch_size = self.n_chains // device_count
+                last_state, return_values = pmap_vmap(scan_fn, axis_name="i", batch_size=batch_size, in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
+        else:
+            assert self.parallelisation.type in (
+                ParallelisationType.SequentialVMAP,
+                ParallelisationType.SequentialSMAP,
+                ParallelisationType.MultiProcessingCPU,
+                ParallelisationType.MultiThreadingJAXDevices
+                )
             last_state, return_values = scan_fn(state, keys)
-
+        # tqdm.write("last_state: " + str(jax.tree.map(lambda v: v.shape, last_state)))
+        tqdm.write("return_values: " + str(jax.tree.map(lambda v: v.shape, return_values))) # (25_000, 10)
         return last_state, return_values
 
 def init_inference_infos(regime: MCMCRegime) -> InferenceInfos:

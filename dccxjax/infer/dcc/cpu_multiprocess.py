@@ -59,45 +59,20 @@ while True:
 """
 
 import jax
-import jax.numpy as jnp
 import pickle
-from typing import IO, List, Callable, Tuple, Dict, Generic, TypeVar
+from typing import IO
 from queue import Queue
 import time
 import subprocess
 import sys
 from dccxjax.infer.dcc.dcc_types import JaxTask, ExportedJaxTask
-from dataclasses import dataclass, field
-from enum import Enum
-import os
 from jax.tree_util import tree_flatten, tree_unflatten
 from tqdm.auto import tqdm
-
+from dccxjax.infer.dcc.parallelisation import ParallelisationConfig, ParallelisationType
 
 __all__ = [
-    "ParallelisationType",
-    "ParallelisationConfig"
-]
     
-class ParallelisationType(Enum):
-    Sequential = 0
-    MultiProcessingCPU = 1
-    MultiThreadingJAXDevices = 2
-
-@dataclass
-class ParallelisationConfig:
-    type: ParallelisationType = ParallelisationType.Sequential
-    num_workers: int = os.cpu_count() or 1
-    cpu_affinity: bool = False
-    environ: Dict[str, str] = field(default_factory= lambda: {
-        "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
-        "OMP_NUM_THREADS": "1",
-        "OPENBLAS_NUM_THREADS": "1",
-        "MKL_NUM_THREADS": "1",
-        "NUMEXPR_NUM_THREADS": "1",
-        "JAX_PLATFORMS": "cpu"
-    })
-    verbose: bool = True
+]
     
 
 def read_transport_layer(reader: IO[bytes]):
