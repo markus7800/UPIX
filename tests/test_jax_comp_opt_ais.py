@@ -83,15 +83,15 @@ def step(carry: Carry, rng_key: jax.Array):
 
 def f1(X) -> Carry:
     print("Compile f1")
-    keys = jax.random.split(jax.random.PRNGKey(0), 100)
+    keys = jax.random.split(jax.random.key(0), 100)
     return jax.lax.scan(step, Carry(X, 0., 0.), keys)[0]
 
 def f2(X) -> jax.Array:
     print("Compile f2")
-    keys = jax.random.split(jax.random.PRNGKey(0), 100)
+    keys = jax.random.split(jax.random.key(0), 100)
     return jax.lax.scan(step, Carry(X, 0., 0.), keys)[0].lp
 
-X = jax.random.normal(jax.random.PRNGKey(0), (1_000_000,))
+X = jax.random.normal(jax.random.key(0), (1_000_000,))
 
 from time import time
 

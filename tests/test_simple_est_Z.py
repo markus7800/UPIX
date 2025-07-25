@@ -5,7 +5,7 @@ import numpyro.distributions as dist
 d = dist.Normal(0,1)
 
 T, N = 4, 10
-x = d.sample(jax.random.PRNGKey(0), (T, N))
+x = d.sample(jax.random.key(0), (T, N))
 
 lps = d.log_prob(x)
 
@@ -30,5 +30,5 @@ def step(carry, rng_key):
     next_col, next_row, next_lp = jax.lax.cond(accept, lambda _: (col, row, lp), lambda _: (current_col, current_row, current_lp), None)
     return (next_col, next_row, next_lp), next_row
 
-_, rows = jax.lax.scan(step, (0,0,-jnp.inf), jax.random.split(jax.random.PRNGKey(0), 1_000_000))
+_, rows = jax.lax.scan(step, (0,0,-jnp.inf), jax.random.split(jax.random.key(0), 1_000_000))
 print(jnp.array([jnp.mean(rows == i).item() for i in range(T)]))

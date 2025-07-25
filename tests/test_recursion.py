@@ -34,7 +34,7 @@ def formatter(slp: SLP):
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_i_max)
 
-rng_key = jax.random.PRNGKey(0)
+rng_key = jax.random.key(0)
 active_slps: List[SLP] = []
 for _ in tqdm(range(1_000)):
     rng_key, key = jax.random.split(rng_key)

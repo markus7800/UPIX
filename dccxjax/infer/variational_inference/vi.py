@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 class GuideInitCtx(GuideContext):
-    def __init__(self, rng_key: PRNGKey = jax.random.PRNGKey(0)) -> None:
+    def __init__(self, rng_key: PRNGKey = jax.random.key(0)) -> None:
         self.rng_key = rng_key
         self.X: Trace = dict()
         self.params: Dict[str,FloatArray] = dict()

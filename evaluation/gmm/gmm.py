@@ -271,7 +271,7 @@ dcc_obj = StaticDCCConfig(m, verbose=2,
 )
 
 # takes ~185s for 10 * 25_000 * 11 samples
-result = timed(dcc_obj.run)(jax.random.PRNGKey(0))
+result = timed(dcc_obj.run)(jax.random.key(0))
 result.pprint(sortkey="slp")
 
 

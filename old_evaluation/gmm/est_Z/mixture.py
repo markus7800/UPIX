@@ -104,7 +104,7 @@ def get_posterior(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, gibbs_regime, collect_inference_info=False, return_map=return_map)
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
     progressbar_mng.start_progress()
-    keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+    keys = jax.random.split(jax.random.key(0), n_samples_per_chain)
 
     init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), []), (n_chains,)))
 
@@ -113,7 +113,7 @@ def get_posterior(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     
     result_positions = StackedTraces(all_states.position, n_samples_per_chain, n_chains).unstack()
 
-    # ixs = jax.random.randint(jax.random.PRNGKey(0), (10_000,), 0, result_positions.n_samples())
+    # ixs = jax.random.randint(jax.random.key(0), (10_000,), 0, result_positions.n_samples())
     # centers = jax.tree.map(lambda v: v[ixs,...], result_positions.data)
 
     # plt.scatter(centers["mus"], centers["vars"], alpha=0.1, s=1.)
@@ -153,7 +153,7 @@ def do_mixture_is(N = 1_000_000, n_chains:int = 10, n_samples_per_chain: int = 1
     for K in Ks:
         print(f"{K=}")
         traces = get_posterior(K, n_chains, n_samples_per_chain)
-        ixs = jax.random.randint(jax.random.PRNGKey(0), (n_components,), 0, traces.n_samples())
+        ixs = jax.random.randint(jax.random.key(0), (n_components,), 0, traces.n_samples())
         centers = jax.tree.map(lambda v: v[ixs,...], traces.data)
         proposer = MixtureProposer(centers, n_components, sigma, K)
 

@@ -120,7 +120,7 @@ dcc_obj = DCCConfig(m, verbose=2,
               return_map=lambda trace: {"start": trace["start"]}
 )
 
-result = timed(dcc_obj.run)(jax.random.PRNGKey(0))
+result = timed(dcc_obj.run)(jax.random.key(0))
 result.pprint(sortkey="slp")
 
 exit()

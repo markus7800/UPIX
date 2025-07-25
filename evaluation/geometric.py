@@ -75,7 +75,7 @@ dcc_obj = DCCConfig(m, verbose=2,
 
 t0 = time()
 
-result = dcc_obj.run(jax.random.PRNGKey(0))
+result = dcc_obj.run(jax.random.key(0))
 result.pprint()
 
 t1 = time()

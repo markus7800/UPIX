@@ -95,19 +95,19 @@ g: Guide = normal_guide()
 
 g: Guide = MeanfieldNormalGuide(slp, AllVariables())
 
-print(g.sample_and_log_prob(jax.random.PRNGKey(0), ()))
-x, lp = g.sample_and_log_prob(jax.random.PRNGKey(0), (10,3))
+print(g.sample_and_log_prob(jax.random.key(0), ()))
+x, lp = g.sample_and_log_prob(jax.random.key(0), (10,3))
 print(x["x"].shape, lp.shape)
 
 advi = ADVI(slp, AllVariables(), g, Adagrad(1.), 100, progress_bar=True)
 
-last_state, elbo = advi.run(jax.random.PRNGKey(0), n_iter=1_000)
+last_state, elbo = advi.run(jax.random.key(0), n_iter=1_000)
 plt.figure()
 plt.plot(elbo)
 # plt.show()
 
 g = advi.get_updated_guide(last_state)
-posterior = g.sample(jax.random.PRNGKey(0), (1_000_000,))
+posterior = g.sample(jax.random.key(0), (1_000_000,))
 plt.figure()
 plt.hist(posterior["x"], bins=100, density=True)
 plt.plot(x_range, ps)

@@ -80,7 +80,7 @@ def get_Z_ESS(log_weights):
 
 # likelihood weighting
 def likelihood_weighting():
-    x_sample = sample_prior(jax.random.PRNGKey(0), N)
+    x_sample = sample_prior(jax.random.key(0), N)
     log_weights = log_joint(x_sample) - log_prior(x_sample)
     Z, ESS = get_Z_ESS(log_weights)
     print(f"LW: {log_weights=} {x0=} {Z=} {ESS=}")
@@ -106,11 +106,11 @@ def likelihood_weighting():
 
 def one_step_AIS():
     log_f2 = log_prior
-    x1 = sample_prior(jax.random.PRNGKey(0), N)
+    x1 = sample_prior(jax.random.key(0), N)
     log_f1 = lambda x: 0.5*log_joint(x) + 0.5*log_prior(x)
     T1 = jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_f1))
-    # x0 = T1(x1, jax.random.split(jax.random.PRNGKey(0), N))
-    rng_key, mh_key = jax.random.split(jax.random.PRNGKey(0))
+    # x0 = T1(x1, jax.random.split(jax.random.key(0), N))
+    rng_key, mh_key = jax.random.split(jax.random.key(0))
     x0 = apply_mh_kernel_n(x1, mh_key, 1, T1)
     log_f0 = log_joint
     xs = x0
@@ -132,11 +132,11 @@ def one_step_AIS():
 
 def one_big_step_AIS():
     log_f2 = log_prior
-    x1 = sample_prior(jax.random.PRNGKey(0), N)
+    x1 = sample_prior(jax.random.key(0), N)
 
     log_f1 = lambda x: 0.5*log_joint(x) + 0.5*log_prior(x)
     T1 = jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_f1))
-    x0 = apply_mh_kernel_n(x1, jax.random.PRNGKey(0), 100, T1)
+    x0 = apply_mh_kernel_n(x1, jax.random.key(0), 100, T1)
     log_f0 = log_joint
 
     plt.hist(x0, density=True, bins=bins)
@@ -167,11 +167,11 @@ def one_big_step_AIS():
 
 def one_big_step_to_almost_posterior_AIS():
     log_f2 = log_prior
-    x1 = sample_prior(jax.random.PRNGKey(0), N)
+    x1 = sample_prior(jax.random.key(0), N)
 
     log_f1 = lambda x: 0.99*log_joint(x) + 0.01*log_prior(x)
     T1 = jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_f1))
-    x0 = apply_mh_kernel_n(x1, jax.random.PRNGKey(0), 100, T1) # x0 is MC estimate of almost posterior
+    x0 = apply_mh_kernel_n(x1, jax.random.key(0), 100, T1) # x0 is MC estimate of almost posterior
     log_f0 = log_joint
 
     plt.hist(x0, density=True, bins=bins)
@@ -219,7 +219,7 @@ def AIS(xn, log_fn, log_f0, betas, M, plot=False):
 
     @jax.jit
     def _ais(xn):
-        last_state, _ = jax.lax.scan(step, AISCarry(xn, jax.lax.zeros_like_array(xn), jax.random.PRNGKey(0)), betas)
+        last_state, _ = jax.lax.scan(step, AISCarry(xn, jax.lax.zeros_like_array(xn), jax.random.key(0)), betas)
         x0 = last_state.xs
         log_weights = last_state.log_weights + log_f0(x0) - log_fn(xn)
         return log_weights
@@ -256,7 +256,7 @@ def sigmoid(z):
 # plt.plot())
 # plt.show()
 
-# xn = sample_prior(jax.random.PRNGKey(0), N)
+# xn = sample_prior(jax.random.key(0), N)
 # AIS(xn, log_prior, log_joint, jnp.linspace(0.1,0.99, 100), 1, True)
 
 # a = 5
@@ -277,38 +277,38 @@ def sigmoid(z):
 
 
 # a = 25
-# xn0 = sample_prior(jax.random.PRNGKey(0), 1)
+# xn0 = sample_prior(jax.random.key(0), 1)
 # xn = jax.lax.broadcast_in_dim(xn0, (N,), (0,))
 # AIS(xn, lambda x: jax.lax.zeros_like_array(x), log_joint, sigmoid(jnp.linspace(-a,a,1000)), 1, True) # High ESS but Z order of magnitude off
 
 
-# xn0 = sample_prior(jax.random.PRNGKey(0), 1)
+# xn0 = sample_prior(jax.random.key(0), 1)
 # xn = jax.lax.broadcast_in_dim(xn0, (N,), (0,))
 # AIS(xn, lambda x: jax.lax.zeros_like_array(x), log_joint, jnp.array([]), 1_000, True) # High ESS but does not work
 
-# xn0 = sample_prior(jax.random.PRNGKey(0), 1)
-# xn = dist.Normal(xn0, 1).sample(jax.random.PRNGKey(0), (N,))
+# xn0 = sample_prior(jax.random.key(0), 1)
+# xn = dist.Normal(xn0, 1).sample(jax.random.key(0), (N,))
 # AIS(xn, lambda x: dist.Normal(xn0, 1).log_prob(x), log_joint, jnp.array([]), 1_000, True) # works somewhat
 
 
 
 # a = 25
-# x0 = sample_posterior(jax.random.PRNGKey(0), N)
+# x0 = sample_posterior(jax.random.key(0), N)
 # Z = AIS(x0, log_joint, log_prior, sigmoid(jnp.linspace(-a,a,1000)), 1, True)
 # print(f"{1/Z=}")
 
 
 
 # target prior from posterior estimate
-# x0 = sample_posterior(jax.random.PRNGKey(0), N)
-# xn = apply_mh_kernel_n(x0, jax.random.PRNGKey(0), 1_000, jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_prior)))
+# x0 = sample_posterior(jax.random.key(0), N)
+# xn = apply_mh_kernel_n(x0, jax.random.key(0), 1_000, jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_prior)))
 
 # # target prior from "decision representative"
 # x0 = jnp.zeros((N,))
 # x0.block_until_ready()
 # print("Begin sampling prior")
 # t0 = time()
-# xn = apply_mh_kernel_n(x0, jax.random.PRNGKey(0), 1_000, jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_prior)))
+# xn = apply_mh_kernel_n(x0, jax.random.key(0), 1_000, jax.vmap(make_mh_kernel(lambda x: dist.Normal(x, 1.), log_prior)))
 # xn.block_until_ready()
 # t1 = time()
 # print(f"Finished sampling prior in {t1-t0:.3f}s")
@@ -359,7 +359,7 @@ tempering_schedule.block_until_ready()
 # beta = 0.0 # prior
 # beta = 0.5
 # beta = 1.0 # posterior
-# mcmc_keys = jax.random.split(jax.random.PRNGKey(0), 1_000)
+# mcmc_keys = jax.random.split(jax.random.key(0), 1_000)
 # log_f = lambda x: beta*log_joint(x) + (1-beta)*log_prior(x)
 # init = MCMCState(jnp.array(0,int), jnp.array(beta,float), broadcast_jaxtree({"x": jnp.array(0.,float)}, (N,)), broadcast_jaxtree(jnp.array(-jnp.inf,float), (N,)), broadcast_jaxtree([], (N,)))
 # t0 = time()
@@ -385,7 +385,7 @@ tempering_schedule.block_until_ready()
 # lp = jnp.full((N,), -jnp.inf, float)
 # lp.block_until_ready()
 # t0 = time()
-# log_weights = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+# log_weights = run_ais(slp, config, jax.random.key(0), xs, lp, N)
 # log_weights.block_until_ready()
 # t1 = time()
 # print(log_weights)
@@ -415,11 +415,11 @@ tempering_schedule.block_until_ready()
 # N = 1_000_000
 
 # config = AISConfig(None, 0, kernel, tempering_schedule)
-# xs = {"x": sample_prior(jax.random.PRNGKey(0), N)}
+# xs = {"x": sample_prior(jax.random.key(0), N)}
 # lp = jax.vmap(slp.log_prior)(xs)
 # lp.block_until_ready()
 # t0 = time()
-# log_weights, position = run_ais(slp, config, jax.random.PRNGKey(0), xs, lp, N)
+# log_weights, position = run_ais(slp, config, jax.random.key(0), xs, lp, N)
 # log_weights.block_until_ready()
 # t1 = time()
 # print(log_weights)
@@ -437,11 +437,11 @@ tempering_schedule = sigmoid(jnp.linspace(-25,25,10))
 tempering_schedule = tempering_schedule.at[-1].set(1.)
 
 # config = SMCConfig(kernel, tempering_schedule)
-# xs = {"x": sample_prior(jax.random.PRNGKey(0), N)}
+# xs = {"x": sample_prior(jax.random.key(0), N)}
 # lp = jax.vmap(slp.log_prior)(xs)
 # lp.block_until_ready()
 # t0 = time()
-# log_weights, position, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), xs, lp, N, resampling="adaptive")
+# log_weights, position, log_ess = run_smc(slp, config, jax.random.key(0), xs, lp, N, resampling="adaptive")
 # log_weights.block_until_ready()
 # t1 = time()
 # # print(log_weights)
@@ -469,8 +469,8 @@ smc_obj = SMC(
     collect_inference_info=True,
     progress_bar=True
 )
-particles = {"x": sample_prior(jax.random.PRNGKey(0), n_particles)}
-last_state, ess = smc_obj.run(jax.random.PRNGKey(0), StackedTrace(particles, n_particles))
+particles = {"x": sample_prior(jax.random.key(0), n_particles)}
+last_state, ess = smc_obj.run(jax.random.key(0), StackedTrace(particles, n_particles))
 
 # plt.plot(ess)
 # plt.show()

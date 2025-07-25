@@ -46,9 +46,9 @@ assert p.stdin is not None
 assert p.stdout is not None
 
 
-exported_fn = jax.export.export(f)(jax.random.PRNGKey(0))
+exported_fn = jax.export.export(f)(jax.random.key(0))
 
-write_task_transport_layer(p.stdin, (exported_fn.serialize(), (jax.random.PRNGKey(1),))) # type: ignore
+write_task_transport_layer(p.stdin, (exported_fn.serialize(), (jax.random.key(1),))) # type: ignore
 response = read_transport_layer(p.stdout) # type: ignore
 print(response)
 write_close_transport_layer(p.stdin) # type: ignore

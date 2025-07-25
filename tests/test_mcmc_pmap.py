@@ -48,7 +48,7 @@ mcmc_obj = MCMC(
 )
 
 
-# last_state, result = timed(mcmc_obj.run)(jax.random.PRNGKey(0),
+# last_state, result = timed(mcmc_obj.run)(jax.random.key(0),
 #     StackedTrace(broadcast_jaxtree(slp.decision_representative, (n_chains,)), n_chains),
 #     n_samples_per_chain=n_samples_per_chain)
 

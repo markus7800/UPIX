@@ -11,7 +11,7 @@ def discrete():
     C1 = jnp.array([0,1])
     C2 = jnp.array([2,3,4])
 
-    X_sample = X.sample(jax.random.PRNGKey(0), (10_000_000,))
+    X_sample = X.sample(jax.random.key(0), (10_000_000,))
     print(jnp.array([jnp.mean(X_sample == x) for x in X.enumerate_support()]))
 
     def log_P_X_constrained(C):
@@ -30,7 +30,7 @@ def discrete():
     log_is_weights = jax.vmap(log_P_X_constrained(C2))(X_sample) - X.log_prob(X_sample)
     print("Z2_est", jnp.exp(jax.scipy.special.logsumexp(log_is_weights)) / X_sample.size)
 
-    key1, key2 = jax.random.split(jax.random.PRNGKey(0),2)
+    key1, key2 = jax.random.split(jax.random.key(0),2)
 
     N = 10_000_000
 
@@ -99,7 +99,7 @@ def discrete():
         next_col, next_row, next_x, next_lp = jax.lax.cond(accept, lambda _: (col, row, x, lp), lambda _: (current_col, current_row, current_x, current_lp), None)
         return (next_col, next_row, next_x, next_lp), next_row
 
-    _, rows = jax.lax.scan(step, (0,0,0,-jnp.inf), jax.random.split(jax.random.PRNGKey(0), 1_000_000))
+    _, rows = jax.lax.scan(step, (0,0,0,-jnp.inf), jax.random.split(jax.random.key(0), 1_000_000))
     print(jnp.array([jnp.mean(rows == i).item() for i in range(2)]))
 
 # discrete()
@@ -113,7 +113,7 @@ def continuous():
     C1 = lambda x: x < a
     C2 = lambda x: x >= a
 
-    X_sample = X.sample(jax.random.PRNGKey(0), (10_000_000,))
+    X_sample = X.sample(jax.random.key(0), (10_000_000,))
 
     def log_P_X_constrained(C):
         def _log_P_X_constrained(x):
@@ -130,7 +130,7 @@ def continuous():
     log_is_weights = jax.vmap(log_P_X_constrained(C2))(X_sample) - X.log_prob(X_sample)
     print("Z2_est", jnp.exp(jax.scipy.special.logsumexp(log_is_weights)) / X_sample.size)
 
-    key1, key2 = jax.random.split(jax.random.PRNGKey(0),2)
+    key1, key2 = jax.random.split(jax.random.key(0),2)
 
     N = 10_000_000
 
@@ -183,7 +183,7 @@ def continuous():
         next_col, next_row, next_x, next_lp = jax.lax.cond(accept, lambda _: (col, row, x, lp), lambda _: (current_col, current_row, current_x, current_lp), None)
         return (next_col, next_row, next_x, next_lp), next_row
 
-    _, rows = jax.lax.scan(step, (0,0,0.,-jnp.inf), jax.random.split(jax.random.PRNGKey(0), 1_000_000))
+    _, rows = jax.lax.scan(step, (0,0,0.,-jnp.inf), jax.random.split(jax.random.key(0), 1_000_000))
     print(jnp.array([jnp.mean(rows == i).item() for i in range(2)]))
 
 continuous()

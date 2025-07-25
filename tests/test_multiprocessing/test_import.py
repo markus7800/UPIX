@@ -14,4 +14,4 @@ with open("serialised_jax_func.bin", "rb") as file:
 
 rehydrated_exp = jax.export.deserialize(bytearray(serialized))
 
-print(rehydrated_exp.call(jax.random.PRNGKey(1)))
+print(rehydrated_exp.call(jax.random.key(1)))

@@ -88,7 +88,7 @@ def main():
         threads.append(t)
     
     for i in range(num_tasks):
-        in_queue.put((f, (jax.random.PRNGKey(i),)))
+        in_queue.put((f, (jax.random.key(i),)))
     in_queue.shutdown()
     
     in_queue.join()

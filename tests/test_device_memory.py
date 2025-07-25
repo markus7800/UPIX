@@ -5,7 +5,7 @@ print(jax.devices('gpu'))
 cpu = jax.devices('cpu')[0]
 gpu = jax.devices('gpu')[0]
 
-rng_key = jax.random.PRNGKey(0)
+rng_key = jax.random.key(0)
 arrs = []
 for i in range(100):
     print(i)

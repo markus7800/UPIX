@@ -46,7 +46,7 @@ def formatter(slp: SLP):
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_t_max)
 
-rng_key = jax.random.PRNGKey(0)
+rng_key = jax.random.key(0)
 active_slps: List[SLP] = []
 
 active_slps_tree = {}
@@ -141,10 +141,10 @@ def return_map(x: InferenceCarry):
 for i, slp in enumerate(active_slps):
     print(slp.short_repr(), slp.formatted())
     # print("\t", distance_position(slp.decision_representative), slp.log_prob(slp.decision_representative))
-    # position, log_prob, result = coordinate_ascent(slp, 0.1, 10000, n_chains, jax.random.PRNGKey(0))
-    # position, log_prob, result = simulated_annealing(slp, 0.1, 10000, n_chains, jax.random.PRNGKey(0))
+    # position, log_prob, result = coordinate_ascent(slp, 0.1, 10000, n_chains, jax.random.key(0))
+    # position, log_prob, result = simulated_annealing(slp, 0.1, 10000, n_chains, jax.random.key(0))
     p = min(1., 2. / len(slp.decision_representative))
-    mle_position, log_prob, result = sparse_coordinate_ascent(slp, 0.1, p, 1_000, 1, jax.random.PRNGKey(0))
+    mle_position, log_prob, result = sparse_coordinate_ascent(slp, 0.1, p, 1_000, 1, jax.random.key(0))
     print("\t", f"{mle_position=}")
     print("\t", f"{log_prob=}, {jnp.exp(log_prob)=}")
     print("\t", distance_position(mle_position))
@@ -182,7 +182,7 @@ for i, slp in enumerate(active_slps):
     # last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
     # last_state.iteration.block_until_ready()
 
-    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.PRNGKey(0))
+    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.key(0))
     print("\t", f" prior Z={Z.item()}, ESS={ESS.item():,.0f}, {1-frac_out_of_support=}")
 
     Z_final, ESS_final = Z, ESS
@@ -194,8 +194,8 @@ for i, slp in enumerate(active_slps):
     # p = 2. / len(slp.decision_representative)
     # p = 1.0
     # for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
-    #     # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked.data)
-    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, p, 1.0, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), positions_unstacked.data, False)
+    #     # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.key(0), Xs_constrained=positions_unstacked.data)
+    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, p, 1.0, 10_000_000 // positions_unstacked.n_samples(), jax.random.key(0), positions_unstacked.data, False)
     #     if ESS > ESS_final:
     #         Z_final, ESS_final = Z, ESS
 
@@ -203,8 +203,8 @@ for i, slp in enumerate(active_slps):
 
     # positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked.data)
     # for s in [0.1,0.5,1.0,1.5,2.0,5.0,10.0]:
-    #     # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), Xs_unconstrained=positions_unstacked_unconstrained)
-    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, p, 1.0, 10_000_000 // positions_unstacked.n_samples(), jax.random.PRNGKey(0), positions_unstacked_unconstrained, True)
+    #     # Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // positions_unstacked.n_samples(), jax.random.key(0), Xs_unconstrained=positions_unstacked_unconstrained)
+    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, p, 1.0, 10_000_000 // positions_unstacked.n_samples(), jax.random.key(0), positions_unstacked_unconstrained, True)
     #     if ESS > ESS_final:
     #         Z_final, ESS_final = Z, ESS
     #     print("\t", f" MCMC unconstrained {s=} Z={Z.item()}, ESS={ESS.item():,.0f}, frac_out_of_support={frac_out_of_support.item()}")
@@ -241,7 +241,7 @@ plt.show()
 #     n_samples_per_chain = 1024,
 #     n_samples_for_Z_est = 10**6
 # )
-# result = dcc(m, lambda _: MCMCStep(AllVariables(), RandomWalk(gaussian_random_walk(0.25), block_update=False)), jax.random.PRNGKey(0), config)
+# result = dcc(m, lambda _: MCMCStep(AllVariables(), RandomWalk(gaussian_random_walk(0.25), block_update=False)), jax.random.key(0), config)
 
 # # plot_histogram(result, "start")
 # # plt.show()

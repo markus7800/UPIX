@@ -11,6 +11,6 @@ def test_if():
         return sample("C", dist.Normal(0., 1.))
     
 
-with GenerateCtx(jax.random.PRNGKey(0)) as ctx:
+with GenerateCtx(jax.random.key(0)) as ctx:
     test_if()
     print(ctx.X)

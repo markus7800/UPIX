@@ -68,7 +68,7 @@ def lis(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=collect_info, return_map=return_map)
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
     progressbar_mng.start_progress()
-    keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+    keys = jax.random.split(jax.random.key(0), n_samples_per_chain)
 
     init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_inference_infos(regime) if collect_info else []), (n_chains,)))
 

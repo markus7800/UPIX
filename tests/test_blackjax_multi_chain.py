@@ -61,7 +61,7 @@ initial_states = jax.vmap(hmc.init, in_axes=(0))(initial_positions)
 
 t0 = time()
 state = inference_loop_multiple_chains(
-    jax.random.PRNGKey(0), hmc.step, initial_states, 100_000, num_chains
+    jax.random.key(0), hmc.step, initial_states, 100_000, num_chains
 )
 _ = state.position["loc"].block_until_ready()
 t1 = time()

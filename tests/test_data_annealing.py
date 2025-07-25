@@ -13,7 +13,7 @@ import dccxjax.distributions as dist
 import logging
 setup_logging(logging.DEBUG)
 
-obs = jax.random.normal(jax.random.PRNGKey(0), (100,)) + 2
+obs = jax.random.normal(jax.random.key(0), (100,)) + 2
 
 @model
 def normal(obs):
@@ -52,8 +52,8 @@ smc_obj = SMC(
     collect_inference_info=True,
     progress_bar=True
 )
-particles = {"x": jax.random.normal(jax.random.PRNGKey(0), (n_particles,))}
-last_state, ess = smc_obj.run(jax.random.PRNGKey(0), StackedTrace(particles, n_particles))
+particles = {"x": jax.random.normal(jax.random.key(0), (n_particles,))}
+last_state, ess = smc_obj.run(jax.random.key(0), StackedTrace(particles, n_particles))
 last_state.log_particle_weights.block_until_ready()
 print(get_log_Z_ESS(last_state.log_particle_weights))
 

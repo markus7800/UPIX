@@ -30,7 +30,7 @@ def importance_sampling(slp: SLP):
     return _is
         
 is_func = importance_sampling(slp)
-rng_keys = jax.random.split(jax.random.PRNGKey(0), 10_000_000)
+rng_keys = jax.random.split(jax.random.key(0), 10_000_000)
 X, lp = jax.vmap(is_func)(rng_keys)
 p = jnp.exp(lp - jax.scipy.special.logsumexp(lp))
 plt.hist(X["X"], weights=p, bins=100, density=True)
@@ -53,10 +53,10 @@ mcmc_config = MCMC(
     return_map=lambda x: x.position
 )
 
-init_trace, init_log_prob = broadcast_jaxtree(m.generate(jax.random.PRNGKey(0)), (mcmc_config.n_chains,))
+init_trace, init_log_prob = broadcast_jaxtree(m.generate(jax.random.key(0)), (mcmc_config.n_chains,))
 init_trace = StackedTrace(init_trace, mcmc_config.n_chains)
 
-result, all_positions = mcmc_config.run(jax.random.PRNGKey(0), init_trace, init_log_prob, n_samples_per_chain=n_samples_per_chain)
+result, all_positions = mcmc_config.run(jax.random.key(0), init_trace, init_log_prob, n_samples_per_chain=n_samples_per_chain)
 assert result.infos is not None
 for info in result.infos:
     print(summarise_mcmc_info(info, n_samples_per_chain))

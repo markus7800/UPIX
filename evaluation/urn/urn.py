@@ -45,7 +45,7 @@ m.set_slp_sort_key(_get_n)
 class Config(ExactDCC):
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
         for N in range(1,15+1):
-            X, _ = m.generate(jax.random.PRNGKey(0), {"N": jnp.array(N,int)})
+            X, _ = m.generate(jax.random.key(0), {"N": jnp.array(N,int)})
             slp = slp_from_decision_representative(m, X)
             tqdm.write(f"Make SLP {slp.formatted()} active.")
             active_slps.append(slp)
@@ -92,5 +92,5 @@ config = Config(m, verbose=2,
     share_progress_bar=False
 )
 
-result = timed(config.run)(jax.random.PRNGKey(0))
+result = timed(config.run)(jax.random.key(0))
 result.pprint(sortkey="slp")

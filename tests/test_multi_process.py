@@ -29,18 +29,18 @@ def worker_fn_2(a: A):
   return a.f(a.seed)
 
 if __name__ == "__main__":
-  f(jax.random.PRNGKey(0))
+  f(jax.random.key(0))
   # with multiprocessing.get_context("spawn").Pool(2) as p:
-  #   r = p.imap(worker_fn, [jax.random.PRNGKey(0), jax.random.PRNGKey(1)])
+  #   r = p.imap(worker_fn, [jax.random.key(0), jax.random.key(1)])
   #   print(list(r))
   with multiprocess.get_context("spawn").Pool(2) as p:
-    r = p.imap(worker_fn_2, [A(jax.random.PRNGKey(0)), A(jax.random.PRNGKey(1))])
+    r = p.imap(worker_fn_2, [A(jax.random.key(0)), A(jax.random.key(1))])
     print(list(r))
 
 # if __name__ == "__main__":
-# #   f(jax.random.PRNGKey(0))
+# #   f(jax.random.key(0))
 #     with multiprocessing.get_context("spawn").Pool(2) as p:
-#         r = p.imap(worker_fn, [jax.random.PRNGKey(0), jax.random.PRNGKey(1)])
+#         r = p.imap(worker_fn, [jax.random.key(0), jax.random.key(1)])
 #     # with multiprocess.Pool(2) as p:
-#     #     r = p.imap(worker_fn_2, [A(jax.random.PRNGKey(0)), A(jax.random.PRNGKey(1))])
+#     #     r = p.imap(worker_fn_2, [A(jax.random.key(0)), A(jax.random.key(1))])
 #     print(list(r))

@@ -24,7 +24,7 @@ result = mcmc(
     MCMCStep(AllVariables(), RW(gaussian_random_walk(0.5))),
     10**5,
     1,
-    jax.random.PRNGKey(0)
+    jax.random.key(0)
     )
 t1 = time()
 

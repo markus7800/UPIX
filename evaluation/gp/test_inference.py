@@ -48,7 +48,7 @@ def get_kernel(X: Trace):
 
 xs = jnp.linspace(0.,1.,10)
 
-# X, _ = prim_kernel(xs, None).generate(jax.random.PRNGKey(0), {"lengthscale": jnp.array(0.,float), "amplitude": jnp.array(0.,float), "period": jnp.array(0.,float)})
+# X, _ = prim_kernel(xs, None).generate(jax.random.key(0), {"lengthscale": jnp.array(0.,float), "amplitude": jnp.array(0.,float), "period": jnp.array(0.,float)})
 # print(X)
 # lengthscale_gt = transform_param("lengthscale", X["lengthscale"])
 # period_gt = transform_param("period", X["period"])
@@ -65,12 +65,12 @@ xs = jnp.linspace(0.,1.,10)
 # plt.show()
 
 # xs = jnp.linspace(0.,1.,100)
-# ys = jnp.sin(xs*6*5) + jax.random.normal(jax.random.PRNGKey(0), (100,)) * 0.1
+# ys = jnp.sin(xs*6*5) + jax.random.normal(jax.random.key(0), (100,)) * 0.1
 
 
 xs, xs_val, ys, ys_val = get_data_autogp()
-xs = jax.random.permutation(jax.random.PRNGKey(0), xs)
-ys = jax.random.permutation(jax.random.PRNGKey(0), ys)
+xs = jax.random.permutation(jax.random.key(0), xs)
+ys = jax.random.permutation(jax.random.key(0), ys)
 
 
 slp = SLP_from_branchless_model(prim_kernel(xs, ys))
@@ -94,12 +94,12 @@ if False:
         return_map=lambda x: (x.position, x.log_prob)
     )
     init_positions = broadcast_jaxtree(slp.decision_representative, (mcmc_obj.n_chains,))
-    init_positions, init_lps = jax.vmap(slp.generate, in_axes=(0,None))(jax.random.split(jax.random.PRNGKey(0), mcmc_obj.n_chains), dict())
+    init_positions, init_lps = jax.vmap(slp.generate, in_axes=(0,None))(jax.random.split(jax.random.key(0), mcmc_obj.n_chains), dict())
     print(init_positions["period"])
     print(init_lps)
 
 
-    last_state, (positions, lp) = mcmc_obj.run(jax.random.PRNGKey(0), StackedTrace(init_positions, mcmc_obj.n_chains), n_samples_per_chain=n_samples_per_chain)
+    last_state, (positions, lp) = mcmc_obj.run(jax.random.key(0), StackedTrace(init_positions, mcmc_obj.n_chains), n_samples_per_chain=n_samples_per_chain)
     print(summarise_mcmc_infos(last_state.infos, n_samples_per_chain))
     plt.hist(positions["lengthscale"].reshape(-1), bins=100, density=True, alpha=0.5, label="lengthscale")
     plt.hist(positions["amplitude"].reshape(-1), bins=100, density=True, alpha=0.5, label="amplitude")
@@ -165,7 +165,7 @@ if False:
     print(log_Z)
 
 
-log_Z, ESS, _ = estimate_log_Z_for_SLP_from_prior(slp, 100_000, jax.random.PRNGKey(0))
+log_Z, ESS, _ = estimate_log_Z_for_SLP_from_prior(slp, 100_000, jax.random.key(0))
 print(log_Z, ESS)
 
 n_particles = 10
@@ -223,14 +223,14 @@ smc_obj = SMC(
 # )
 # init_positions = StackedTrace(broadcast_jaxtree(slp.decision_representative, (mcmc.n_chains,)), mcmc.n_chains)
 
-# last_state, _ = mcmc.run(jax.random.PRNGKey(0), init_positions, n_samples_per_chain=10)
+# last_state, _ = mcmc.run(jax.random.key(0), init_positions, n_samples_per_chain=10)
 # print(jnp.sum(jnp.abs(last_state.log_prob - jax.vmap(slp.log_prior)(last_state.position))))
 
 # init_particles = last_state.position
 
-init_particles, _ = jax.vmap(slp.generate, in_axes=(0,None))(jax.random.split(jax.random.PRNGKey(0), smc_obj.n_particles), dict())
+init_particles, _ = jax.vmap(slp.generate, in_axes=(0,None))(jax.random.split(jax.random.key(0), smc_obj.n_particles), dict())
 
-last_state, ess = smc_obj.run(jax.random.PRNGKey(0), StackedTrace(init_particles, n_particles))
+last_state, ess = smc_obj.run(jax.random.key(0), StackedTrace(init_particles, n_particles))
 print(get_log_Z_ESS(last_state.log_particle_weights))
 # plt.plot(ess)
 # plt.show()

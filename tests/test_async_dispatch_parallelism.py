@@ -32,12 +32,12 @@ def timer(name, f, x, shouldBlock=True):
 #     X = jax.random.normal(rng_key, (N,N))
 #     return (X @ X @ X @ X @ X).sum()
 
-# timer("g", g, jax.random.PRNGKey(0), True)
+# timer("g", g, jax.random.key(0), True)
 
 # def g_pmap(rng_key):
 #    return jax.pmap(g, devices=[devices[0]])(jax.lax.broadcast(rng_key, (1,)))
 
-# timer("g_pmap", g, jax.random.PRNGKey(0), True)
+# timer("g_pmap", g, jax.random.key(0), True)
 
 
 @jax.jit
@@ -52,16 +52,16 @@ def f(seed):
   print(f"Compile f {seed}")
   return jax.lax.scan(step, (jnp.array(0.,float), seed), length=10**7)[0][0]
 
-# e = f.trace(jax.random.PRNGKey(0)).lower().compile()
+# e = f.trace(jax.random.key(0)).lower().compile()
 # print(e)
 # from jax.export import export
 
-# exported = export(f)(jax.random.PRNGKey(0))
+# exported = export(f)(jax.random.key(0))
 # print(exported)
 
 # f = exported.call
 
-timer("base", f, jax.device_put(PRNGKey(0), devices[0]), shouldBlock=True)
+timer("base", f, jax.device_put(key(0), devices[0]), shouldBlock=True)
 
 def f2(x):
     x1, x2 = x
@@ -70,9 +70,9 @@ def f2(x):
     print(f"{r1}, {r2}")
 
 
-timer("async 1 device", f2, (jax.device_put(PRNGKey(0), devices[0]),jax.device_put(PRNGKey(1), devices[0])), shouldBlock=False)
+timer("async 1 device", f2, (jax.device_put(key(0), devices[0]),jax.device_put(key(1), devices[0])), shouldBlock=False)
 
-# timer("async 2 devices", f2, (jax.device_put(PRNGKey(0), devices[0]),jax.device_put(PRNGKey(1), devices[1])), shouldBlock=False)
+# timer("async 2 devices", f2, (jax.device_put(key(0), devices[0]),jax.device_put(key(1), devices[1])), shouldBlock=False)
 
 # async def f_async(x):
 #    return f(x)
@@ -87,13 +87,13 @@ timer("async 1 device", f2, (jax.device_put(PRNGKey(0), devices[0]),jax.device_p
 #     r2 = await task2
 #     t1 = time.time()
 #     print(f"{r1}, {r2} - {t1-t0:.3f}s")
-# asyncio.run(f2_async((PRNGKey(0),PRNGKey(1))))
+# asyncio.run(f2_async((key(0),key(1))))
 
 # import threading
 # threads = []
-# t = threading.Thread(target=f, args=(PRNGKey(0),))
+# t = threading.Thread(target=f, args=(key(0),))
 # threads.append(t)
-# t = threading.Thread(target=f, args=(PRNGKey(1),))
+# t = threading.Thread(target=f, args=(key(1),))
 # threads.append(t)
 
 # t0 = time.time()
@@ -112,13 +112,13 @@ def f_pmap(x):
    r = jax.pmap(f)(x)
    print(r)
 
-timer("pmap", f_pmap, jnp.vstack((PRNGKey(0), PRNGKey(1))), shouldBlock=False)
+timer("pmap", f_pmap, jnp.vstack((key(0), key(1))), shouldBlock=False)
 
 def f_pmap_2(x):
    r = jax.pmap(f, devices=[devices[0],devices[1]])(x)
    print(r)
 
-timer("pmap device", f_pmap_2, jnp.vstack((PRNGKey(0), PRNGKey(1))), shouldBlock=False)
+timer("pmap device", f_pmap_2, jnp.vstack((key(0), key(1))), shouldBlock=False)
 
 
 def f3(x):
@@ -127,4 +127,4 @@ def f3(x):
     r2 = jax.pmap(f, devices=[devices[1]])(jax.lax.broadcast(x2,(1,)))
     print(f"{r1}, {r2}")
 
-timer("pmap async", f3, (PRNGKey(0), PRNGKey(1)), shouldBlock=False)
+timer("pmap async", f3, (key(0), key(1)), shouldBlock=False)

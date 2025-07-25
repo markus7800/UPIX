@@ -177,7 +177,7 @@ def main_fn(seed):
     return result
 
 if args.export:
-    exported_main = jax.export.export(main_fn)(jax.random.PRNGKey(0))
+    exported_main = jax.export.export(main_fn)(jax.random.key(0))
     with open("tmp.bin", "wb") as file:
         file.write(exported_main.serialize())
 
@@ -185,7 +185,7 @@ with open("tmp.bin", "rb") as file:
     exported_fn = bytearray(file.read())
     rehydrated_fn = jax.export.deserialize(exported_fn)
     print(rehydrated_fn)
-    # main_fn.trace(jax.random.PRNGKey(0)).lower() # makes seg fault go away
-    out = rehydrated_fn.call(jax.random.PRNGKey(0)) # seg fault if not -export
+    # main_fn.trace(jax.random.key(0)).lower() # makes seg fault go away
+    out = rehydrated_fn.call(jax.random.key(0)) # seg fault if not -export
     out.block_until_ready()
     print(out)

@@ -22,20 +22,20 @@ def f(rng_key):
 
 
 # t0 = time()
-# res = f(jax.random.PRNGKey(0))
+# res = f(jax.random.key(0))
 # res.block_until_ready()
 # t1 = time()
 # print(f"Finished in {t1-t0:.3f}s")
 
 t0 = time()
-res = jax.vmap(f)(jax.random.split(jax.random.PRNGKey(0), (8,)))
+res = jax.vmap(f)(jax.random.split(jax.random.key(0), (8,)))
 res.block_until_ready()
 print(res)
 t1 = time()
 print(f"Finished in {t1-t0:.3f}s")
 
 t0 = time()
-res = jax.pmap(f)(jax.random.split(jax.random.PRNGKey(0), (8,)))
+res = jax.pmap(f)(jax.random.split(jax.random.key(0), (8,)))
 res.block_until_ready()
 print(res)
 t1 = time()
@@ -43,7 +43,7 @@ print(f"Finished in {t1-t0:.3f}s")
 
 t0 = time()
 res = []
-for i, key in enumerate(jax.random.split(jax.random.PRNGKey(0), (8,))):
+for i, key in enumerate(jax.random.split(jax.random.key(0), (8,))):
     print(i)
     r = jax.jit(f, device=cpus[i])(jax.device_put(key, cpus[i]))
     res.append(r)

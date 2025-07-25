@@ -67,7 +67,7 @@ class NamedTrace(jax_core.Trace):
     
 class FactorsCtx(SampleContext):
     # X can be partial
-    def __init__(self, X: Trace, rng_key: PRNGKey = jax.random.PRNGKey(0)) -> None:
+    def __init__(self, X: Trace, rng_key: PRNGKey = jax.random.key(0)) -> None:
         super().__init__()
         self.X = X
         self.log_probs: Dict[str,FloatArray] = dict()

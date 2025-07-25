@@ -38,7 +38,7 @@ likeli = jnp.exp(dist.Normal(Ms, 0.5).log_prob(0.5))
 
 active_slps: List[SLP] = []
 for key in range(10):
-    rng_key = jax.random.PRNGKey(key)
+    rng_key = jax.random.key(key)
     X = sample_from_prior(m, rng_key)
     slp = slp_from_decision_representative(m, X)
 
@@ -50,7 +50,7 @@ print()
 print("active_slps: ")
 for slp in active_slps:
     print(slp)
-    result = coordinate_ascent(slp, 1., 100, 2, jax.random.PRNGKey(0))
+    result = coordinate_ascent(slp, 1., 100, 2, jax.random.key(0))
     print(result)
 #     plt.plot(result["u"])
 # plt.show()

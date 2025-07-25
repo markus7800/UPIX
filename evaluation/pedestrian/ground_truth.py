@@ -35,12 +35,12 @@ def pedestrian_batched(seed: jax.Array, N: int, M: int):
     rng_keys = jax.random.split(seed, (N, M))
     return jax.vmap(jax.vmap(pedestrian))(rng_keys)
 
-# pedestrian_batched(jax.random.PRNGKey(0), N, 1) == [pedestrian1(key) for key in jax.random.split(jax.random.PRNGKey(0), N)]
+# pedestrian_batched(jax.random.key(0), N, 1) == [pedestrian1(key) for key in jax.random.split(jax.random.key(0), N)]
 
 #%%
 t0 = time()
-# result = pedestrian_batched(jax.random.PRNGKey(0), 1_000_000, 1) # not batching while loop is faster on CPU
-result = jax.vmap(pedestrian)(jax.random.split(jax.random.PRNGKey(0), 10_000_000))
+# result = pedestrian_batched(jax.random.key(0), 1_000_000, 1) # not batching while loop is faster on CPU
+result = jax.vmap(pedestrian)(jax.random.split(jax.random.key(0), 10_000_000))
 result["start"].block_until_ready()
 x = result["start"].reshape(-1)
 lp = result["lp"].reshape(-1)
@@ -65,7 +65,7 @@ def cdf(x, qs, weights: jax.Array):
     return jax.lax.map(_cdf, qs)
 
 def cdf_cruncher(qs, N, M):
-    rng_keys = jax.random.split(jax.random.PRNGKey(0), N)
+    rng_keys = jax.random.split(jax.random.key(0), N)
     c = jnp.zeros_like(qs)
     for (i,key) in tqdm(enumerate(rng_keys),total=N):
         t0 = time()

@@ -31,7 +31,7 @@ k, noise = get_kernel({"lengthscale": jnp.array(0.,float), "period": jnp.array(0
 
 xs, xs_val, ys, ys_val = get_data_autogp()
 
-mask = jax.random.bernoulli(jax.random.PRNGKey(0), 0.5, xs.shape).astype(bool)
+mask = jax.random.bernoulli(jax.random.key(0), 0.5, xs.shape).astype(bool)
 
 cov_matrix_full = k.eval_cov_vec(xs) + (noise + 1e-5) * jnp.eye(xs.size)
 print(f"{cov_matrix_full.shape}")

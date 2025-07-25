@@ -50,17 +50,17 @@ def IS(log_weight, K: int, N: int, batch_method: int = 1):
                 log_Ws = jax.vmap(log_weight)(keys)
                 return (jax.scipy.special.logsumexp(log_Ws), jax.scipy.special.logsumexp(log_Ws * 2))
 
-            batch_keys = jax.random.split(jax.random.PRNGKey(0), N_batches)
+            batch_keys = jax.random.split(jax.random.key(0), N_batches)
             log_W, log_W_squared = jax.lax.map(batch, batch_keys)
             log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N_batches) - jnp.log(batch_size)
             ESS = jnp.exp(jax.scipy.special.logsumexp(log_W)*2 - jax.scipy.special.logsumexp(log_W_squared))
         else:
-            keys = jax.random.split(jax.random.PRNGKey(0), N)
+            keys = jax.random.split(jax.random.key(0), N)
             log_W = jax.lax.map(log_weight, keys, batch_size=batch_size)
             log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N_batches) - jnp.log(batch_size)
             ESS = jnp.exp(jax.scipy.special.logsumexp(log_W)*2 - jax.scipy.special.logsumexp(log_W*2))
     else:
-        keys = jax.random.split(jax.random.PRNGKey(0), N)
+        keys = jax.random.split(jax.random.key(0), N)
         log_W = jax.vmap(log_weight)(keys)
         log_Z = jax.scipy.special.logsumexp(log_W) - jnp.log(N)
         ESS = jnp.exp(jax.scipy.special.logsumexp(log_W)*2 - jax.scipy.special.logsumexp(log_W*2))

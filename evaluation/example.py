@@ -53,7 +53,7 @@ dcc_obj = DCCConfig(m, verbose=2,
               mcmc_n_samples_per_chain=5_000,
               mcmc_collect_for_all_traces=True)
 
-result = dcc_obj.run(jax.random.PRNGKey(0))
+result = dcc_obj.run(jax.random.key(0))
 result.pprint()
 
 plot_histogram(result, "u")
@@ -101,5 +101,5 @@ dcc_obj2 = DCCConfig2(m2, verbose=2,
               mcmc_n_samples_per_chain=100_000,
               mcmc_collect_for_all_traces=False)
 
-result = dcc_obj2.run(jax.random.PRNGKey(0))
+result = dcc_obj2.run(jax.random.key(0))
 result.pprint()

@@ -21,7 +21,7 @@ def find_i_max(X: Trace):
         i = max(i, int(addr[2:]))
     return i
 
-rng_keys = jax.random.split(jax.random.PRNGKey(0), 100_000)
+rng_keys = jax.random.split(jax.random.key(0), 100_000)
 result = [m.generate(rng_key) for rng_key in tqdm(rng_keys)]
 r = jnp.array([find_i_max(X) for X, _ in result])
 lps = jnp.array([lp - m.log_prior(X) for X, lp in result])
@@ -30,7 +30,7 @@ w = jnp.exp(lps - jax.scipy.special.logsumexp(lps))
 for i in range(10):
     print(i, w[r == i].sum())
 
-rng_key = jax.random.PRNGKey(0)
+rng_key = jax.random.key(0)
 rng_key, generate_key = jax.random.split(rng_key)
 X, _ = m.generate(generate_key)
 r = []

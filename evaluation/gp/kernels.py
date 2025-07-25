@@ -412,7 +412,7 @@ class UnitSquaredExponential(PrimitiveGPKernel):
     
 # import numpyro.distributions as numpyro_dist
 # import matplotlib.pyplot as plt
-# z = jax.random.normal(jax.random.PRNGKey(0), (10_000_000,))
+# z = jax.random.normal(jax.random.key(0), (10_000_000,))
 # param = transform_param("", z)
 # param = param[param < 5]
 # plt.hist(param, density=True, bins=100)

@@ -52,7 +52,7 @@ logprob = make_model_logprob(m) # cannot jit this
 active_slps: List[SLP] = []
 for key in range(10):
     print(f"{key=}")
-    rng_key = jax.random.PRNGKey(key)
+    rng_key = jax.random.key(key)
     X = sample_from_prior(m, rng_key)
     print(X.keys())
     slp = slp_from_decision_representative(m, X)

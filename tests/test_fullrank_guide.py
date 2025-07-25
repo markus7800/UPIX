@@ -26,7 +26,7 @@ n_chains = 10
 
 mcmc_obj = MCMC(slp, MCMCStep(AllVariables(), HMC(10, 0.1)), n_chains, return_map=lambda x: x.position)
 _, traces = mcmc_obj.run(
-    jax.random.PRNGKey(0),
+    jax.random.key(0),
     StackedTrace(broadcast_jaxtree(slp.decision_representative, (n_chains,)), n_chains),
     n_samples_per_chain=n_samples_per_chain
 )
@@ -53,7 +53,7 @@ print(g.L)
 
 
 advi = ADVI(slp, g, Adagrad(1.), 100, progress_bar=True)
-last_state, elbo = advi.run(jax.random.PRNGKey(0), n_iter=1_000)
+last_state, elbo = advi.run(jax.random.key(0), n_iter=1_000)
 plt.figure()
 plt.plot(elbo)
 plt.show()
@@ -63,7 +63,7 @@ g = advi.get_updated_guide(last_state)
 if isinstance(g, FullRankNormalGuide):
     print(g.mu)
     print(g.L)
-posterior = g.sample(jax.random.PRNGKey(0), (100_000,))
+posterior = g.sample(jax.random.key(0), (100_000,))
 X = jnp.vstack((posterior["x"], posterior["y"]))
 print(jnp.mean(X,axis=1))
 print(jnp.cov(X))

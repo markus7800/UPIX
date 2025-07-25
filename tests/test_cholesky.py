@@ -7,7 +7,7 @@ from evaluation.gp.kernels import *
 import dccxjax.distributions as dist
 
 xs = jnp.linspace(0,1,100)
-ts = jax.random.normal(jax.random.PRNGKey(0), xs.shape)
+ts = jax.random.normal(jax.random.key(0), xs.shape)
 
 def f(lengthscale, gamma, amplitude):
     cov_matrix = GammaExponential(lengthscale, gamma, amplitude).eval_cov_vec(xs)
@@ -37,14 +37,14 @@ def step(rng_key, _):
 N_iter = 100_000
 
 t0 = time()
-r, _ = jax.lax.scan(step, jax.random.PRNGKey(0), length=N_iter)
+r, _ = jax.lax.scan(step, jax.random.key(0), length=N_iter)
 r.block_until_ready()
 t1 = time()
 print(f"Finished in {t1-t0:.3f} s")
 
 
 t0 = time()
-r, _ = jax.lax.scan(jax.vmap(step), jax.lax.broadcast(jax.random.PRNGKey(0), (1,)), length=N_iter)
+r, _ = jax.lax.scan(jax.vmap(step), jax.lax.broadcast(jax.random.key(0), (1,)), length=N_iter)
 r.block_until_ready()
 t1 = time()
 print(f"Finished in {t1-t0:.3f} s")
@@ -53,7 +53,7 @@ print(r)
 
 
 
-# Ls = jax.vmap(f)(jax.lax.broadcast(jax.random.PRNGKey(0), (1,)))
+# Ls = jax.vmap(f)(jax.lax.broadcast(jax.random.key(0), (1,)))
 # Ls.block_until_ready()
 # t1 = time()
 # print(f"Finished in {t1-t0:.3f} s")
@@ -71,13 +71,13 @@ print(r)
 #     return jax.lax.scan(step, seed, length=10_000)[1]
 
 # t0 = time()
-# Ls = f(jax.random.PRNGKey(0))
+# Ls = f(jax.random.key(0))
 # Ls.block_until_ready()
 # t1 = time()
 # print(f"Finished in {t1-t0:.3f} s")
 
 # t0 = time()
-# Ls = jax.vmap(f)(jax.lax.broadcast(jax.random.PRNGKey(0), (1,)))
+# Ls = jax.vmap(f)(jax.lax.broadcast(jax.random.key(0), (1,)))
 # Ls.block_until_ready()
 # t1 = time()
 # print(f"Finished in {t1-t0:.3f} s")

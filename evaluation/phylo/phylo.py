@@ -203,7 +203,7 @@ f(tree)
 m = phylo(tree, rho)
 
 for i in range(10):
-    X, lp = m.generate(jax.random.PRNGKey(i))
+    X, lp = m.generate(jax.random.key(i))
     print(len(X), lp)
 
 # slp = slp_from_decision_representative(m, X)

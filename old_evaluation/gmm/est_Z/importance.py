@@ -78,7 +78,7 @@ def get_posterior_estimates(K: int, n_chains:int = 100, n_samples_per_chain: int
     mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, gibbs_regime, collect_inference_info=False, return_map=return_map)
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
     progressbar_mng.start_progress()
-    keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+    keys = jax.random.split(jax.random.key(0), n_samples_per_chain)
 
     init = MCMCState(jnp.array(0,int), jnp.array(1.,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), []), (n_chains,)))
 
@@ -118,7 +118,7 @@ def get_posterior_estimates(K: int, n_chains:int = 100, n_samples_per_chain: int
 
 
     # hist_proposer = HistogramProposer(x, 0.01, jnp.linspace(x.min(), x.max(), 100), kind="normal")
-    # x_sample = hist_proposer.sample(jax.random.PRNGKey(0), (1_000_000,))
+    # x_sample = hist_proposer.sample(jax.random.key(0), (1_000_000,))
     # #print(hist_proposer.log_prob(x_sample).sum())
     # plt.hist(x_sample, bins=100, density=True)
     # xrange = jnp.linspace(x.min(), x.max(), 1000)

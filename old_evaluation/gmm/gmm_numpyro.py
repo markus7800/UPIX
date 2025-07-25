@@ -57,7 +57,7 @@ ys = jnp.array([
 # from numpyro.infer import MCMC, NUTS
 # nuts_kernel = NUTS(gmm)
 # mcmc = MCMC(nuts_kernel, num_warmup=500, num_samples=1000)
-# rng_key = jax.random.PRNGKey(0)
+# rng_key = jax.random.key(0)
 # mcmc.run(rng_key, ys)
 # mcmc.print_summary(exclude_deterministic=False) 
 
@@ -65,7 +65,7 @@ mcmc_kwargs = dict(
     num_warmup=500, num_samples=1000
 )
 dcc = DCC(gmm, mcmc_kwargs=mcmc_kwargs)
-dcc_result = dcc.run(jax.random.PRNGKey(0), ys)
+dcc_result = dcc.run(jax.random.key(0), ys)
 print(dcc_result)
 
 # does not work with discrete variables that are not branching

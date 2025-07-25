@@ -23,9 +23,9 @@ def _f(rng_key: jax.Array):
     out, unravel_fn = jax.flatten_util.ravel_pytree(out)
     return out
 
-print(_f(jax.random.PRNGKey(1)))
+print(_f(jax.random.key(1)))
 
-exported = jax.export.export(_f)(jax.random.PRNGKey(0))
+exported = jax.export.export(_f)(jax.random.key(0))
 
 serialized: bytearray = exported.serialize()
 # print(serialized)

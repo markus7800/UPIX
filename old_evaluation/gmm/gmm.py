@@ -81,7 +81,7 @@ ys = jnp.array([
 # ys = ys[:1]
 
 from dccxjax.core.samplecontext import GenerateCtx, LogprobCtx
-with GenerateCtx(jax.random.PRNGKey(0)) as ctx1:
+with GenerateCtx(jax.random.key(0)) as ctx1:
     gmm(ys)
     print(ctx1.log_likelihood + ctx1.log_prior)
 
@@ -102,7 +102,7 @@ def formatter(slp: SLP):
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_K)
 
-rng_key = jax.random.PRNGKey(0)
+rng_key = jax.random.key(0)
 
 active_slps: List[SLP] = []
 for i in tqdm(range(100)):
@@ -126,7 +126,7 @@ active_slps = active_slps[:6]
 # print(slp.short_repr())
 # print(slp.decision_representative)
 # X = StackedTrace(broadcast_jaxtree(slp.decision_representative, (4,)), 4)
-# _log_IS_weight_gaussian_mixture(slp, jax.random.PRNGKey(0), unstack_trace(X), 1.)
+# _log_IS_weight_gaussian_mixture(slp, jax.random.key(0), unstack_trace(X), 1.)
 
 
 # exit()
@@ -184,7 +184,7 @@ def try_estimate_Z_with_AIS():
         # mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=True, return_map=return_map)
         # progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
         # progressbar_mng.start_progress()
-        # keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+        # keys = jax.random.split(jax.random.key(0), n_samples_per_chain)
 
         # init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []
         # init = MCMCState(jnp.array(0,int), jnp.array(0.5,float), *broadcast_jaxtree((slp.decision_representative, slp.log_prob(slp.decision_representative), init_info), (n_chains,)))
@@ -217,7 +217,7 @@ def try_estimate_Z_with_AIS():
                 m()
                 return ctx.X
             
-        X, _ = jax.vmap(jax.jit(retrace_branching(generate_from_prior_conditioned, slp.branching_decisions)))(jax.random.split(jax.random.PRNGKey(0), N_particles))
+        X, _ = jax.vmap(jax.jit(retrace_branching(generate_from_prior_conditioned, slp.branching_decisions)))(jax.random.split(jax.random.key(0), N_particles))
         lp = jax.vmap(slp.log_prior)(X)
 
         kernel = get_inference_regime_mcmc_step_for_slp(slp, regime)
@@ -225,9 +225,9 @@ def try_estimate_Z_with_AIS():
         progressbar_mng.start_progress()
 
         # config = AISConfig(None, 0, kernel, tempering_schedule)
-        # log_weights, position = run_ais(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
+        # log_weights, position = run_ais(slp, config, jax.random.key(0), X, lp, N_particles)
         config = SMCConfig(kernel, tempering_schedule)
-        log_weights, position, log_ess = run_smc(slp, config, jax.random.PRNGKey(0), X, lp, N_particles)
+        log_weights, position, log_ess = run_smc(slp, config, jax.random.key(0), X, lp, N_particles)
         # print(f"{log_weights=}")
         print(get_Z_ESS(log_weights))
         # plt.plot(jnp.exp(log_ess))
@@ -249,7 +249,7 @@ exit()
 for i, slp in enumerate(active_slps):
     print(slp.short_repr(), slp.formatted())
 
-    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 100_000, jax.random.PRNGKey(0))
+    Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 100_000, jax.random.key(0))
     print("\t", f" prior Z={Z.item()}, ESS={ESS.item()}, {frac_out_of_support=}")
 
 
@@ -278,7 +278,7 @@ for i, slp in enumerate(active_slps):
     mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=collect_infos, return_map=return_map)
     progressbar_mng, mcmc_step = add_progress_bar(n_samples_per_chain, mcmc_step)
     progressbar_mng.start_progress()
-    keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+    keys = jax.random.split(jax.random.key(0), n_samples_per_chain)
     last_state, all_states = jax.lax.scan(mcmc_step, init, keys)
     last_state.iteration.block_until_ready()
     print("\t", last_state.infos)
@@ -307,7 +307,7 @@ for i, slp in enumerate(active_slps):
     # positions_unstacked_unconstrained = jax.vmap(slp.transform_to_unconstrained)(positions_unstacked.data)
 
     # for s in [0.01, 0.1, 1.0,]:
-    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, 1.0, 0.0, 1, jax.random.PRNGKey(0), positions_unstacked_unconstrained, True)
+    #     Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_sparse_mixture(slp, s, s, 1.0, 0.0, 1, jax.random.key(0), positions_unstacked_unconstrained, True)
 
     #     print("\t", f" MCMC constrained {s=} Z={Z.item()}, ESS={ESS.item():,.0f}, frac_out_of_support={frac_out_of_support.item()}")
 

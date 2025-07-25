@@ -43,20 +43,20 @@ mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, n_chains, collec
 
 init = broadcast_jaxtree(InferenceCarry(0,InferenceState(slp.decision_representative, slp.log_prob(slp.decision_representative)), []), (n_chains,))
 
-keys = jax.random.split(jax.random.PRNGKey(0), n_samples_per_chain)
+keys = jax.random.split(jax.random.key(0), n_samples_per_chain)
 last_state, all_positions = jax.lax.scan(mcmc_step, init, keys)
 last_state.iteration.block_until_ready()
 last_positions = last_state.state.position
 
 
-Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.PRNGKey(0))
+Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_prior(slp, 10_000_000, jax.random.key(0))
 print("\t", f" prior Z={Z.item()}, ESS={ESS.item()}, {frac_out_of_support=}")
 
 result_positions: Trace =  all_positions if all_positions is not None else last_positions
 positions_unstacked = unstack_chains(result_positions) if collect_states else result_positions
 
 s = 1.0
-Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked)), jax.random.PRNGKey(0), Xs_constrained=positions_unstacked)
+Z, ESS, frac_out_of_support = estimate_Z_for_SLP_from_mcmc(slp, s, 10_000_000 // (n_samples_for_unstacked_chains(positions_unstacked)), jax.random.key(0), Xs_constrained=positions_unstacked)
 print("\t", f" MCMC constrained {s=} Z={Z.item()}, ESS={ESS.item()}, frac_out_of_support={frac_out_of_support.item()}")
 Z.block_until_ready()
 
@@ -83,7 +83,7 @@ def weight_t(x_t, rng_key: PRNGKey):
     print(log_q)
     return log_gamma - log_q
 
-keys = jax.random.split(jax.random.PRNGKey(0), T)
+keys = jax.random.split(jax.random.key(0), T)
 log_w = jax.vmap(weight_t)(x, keys)
 log_w = log_w.reshape(-1)
 
@@ -149,9 +149,9 @@ def est_Z_dm_mis(x_t_n, rng_key: PRNGKey):
     
     return jax.vmap(est_Z_dm_mis_2)(jax.random.split(rng_key, M))
 
-# log_w = est_Z_pi_mais(x, jax.random.PRNGKey(0))
-# log_w = est_Z_s_mis(x, jax.random.PRNGKey(0))
-log_w = est_Z_dm_mis(x, jax.random.PRNGKey(0))
+# log_w = est_Z_pi_mais(x, jax.random.key(0))
+# log_w = est_Z_s_mis(x, jax.random.key(0))
+log_w = est_Z_dm_mis(x, jax.random.key(0))
 print(f"{log_w.shape=} {log_w.size:,}")
 log_w = log_w.reshape(-1)
 

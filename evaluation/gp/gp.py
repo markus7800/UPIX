@@ -117,13 +117,13 @@ m.set_slp_sort_key(lambda slp: get_gp_kernel(slp.decision_representative).size()
 # m.set_slp_equivalence_class_id_gen(lambda X: get_gp_kernel(X, ordered=True).key(), lambda X: get_gp_kernel(X, ordered=False).key())
 m.set_equivalence_map(equivalence_map)
 
-# X, _ = m.generate(jax.random.PRNGKey(2))
+# X, _ = m.generate(jax.random.key(2))
 # print(get_gp_kernel(X, False))
 # print(get_gp_kernel(X, True))
 # print(get_gp_kernel(equivalence_map(X), False))
 
 # equivalence_classes: Dict[str, Set[str]] = dict()
-# rng_key = jax.random.PRNGKey(0)
+# rng_key = jax.random.key(0)
 # for _ in tqdm(range(10_000)):
 #     rng_key, sample_key = jax.random.split(rng_key)
 #     trace, _ = m.generate(sample_key)
@@ -210,7 +210,7 @@ class SMCDCCConfig(SMCDCC[T]):
 
 # do_smc = True
 # if do_smc:
-#     result = timed(smc_dcc_obj.run)(jax.random.PRNGKey(0))
+#     result = timed(smc_dcc_obj.run)(jax.random.key(0))
 #     result.pprint()
 
 #     slp_weights = list(result.get_slp_weights().items())
@@ -244,7 +244,7 @@ class SMCDCCConfig(SMCDCC[T]):
 #     xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
 
 #     n_posterior_samples = 1_000
-#     sample_key = jax.random.PRNGKey(0)
+#     sample_key = jax.random.key(0)
 #     slp_weights_array = jnp.array([weight for _, weight in slp_weights])
 #     posterior_over_slps = dist.Categorical(slp_weights_array)
 
@@ -379,7 +379,7 @@ vi_dcc_obj = VIConfig(m, verbose=2,
 
 do_vi = True
 if do_vi:
-    result = timed(vi_dcc_obj.run)(jax.random.PRNGKey(0))
+    result = timed(vi_dcc_obj.run)(jax.random.key(0))
     result.pprint()
     exit()
 
@@ -394,7 +394,7 @@ if do_vi:
         
         n = 100
         
-        key = jax.random.PRNGKey(0)
+        key = jax.random.key(0)
         posterior = Traces(g.sample(key, (n,)), n)
         
         samples = []

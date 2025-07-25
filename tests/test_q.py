@@ -14,7 +14,7 @@ def Q(rng_key: jax.Array):
     return y, dist.Normal(0,1).log_prob(x) + dist.Normal(x,1).log_prob(y)
 
 
-ys, qs = jax.vmap(Q)(jax.random.split(jax.random.PRNGKey(0), 100_000_000))
+ys, qs = jax.vmap(Q)(jax.random.split(jax.random.key(0), 100_000_000))
 
 plt.hist(ys, bins=100, density=True)
 xs = jnp.linspace(-5,5,1000)
