@@ -48,31 +48,43 @@ mcmc_obj = MCMC(
 )
 
 
-last_state, result = timed(mcmc_obj.run)(jax.random.PRNGKey(0),
-    StackedTrace(broadcast_jaxtree(slp.decision_representative, (n_chains,)), n_chains),
-    n_samples_per_chain=n_samples_per_chain)
+# last_state, result = timed(mcmc_obj.run)(jax.random.PRNGKey(0),
+#     StackedTrace(broadcast_jaxtree(slp.decision_representative, (n_chains,)), n_chains),
+#     n_samples_per_chain=n_samples_per_chain)
 
 
-# import jax
-# import jax.numpy as jnp
-# from jax._src.shard_map import smap
-# from jax.sharding import Mesh
-# from jax.experimental.mesh_utils import create_device_mesh
+import jax
+import jax.numpy as jnp
+from jax._src.shard_map import smap
+from jax.sharding import Mesh
+from jax.experimental.mesh_utils import create_device_mesh
 
-# def f(x, y):
-#     return jax.lax.cond(x < y, lambda _: x, lambda _: y, operand=None)
-# def g(x, y):
-#     def step(carry, data):
-#         x, y = data
-#         return carry + f(x,y), None
-#     return jax.lax.scan(step, jnp.array(0., float), (x,y))
+I = jnp.array([0,1,2,3,5,6,7])
 
+def f(xs, ys, key):
+    def step(x, ix):
+        x_new = x.at[ix].set(ys[ix])
+        return x_new, None
+    ixs = jax.random.permutation(key, I)
+    # ixs = jnp.arange(len(ys))
+    return jax.lax.scan(step, xs, ixs)
 
+@jax.jit
+def g(xs, ys, keys):
+    return jax.lax.scan(lambda _, a: (None, f(*a)),  None, (xs,ys,keys))
 
-# # with jax.sharding.use_mesh(Mesh(create_device_mesh((jax.device_count(),)), axis_names=("i",))):
-# #     x = jax.random.normal(jax.random.key(0), (100,))
-# #     y = jax.random.normal(jax.random.key(1), (100,))
-# #     print(smap(jax.vmap(f), in_axes=0, out_axes=0, axis_name="i")(x,y))
+T = 10
+N = 10**6
+xs = jax.random.normal(jax.random.key(0), (T, N,10))
+ys = jax.random.normal(jax.random.key(1), (T, N,10))
+keys = jax.random.split(jax.random.key(2), (T, N))
+
+print(jax.vmap(g)(xs, ys, keys))
+
+# print(jax.pmap(g)(xs,ys,keys))
+    
+# with jax.sharding.use_mesh(Mesh(create_device_mesh((jax.device_count(),)), axis_names=("i",))):
+#     print(smap(jax.vmap(g), in_axes=0, out_axes=0, axis_name="i")(xs,ys,keys))
 
 # with jax.sharding.use_mesh(Mesh(create_device_mesh((jax.device_count(),)), axis_names=("i",))):
 #     x = jax.random.normal(jax.random.key(0), (100,))

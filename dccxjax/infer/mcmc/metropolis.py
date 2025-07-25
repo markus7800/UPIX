@@ -81,7 +81,7 @@ def rw_kernel_sparse(
         return (new_value_flat, new_log_prob, n_accepted + accept), None
     
     scan_keys = jax.random.split(rng_key, int(math.ceil(1./p)))
-    (last_position, last_log_prob, n_accepted), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_position, current_log_prob, jnp.array(0,int)), scan_keys)
+    (last_position, last_log_prob, n_accepted), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_position, current_log_prob, jax.lax.pvary(jnp.array(0,int),("i",))), scan_keys)
 
 
     return last_position, last_log_prob, n_accepted
@@ -115,7 +115,7 @@ def rw_kernel_elementwise(
         return jax.lax.cond(accept, lambda _: (proposed_position, proposed_log_prob, n_accept + 1, body_rng_key), lambda _: (current_position, current_log_prob, n_accept, body_rng_key), operand=None)
 
 
-    new_position, new_log_prob, n_accepted, _ = jax.lax.fori_loop(0, n_dim, lambda i, a: _body(i, *a), (current_position, current_log_prob, jnp.array(0,int), rng_key))
+    new_position, new_log_prob, n_accepted, _ = jax.lax.fori_loop(0, n_dim, lambda i, a: _body(i, *a), (current_position, current_log_prob, jax.lax.pvary(jnp.array(0,int), ("i",)), rng_key))
     
     return new_position, new_log_prob, n_accepted
     

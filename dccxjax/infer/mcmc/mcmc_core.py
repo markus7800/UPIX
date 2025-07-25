@@ -330,8 +330,9 @@ def get_mcmc_scan_with_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], progre
         return jax.lax.scan(kernel_with_bar, init, xs)
     return jax.jit(scan_with_bar)
 
-def get_mcmc_scan_without_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
-    def scan_without_bar(init: MCMCState, xs: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
+def get_mcmc_scan_without_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], n_iters: int) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
+    def scan_without_bar(init: MCMCState, x: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
+        xs = jax.random.split(x, n_iters)
         return jax.lax.scan(kernel, init, xs)
     return jax.jit(scan_without_bar)
 
@@ -436,32 +437,32 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             #     if self.show_progress else
             #     get_mcmc_scan_without_progressbar(self.kernel)
             # )
-            scan_fn = get_mcmc_scan_without_progressbar(self.kernel)
+            scan_fn = get_mcmc_scan_without_progressbar(self.kernel, n_samples_per_chain)
             self.cached_mcmc_scan = scan_fn
         
         if self.vectorisation == "none":
-            keys =  jax.random.split(rng_key, (n_samples_per_chain, self.n_chains))
+            keys = jax.random.split(rng_key, self.n_chains)
         else:
-            keys = jax.random.split(rng_key, n_samples_per_chain)
+            keys = rng_key
         
         mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
 
         if self.parallelisation.type == ParallelisationType.SequentialGlobalVMAP:
-            last_state, return_values = jax.vmap(scan_fn, in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
+            last_state, return_values = jax.vmap(scan_fn, in_axes=(mcmc_state_axes,0), out_axes=(0,1))(state, keys)
         elif self.parallelisation.type == ParallelisationType.SequentialSMAP:
             with jax.sharding.use_mesh(create_default_device_mesh(self.n_chains)):
                 last_state, return_values = scan_fn(state, keys)
         elif self.parallelisation.type == ParallelisationType.SequentialGlobalSMAP:
             with jax.sharding.use_mesh(create_default_device_mesh(self.n_chains)):
-                last_state, return_values = smap_vmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
+                last_state, return_values = smap_vmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,0), out_axes=(0,1))(state, keys)
         elif self.parallelisation.type == ParallelisationType.SequentialPMAP:
             device_count = jax.device_count()
             if self.n_chains <= device_count:
-                last_state, return_values = jax.pmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
+                last_state, return_values = jax.pmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,0), out_axes=(0,1))(state, keys)
             else:
                 assert self.n_chains % device_count == 0
                 batch_size = self.n_chains // device_count
-                last_state, return_values = pmap_vmap(scan_fn, axis_name="i", batch_size=batch_size, in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
+                last_state, return_values = pmap_vmap(scan_fn, axis_name="i", batch_size=batch_size, in_axes=(mcmc_state_axes,0), out_axes=(0,1))(state, keys)
         else:
             assert self.parallelisation.type in (
                 ParallelisationType.SequentialVMAP,
@@ -470,8 +471,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
                 ParallelisationType.MultiThreadingJAXDevices
                 )
             last_state, return_values = scan_fn(state, keys)
-        # tqdm.write("last_state: " + str(jax.tree.map(lambda v: v.shape, last_state)))
-        tqdm.write("return_values: " + str(jax.tree.map(lambda v: v.shape, return_values))) # (25_000, 10)
+        
         return last_state, return_values
 
 def init_inference_infos(regime: MCMCRegime) -> InferenceInfos:

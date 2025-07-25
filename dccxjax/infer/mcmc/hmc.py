@@ -178,6 +178,7 @@ class CoordIntegratorState(NamedTuple):
     u: FloatArray
     p: FloatArray
 
+from jax._src.random import _shuffle, _check_prng_key
 def dhmc_kernel(
     rng_key: PRNGKey,
     current_position: FloatArray,
@@ -211,26 +212,27 @@ def dhmc_kernel(
 
     def coord_integrator(state: CoordIntegratorState, ix: IntArray) -> Tuple[CoordIntegratorState, None]:
         x, u, p = state
-        x_new = x.at[ix].set(x[ix] + eps * jax.lax.sign(p[ix]))
+        x_new = x.at[ix].add(eps * jax.lax.sign(p[ix]))
         u_new = -log_prob_fn(x_new)
         delta_u = u_new - u
+        p_new = p.at[ix].add(-jax.lax.sign(p[ix]) * delta_u)
         accept = jax.lax.abs(p[ix]) > delta_u
         
         # cond here causes some issues with shard_map for some reason
-        # new_state = jax.lax.cond(accept,
-        #     lambda _: CoordIntegratorState(x_new, u_new, p.at[ix].set(p[ix] - jax.lax.sign(p[ix]) * delta_u)),
-        #     lambda _: CoordIntegratorState(x, u, -p),
-        #     operand=None
-        # )
-        # return new_state, None
+        new_state = jax.lax.cond(accept,
+            lambda _: CoordIntegratorState(x_new, u_new, p_new),
+            lambda _: CoordIntegratorState(x, u, -p),
+            operand=None
+        )
+        return new_state, None
         
         # this works with shard_map
         x_next = jax.lax.select(accept, x_new, x)
         u_next = jax.lax.select(accept, u_new, u)
-        p_next = jax.lax.select(accept, p.at[ix].set(p[ix] - jax.lax.sign(p[ix]) * delta_u), -p)
+        p_next = jax.lax.select(accept, p_new, -p)
         return CoordIntegratorState(x_next, u_next, p_next), None
         
-
+    
     def leapfrog_step(state: DiscontLeapfrogState, permute_key: PRNGKey) -> Tuple[DiscontLeapfrogState, None]:
         x, u, g, p = state
 
@@ -244,7 +246,13 @@ def dhmc_kernel(
             # do not need to update g here
             p = p_half_step
 
-        ixs = jax.random.permutation(permute_key, discontinuous_ixs)
+
+        # ixs = jax.random.permutation(permute_key, discontinuous_ixs) # bad for sharding
+        # ixs = jax.random.choice(permute_key, discontinuous_ixs, (len(discontinuous_ixs),), replace=False) # uses permutation under the hood
+        ixs = jax.random.choice(permute_key, discontinuous_ixs, (len(discontinuous_ixs),), replace=True) # this is ok
+        # ixs = _shuffle(_check_prng_key("", permute_key)[0], discontinuous_ixs, 0)
+        # ixs = discontinuous_ixs
+
         (x, u, p), _ = jax.lax.scan(coord_integrator, CoordIntegratorState(x, u, p), ixs) # makes gradient g invalid
 
         if not all_discontinuous:
@@ -313,7 +321,7 @@ class DiscontinuousHamiltonianMonteCarlo(MCMCInferenceAlgorithm):
             return HMC(self.L, (self.eps_min + self.eps_max) / 2, self.unconstrained).make_kernel(gibbs_model, step_number, collect_inferenence_info)
 
         discontinuous_mask, _ = ravel_pytree(X_repr_is_discontinuous)
-        discontinuous_ixs = jnp.arange(0,discontinuous_mask.shape[0],dtype=int)[discontinuous_mask.astype(bool)]
+        discontinuous_ixs = jax.lax.pvary(jnp.arange(0,discontinuous_mask.shape[0],dtype=int)[discontinuous_mask.astype(bool)], ("i",))
         # print("discontinuous_ixs:", discontinuous_ixs)
 
         jit_tracker = JitVariationTracker(f"_dhmc_kernel for Inference step {step_number}: <DHMC at {hex(id(self))}>")
