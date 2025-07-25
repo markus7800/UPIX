@@ -178,7 +178,14 @@ class CoordIntegratorState(NamedTuple):
     u: FloatArray
     p: FloatArray
 
-from jax._src.random import _shuffle, _check_prng_key
+# adapted from jax.random.choice, with replace=False, p is not None but uniform, and shape = len(arr)
+# ~ jax.random.choice(key, arr, (len(arr),), replace=False, p=jnp.ones_like(arr))
+ # this is equivalent to permutation, but does not use permutation under the hood (which is bad for shard_map!?)
+def gumbal_permutation(key: PRNGKey, arr):
+    g = jax.random.gumbel(key, (len(arr),))
+    ind = jax.lax.top_k(g, len(arr))[1].astype(int)
+    return jnp.take(arr, ind, 0)
+
 def dhmc_kernel(
     rng_key: PRNGKey,
     current_position: FloatArray,
@@ -218,19 +225,12 @@ def dhmc_kernel(
         p_new = p.at[ix].add(-jax.lax.sign(p[ix]) * delta_u)
         accept = jax.lax.abs(p[ix]) > delta_u
         
-        # cond here causes some issues with shard_map for some reason
         new_state = jax.lax.cond(accept,
             lambda _: CoordIntegratorState(x_new, u_new, p_new),
             lambda _: CoordIntegratorState(x, u, -p),
             operand=None
         )
         return new_state, None
-        
-        # this works with shard_map
-        x_next = jax.lax.select(accept, x_new, x)
-        u_next = jax.lax.select(accept, u_new, u)
-        p_next = jax.lax.select(accept, p_new, -p)
-        return CoordIntegratorState(x_next, u_next, p_next), None
         
     
     def leapfrog_step(state: DiscontLeapfrogState, permute_key: PRNGKey) -> Tuple[DiscontLeapfrogState, None]:
@@ -247,12 +247,9 @@ def dhmc_kernel(
             p = p_half_step
 
 
-        # ixs = jax.random.permutation(permute_key, discontinuous_ixs) # bad for sharding
-        # ixs = jax.random.choice(permute_key, discontinuous_ixs, (len(discontinuous_ixs),), replace=False) # uses permutation under the hood
-        ixs = jax.random.choice(permute_key, discontinuous_ixs, (len(discontinuous_ixs),), replace=True) # this is ok
-        # ixs = _shuffle(_check_prng_key("", permute_key)[0], discontinuous_ixs, 0)
-        # ixs = discontinuous_ixs
-
+        # ixs = jax.random.permutation(permute_key, discontinuous_ixs) # bad for sharding        
+        ixs = gumbal_permutation(permute_key, discontinuous_ixs)
+       
         (x, u, p), _ = jax.lax.scan(coord_integrator, CoordIntegratorState(x, u, p), ixs) # makes gradient g invalid
 
         if not all_discontinuous:
