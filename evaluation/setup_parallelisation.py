@@ -8,7 +8,7 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
     vectorisation: str = args.vectorisation
     num_workers: int = int(args.num_workers)
     assert parallelisation in ("sequential", "cpu_multiprocess", "jax_devices")
-    assert vectorisation in ("vmap", "pmap", "smap", "smap_global")
+    assert vectorisation in ("vmap", "vmap_global", "pmap", "smap", "smap_global")
     if parallelisation != "sequential" and vectorisation != "vmap":
         print(f"Ignoring vectoristion '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
     if parallelisation == "sequential":
@@ -16,6 +16,8 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
             print(f"Ignoring num_workers '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
         if vectorisation == "vmap":
             return ParallelisationConfig(type=ParallelisationType.SequentialVMAP)
+        elif vectorisation == "vmap_global":
+            return ParallelisationConfig(type=ParallelisationType.SequentialGlobalVMAP)
         else:
             if jax.device_count() == 1:
                 print(f"Warning: Vectorisation is set to'{vectorisation}' but only 1 jax devices is available.")

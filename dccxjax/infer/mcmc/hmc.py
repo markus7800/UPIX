@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import Callable, Dict, Optional, Tuple, NamedTuple
 from dccxjax.types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
-from .mcmc_core import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, AnnealingMask
+from dccxjax.infer.mcmc.mcmc_core import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, AnnealingMask
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
 from dccxjax.infer.gibbs_model import GibbsModel, SLP
@@ -217,12 +217,12 @@ def dhmc_kernel(
         accept = jax.lax.abs(p[ix]) > delta_u
         
         # cond here causes some issues with shard_map for some reason
-        new_state = jax.lax.cond(accept,
-            lambda _: CoordIntegratorState(x_new, u_new, p.at[ix].set(p[ix] - jax.lax.sign(p[ix]) * delta_u)),
-            lambda _: CoordIntegratorState(x, u, -p),
-            operand=None
-        )
-        return new_state, None
+        # new_state = jax.lax.cond(accept,
+        #     lambda _: CoordIntegratorState(x_new, u_new, p.at[ix].set(p[ix] - jax.lax.sign(p[ix]) * delta_u)),
+        #     lambda _: CoordIntegratorState(x, u, -p),
+        #     operand=None
+        # )
+        # return new_state, None
         
         # this works with shard_map
         x_next = jax.lax.select(accept, x_new, x)

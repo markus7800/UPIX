@@ -30,8 +30,13 @@ regime =  MCMCStep(SingleVariable("x"), RW(gaussian_random_walk(1.)))
 
 return_map = lambda x: x.position
 
-n_chains = 100
-n_samples_per_chain = 1_000_000
+# n_chains = 2**18
+# n_samples_per_chain = 1_000
+
+
+n_chains = 2**10
+n_samples_per_chain = 100_000
+
 
 mcmc_obj = MCMC(
     slp,

@@ -2,7 +2,7 @@ from typing import Dict
 import os
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, auto
 
 __all__ = [
     "ParallelisationType",
@@ -13,16 +13,18 @@ __all__ = [
 ]
     
 class ParallelisationType(Enum):
-    SequentialVMAP = 0
-    SequentialPMAP = 1
-    SequentialSMAP = 2
-    SequentialGlobalSMAP = 3
-    MultiProcessingCPU = 4
-    MultiThreadingJAXDevices = 5
+    SequentialVMAP = auto()
+    SequentialGlobalVMAP = auto()
+    SequentialPMAP = auto()
+    SequentialSMAP = auto()
+    SequentialGlobalSMAP = auto()
+    MultiProcessingCPU = auto()
+    MultiThreadingJAXDevices = auto()
     
 def is_sequential(parallelisation_type: ParallelisationType):
     return parallelisation_type in (
         ParallelisationType.SequentialVMAP,
+        ParallelisationType.SequentialGlobalVMAP,
         ParallelisationType.SequentialPMAP,
         ParallelisationType.SequentialSMAP,
         ParallelisationType.SequentialGlobalSMAP,

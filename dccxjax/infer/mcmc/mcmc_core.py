@@ -391,7 +391,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             kernel = reuse_kernel
             init_carry_stat_names = reuse_kernel_init_carry_stat_names
         else:
-            if parallelisation.type == ParallelisationType.SequentialPMAP or parallelisation.type == ParallelisationType.SequentialGlobalSMAP:
+            if parallelisation.type == ParallelisationType.SequentialPMAP or parallelisation.type == ParallelisationType.SequentialGlobalSMAP or parallelisation.type == ParallelisationType.SequentialGlobalVMAP:
                 self.vectorisation = "none"
             elif parallelisation.type == ParallelisationType.SequentialSMAP:
                 self.vectorisation = "smap"
@@ -443,17 +443,19 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             keys =  jax.random.split(rng_key, (n_samples_per_chain, self.n_chains))
         else:
             keys = jax.random.split(rng_key, n_samples_per_chain)
-            
-        if self.parallelisation.type == ParallelisationType.SequentialSMAP:
+        
+        mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
+
+        if self.parallelisation.type == ParallelisationType.SequentialGlobalVMAP:
+            last_state, return_values = jax.vmap(scan_fn, in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
+        elif self.parallelisation.type == ParallelisationType.SequentialSMAP:
             with jax.sharding.use_mesh(create_default_device_mesh(self.n_chains)):
                 last_state, return_values = scan_fn(state, keys)
         elif self.parallelisation.type == ParallelisationType.SequentialGlobalSMAP:
             with jax.sharding.use_mesh(create_default_device_mesh(self.n_chains)):
-                mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
                 last_state, return_values = smap_vmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
         elif self.parallelisation.type == ParallelisationType.SequentialPMAP:
             device_count = jax.device_count()
-            mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
             if self.n_chains <= device_count:
                 last_state, return_values = jax.pmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,1), out_axes=(0,1))(state, keys)
             else:

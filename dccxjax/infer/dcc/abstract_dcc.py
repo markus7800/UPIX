@@ -147,6 +147,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         devices_str = ",\n    ".join(map(str, jax.devices()))
         if self.parallelisation.type == ParallelisationType.SequentialVMAP:
             tqdm.write(f"parallelisation=Sequential(vmapped, device={get_default_device()})")
+        if self.parallelisation.type == ParallelisationType.SequentialGlobalVMAP:
+            tqdm.write(f"parallelisation=Sequential(globally vmapped, device={get_default_device()})")
         if self.parallelisation.type == ParallelisationType.SequentialPMAP:
             tqdm.write(f"parallelisation=Sequential(pmapped, \ndevices=\n    {devices_str}\n)")
         if self.parallelisation.type == ParallelisationType.SequentialSMAP:
