@@ -336,28 +336,35 @@ def get_mcmc_scan_without_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], n_i
         return jax.lax.scan(kernel, init, xs)
     return jax.jit(scan_without_bar)
 
-# def get_mcmc_scan(kernel: MCMCKernel[MCMC_COLLECT_TYPE], vectorised: bool, n_chains: int, n_samples_per_chain: int, progressbar_mngr: Optional[ProgressbarManager] = None) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
-            
-#     def _mcmc_scan(init: MCMCState, key: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
-#         # key is a scalar
-#         if vectorised:
-#             # kernel has been vectorised
-#             keys = jax.random.split(key, n_samples_per_chain)
-#         else:
-#             # kernel has not been vectorised
-#             keys =  jax.random.split(key, (n_samples_per_chain, n_chains))
-            
-#         if progressbar_mngr is not None:
-#             _kernel = _add_progress_bar(kernel, progressbar_mngr, progressbar_mngr.num_samples)
-#             progressbar_mngr.start_progress()
-#             jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, init.iteration)
-#         else:
-#             _kernel = kernel
-        
-#         return jax.lax.scan(_kernel, init, keys)
-        
-#     return jax.jit(_mcmc_scan)
-    
+
+FUNCTION_TYPE = TypeVar("FUNCTION_TYPE", bound=Callable)
+def parallelise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_dim, parallelisation_type: ParallelisationType) -> FUNCTION_TYPE:
+    def parallel_fn(*args):
+        if parallelisation_type == ParallelisationType.SequentialGlobalVMAP:
+            return jax.vmap(fn, in_axes=in_axes, out_axes=out_axes)(*args)
+        elif parallelisation_type == ParallelisationType.SequentialSMAP:
+            with jax.sharding.use_mesh(create_default_device_mesh(batch_axis_dim)):
+                return fn(*args)
+        elif parallelisation_type == ParallelisationType.SequentialGlobalSMAP:
+            with jax.sharding.use_mesh(create_default_device_mesh(batch_axis_dim)):
+                return smap_vmap(fn, axis_name="i", in_axes=in_axes, out_axes=out_axes)(*args)
+        elif parallelisation_type == ParallelisationType.SequentialPMAP:
+            device_count = jax.device_count()
+            if batch_axis_dim <= device_count:
+                return jax.pmap(fn, axis_name="i", in_axes=in_axes, out_axes=out_axes)(*args)
+            else:
+                assert batch_axis_dim % device_count == 0
+                batch_size = batch_axis_dim // device_count
+                return pmap_vmap(fn, axis_name="i", batch_size=batch_size, in_axes=in_axes, out_axes=out_axes)(*args)
+        else:
+            assert parallelisation_type in (
+                ParallelisationType.SequentialVMAP,
+                ParallelisationType.MultiProcessingCPU,
+                ParallelisationType.MultiThreadingJAXDevices
+                )
+            return fn(*args)
+    return parallel_fn # type: ignore
+
         
 
 class MCMC(Generic[MCMC_COLLECT_TYPE]):
@@ -446,32 +453,9 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             keys = rng_key
         
         mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
+        parallel_fn = parallelise(scan_fn, in_axes=(mcmc_state_axes,0), out_axes=(0,1), batch_axis_dim=self.n_chains, parallelisation_type=self.parallelisation.type)
+        last_state, return_values = parallel_fn(state, keys)
 
-        if self.parallelisation.type == ParallelisationType.SequentialGlobalVMAP:
-            last_state, return_values = jax.vmap(scan_fn, in_axes=(mcmc_state_axes,0), out_axes=(0,1))(state, keys)
-        elif self.parallelisation.type == ParallelisationType.SequentialSMAP:
-            with jax.sharding.use_mesh(create_default_device_mesh(self.n_chains)):
-                last_state, return_values = scan_fn(state, keys)
-        elif self.parallelisation.type == ParallelisationType.SequentialGlobalSMAP:
-            with jax.sharding.use_mesh(create_default_device_mesh(self.n_chains)):
-                last_state, return_values = smap_vmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,0), out_axes=(0,1))(state, keys)
-        elif self.parallelisation.type == ParallelisationType.SequentialPMAP:
-            device_count = jax.device_count()
-            if self.n_chains <= device_count:
-                last_state, return_values = jax.pmap(scan_fn, axis_name="i", in_axes=(mcmc_state_axes,0), out_axes=(0,1))(state, keys)
-            else:
-                assert self.n_chains % device_count == 0
-                batch_size = self.n_chains // device_count
-                last_state, return_values = pmap_vmap(scan_fn, axis_name="i", batch_size=batch_size, in_axes=(mcmc_state_axes,0), out_axes=(0,1))(state, keys)
-        else:
-            assert self.parallelisation.type in (
-                ParallelisationType.SequentialVMAP,
-                ParallelisationType.SequentialSMAP,
-                ParallelisationType.MultiProcessingCPU,
-                ParallelisationType.MultiThreadingJAXDevices
-                )
-            last_state, return_values = scan_fn(state, keys)
-        
         return last_state, return_values
 
 def init_inference_infos(regime: MCMCRegime) -> InferenceInfos:
