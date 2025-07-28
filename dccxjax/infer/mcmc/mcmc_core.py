@@ -414,6 +414,8 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             #     get_mcmc_scan_without_progressbar(self.kernel)
             # )
             scan_fn = get_mcmc_scan_without_progressbar(self.kernel)
+            mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
+            scan_fn = vectorise(scan_fn, in_axes=(mcmc_state_axes,0), out_axes=(0,1), batch_axis_size=self.n_chains, pconfig=self.pconfig)
             self.cached_mcmc_scan = scan_fn
         
         if self.vectorisation == "none":
@@ -421,9 +423,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         else:
             keys = jax.random.split(rng_key, (n_samples_per_chain,))
         
-        mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
-        vectorised_fn = vectorise(scan_fn, in_axes=(mcmc_state_axes,0), out_axes=(0,1), batch_axis_size=self.n_chains, pconfig=self.pconfig)
-        last_state, return_values = parallel_run(vectorised_fn, (state, keys), batch_axis_size=self.n_chains, pconfig=self.pconfig)
+        last_state, return_values = parallel_run(scan_fn, (state, keys), batch_axis_size=self.n_chains, pconfig=self.pconfig)
 
         return last_state, return_values
 

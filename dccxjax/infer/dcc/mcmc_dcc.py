@@ -142,7 +142,7 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
     
     def make_estimate_log_weight_task(self, slp: SLP, rng_key: PRNGKey) -> EstimateLogWeightTask:
         def _f(rng_key: PRNGKey):
-            log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.estimate_weight_n_samples, rng_key)
+            log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.estimate_weight_n_samples, rng_key, self.pconfig)
             return LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, self.estimate_weight_n_samples)
         
         def _post_info(result: LogWeightEstimate):

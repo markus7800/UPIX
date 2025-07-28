@@ -77,7 +77,7 @@ class DCCConfig(MCMCDCC[T]):
         # regime = MCMCStep(AllVariables(), HMC(50, 0.05, unconstrained=True))
         # regime = MCMCStep(AllVariables(), DHMC(10, 0.05, 0.15, unconstrained=False)) # this is very good W1 = 0.01796, L_inf = 0.0008
         regime = MCMCStep(AllVariables(), DHMC(50, 0.05, 0.15, unconstrained=False)) # W1 = 0.01503, L_inf = 0.001072 for comparison takes ~90s for 25_000 * 10 * 6 samples
-        tqdm.write(pprint_mcmc_regime(regime, slp))
+        # tqdm.write(pprint_mcmc_regime(regime, slp))
         return regime
     
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
@@ -89,7 +89,7 @@ class DCCConfig(MCMCDCC[T]):
         for slp in _active_slps:
             rng_key, estimate_key = jax.random.split(rng_key)
             estimate_weight_n_samples: int = self.config["init_estimate_weight_n_samples"]
-            log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, estimate_weight_n_samples, estimate_key)
+            log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, estimate_weight_n_samples, estimate_key, self.pconfig)
             log_Z_max = jax.lax.max(log_Z, log_Z_max)
             if log_Z - log_Z_max > jnp.log(0.001):
                 self.add_to_log_weight_estimates(slp, LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, estimate_weight_n_samples))
@@ -110,10 +110,10 @@ class DCCConfig(MCMCDCC[T]):
 dcc_obj = DCCConfig(m, verbose=2,
               parallelisation=get_parallelisation_config(args),
               init_n_samples=250,
-              init_estimate_weight_n_samples=1_000_000,
+              init_estimate_weight_n_samples=2**20,
               mcmc_n_chains=16,
               mcmc_n_samples_per_chain=25_000,
-              estimate_weight_n_samples=10_000,
+              estimate_weight_n_samples=2**23,
               max_iterations=1,
               mcmc_collect_for_all_traces=True,
               mcmc_optimise_memory_with_early_return_map=True,

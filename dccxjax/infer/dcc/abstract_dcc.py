@@ -13,6 +13,7 @@ import threading
 from queue import Queue
 from dccxjax.infer.dcc.cpu_multiprocess import start_worker_process, start_worker_thread
 from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType, is_sequential, is_parallel
+import time
 
 __all__ = [
 
@@ -68,8 +69,13 @@ class BaseDCCResult:
         log_Zs = [log_Z for _, log_Z in self.slp_log_weights.items()]
         return jax.scipy.special.logsumexp(jnp.vstack(log_Zs))
     
-DCC_RESULT_TYPE = TypeVar("DCC_RESULT_TYPE")            
-
+def append_info(info: str, new_info: str):
+    if info == "":
+        return new_info
+    else:
+        return info + "\n" + new_info
+    
+DCC_RESULT_TYPE = TypeVar("DCC_RESULT_TYPE")
 class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
     def __init__(self, model: Model, *ignore, verbose=0, **config_kwargs) -> None:
         if ignore:
@@ -133,7 +139,6 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             tqdm.write(info)
     
     def run(self, rng_key: PRNGKey):
-        # t0 = time()
 
         self.active_slps: List[SLP] = []
         self.inactive_slps: List[SLP] = []
@@ -177,18 +182,23 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         self.inference_results: Dict[SLP, List[InferenceResult]] = dict()
         self.log_weight_estimates: Dict[SLP, List[LogWeightEstimate]] = dict()        
 
+        init_slps_t0 = time.monotonic()
         rng_key, init_key = jax.random.split(rng_key)
         self.initialise_active_slps(self.active_slps, self.inactive_slps, init_key)
+        init_slps_t1 = time.monotonic()
+        tqdm.write(f"Initialised SLPs in {init_slps_t1-init_slps_t0:.3f}s.")
 
         self.iteration_counter = 0
         
         if is_sequential(self.pconfig) and self.share_progress_bar:
-            self.shared_progress_bar = tqdm(position=0, leave=False)
+            self.shared_progress_bar = tqdm(total=0,position=0, leave=False)
             outer_bar = tqdm(total=0, position=1, leave=False, desc="Iteration 0")
         else:
             outer_bar = tqdm(total=0, position=0, leave=False, desc="Iteration 0")
 
         while len(self.active_slps) > 0:
+            t0 = time.monotonic()
+            
             self.iteration_counter += 1
             if self.debug_memory:
                 jax.profiler.save_device_memory_profile(f"memory_{self.iteration_counter}.prof")
@@ -203,18 +213,25 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     self.maybe_write_info(inference_task.pre_info())
                     # we do not have to put input to task on device, by default all jitted functions are on device
                     # if we call jitted function with cpu allocated array it will be put on device
+                    inference_task_t0 = time.monotonic()
                     inference_result = jax.device_get(inference_task.run()) # device_get puts pytree on host (cpu)
-                    self.maybe_write_info(inference_task.post_info(inference_result))
+                    jax.block_until_ready(inference_result)
+                    inference_task_t1 = time.monotonic()
+                    self.maybe_write_info(append_info(inference_task.post_info(inference_result), f"Finished inference task for {slp.formatted()} in {inference_task_t1-inference_task_t0:.3f}s"))
                     del inference_task # tasks may close over device allocated arrays
                     self.add_to_inference_results(slp, inference_result)
+                    outer_bar.update(0.5)
 
                     log_weight_estimate_task = self.make_estimate_log_weight_task(slp, slp_weight_estimate_key)
                     self.maybe_write_info(log_weight_estimate_task.pre_info())
+                    logweigth_task_t0 = time.monotonic()
                     log_weight_estimate = jax.device_get(log_weight_estimate_task.run())
-                    self.maybe_write_info(log_weight_estimate_task.post_info(log_weight_estimate))
+                    jax.block_until_ready(log_weight_estimate)
+                    logweigth_task_t1 = time.monotonic()
+                    self.maybe_write_info(append_info((log_weight_estimate_task.post_info(log_weight_estimate)), f"Finished logweight estimation task for {slp.formatted()} in {logweigth_task_t1-logweigth_task_t0:.3f}s"))
                     del log_weight_estimate_task
                     self.add_to_log_weight_estimates(slp, log_weight_estimate)
-                    outer_bar.update()
+                    outer_bar.update(0.5)
 
             if is_parallel(self.pconfig):
                 
@@ -263,16 +280,19 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             rng_key, update_key = jax.random.split(rng_key)
             self.update_active_slps(self.active_slps, self.inactive_slps, self.inference_results, self.log_weight_estimates, update_key)
         
-        # task_queue.shutdown()
-        # result_queue.shutdown()
-        # for t in threads:
-        #     t.join()
+        
+            t1 = time.monotonic()
+            if self.verbose > 0:
+                tqdm.write(f"Finished iteration {self.iteration_counter} in {t1-t0:.3f}s.")
 
+
+        tqdm.write("Finished DCC.")
+        outer_bar.close()
         if self.shared_progress_bar is not None:
             self.shared_progress_bar.close()
-        outer_bar.close()
             
         combined_result = self.combine_results(self.inference_results, self.log_weight_estimates)
+    
         
         return combined_result
 
