@@ -68,7 +68,7 @@ import sys
 from dccxjax.infer.dcc.dcc_types import JaxTask, ExportedJaxTask
 from jax.tree_util import tree_flatten, tree_unflatten
 from tqdm.auto import tqdm
-from dccxjax.infer.dcc.parallelisation import ParallelisationConfig, ParallelisationType
+from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType
 
 __all__ = [
     
@@ -101,14 +101,14 @@ def write_close_transport_layer(writer: IO[bytes]):
 
 
 
-def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, config: ParallelisationConfig):
-    assert config.type == ParallelisationType.MultiProcessingCPU
+def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, pconfig: ParallelisationConfig):
+    assert pconfig.parallelisation == ParallelisationType.MultiProcessingCPU
     # print("Start worker with id", worker_id)
     p = subprocess.Popen(
-        (["taskset",  "-c", str(worker_id)] if config.cpu_affinity else []) + [sys.executable,  "-c", worker_script, str(worker_id)],
+        (["taskset",  "-c", str(worker_id)] if pconfig.cpu_affinity else []) + [sys.executable,  "-c", worker_script, str(worker_id)],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        env = config.environ
+        env = pconfig.environ
     )
     assert p.stdin is not None
     assert p.stdout is not None
@@ -117,7 +117,7 @@ def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, conf
             task, task_aux = in_queue.get()
             assert isinstance(task, (JaxTask, ExportedJaxTask))
             exported_task = task.export() if isinstance(task, JaxTask) else task
-            if config.verbose:
+            if pconfig.verbose:
                 pre_info = exported_task.pre_info()
                 if pre_info: tqdm.write(f"Worker {worker_id}: " + pre_info)
                 
@@ -132,7 +132,7 @@ def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, conf
             # tqdm.write(f"Response device {response[0].device}")
             
             result = tree_unflatten(exported_task.out_tree, response)
-            if config.verbose:
+            if pconfig.verbose:
                 post_info = exported_task.post_info(result)
                 if post_info: tqdm.write(f"Worker {worker_id}: " + post_info)
 
@@ -149,14 +149,14 @@ def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, conf
             print("Worker error:", e)
             in_queue.task_done()
             
-def start_worker_thread(in_queue: Queue, out_queue: Queue, worker_id: int, config: ParallelisationConfig):
-    assert config.type == ParallelisationType.MultiThreadingJAXDevices
+def start_worker_thread(in_queue: Queue, out_queue: Queue, worker_id: int, pconfig: ParallelisationConfig):
+    assert pconfig.parallelisation == ParallelisationType.MultiThreadingJAXDevices
     thread_device = jax.devices()[worker_id]
 
     while True:
         task, task_aux = in_queue.get()
         assert isinstance(task, JaxTask)
-        if config.verbose:
+        if pconfig.verbose:
             pre_info = task.pre_info()
             tqdm.write(f"Thread {worker_id}: starting task. " + pre_info)
 
@@ -168,7 +168,7 @@ def start_worker_thread(in_queue: Queue, out_queue: Queue, worker_id: int, confi
         results = jax.device_get(device_results)
         del device_results
         elapsed_time = time.monotonic() - t0
-        if config.verbose:
+        if pconfig.verbose:
             post_info = task.post_info(results)
             if post_info: tqdm.write(f"Thread {worker_id}: " + post_info + f"\n    finished in {elapsed_time:.3f}s on device {thread_device}")
     

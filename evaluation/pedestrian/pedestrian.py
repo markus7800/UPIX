@@ -111,9 +111,9 @@ dcc_obj = DCCConfig(m, verbose=2,
               parallelisation=get_parallelisation_config(args),
               init_n_samples=250,
               init_estimate_weight_n_samples=1_000_000,
-              mcmc_n_chains=10,
+              mcmc_n_chains=16,
               mcmc_n_samples_per_chain=25_000,
-              estimate_weight_n_samples=10_000_000,
+              estimate_weight_n_samples=10_000,
               max_iterations=1,
               mcmc_collect_for_all_traces=True,
               mcmc_optimise_memory_with_early_return_map=True,
@@ -123,7 +123,7 @@ dcc_obj = DCCConfig(m, verbose=2,
 result = timed(dcc_obj.run)(jax.random.key(0))
 result.pprint(sortkey="slp")
 
-
+exit()
 
 gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
 gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")

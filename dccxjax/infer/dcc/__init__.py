@@ -6,7 +6,6 @@ from .mc_dcc import *
 from .mcmc_dcc import *
 from .smc_dcc import *
 from .vi_dcc import *
-from .parallelisation import *
 
 del abstract_dcc
 del dcc_types
@@ -16,4 +15,3 @@ del mc_dcc
 del mcmc_dcc
 del smc_dcc
 del vi_dcc
-del parallelisation

@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dccxjax.utils import broadcast_jaxtree, pprint_dtype_shape_of_tree
 from dccxjax.infer.dcc.abstract_dcc import InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC
-from dccxjax.infer.dcc.parallelisation import ParallelisationType, is_sequential
+from dccxjax.parallelisation import ParallelisationType, is_sequential
 from dccxjax.infer.dcc.mc_dcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, LogWeightedSample
 from textwrap import indent
 import time
@@ -132,10 +132,10 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             else:
                 return None
         mcmc = MCMC(slp, regime, self.mcmc_n_chains,
-                    parallelisation=self.parallelisation,
+                    pconfig=self.pconfig,
                     collect_inference_info=self.mcmc_collect_inference_info,
                     return_map=mcmc_return_map,
-                    show_progress=self.verbose >= 1 and is_sequential(self.parallelisation.type),
+                    show_progress=self.verbose >= 1 and is_sequential(self.pconfig),
                     shared_progressbar=self.shared_progress_bar)
         self.inference_method_cache[slp] = mcmc
         return mcmc
