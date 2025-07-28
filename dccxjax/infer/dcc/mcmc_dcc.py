@@ -8,7 +8,7 @@ from dccxjax.infer.mcmc.mcmc_core import MCMCRegime, MCMC, MCMCState, summarise_
 from dccxjax.infer.importance_sampling import estimate_log_Z_for_SLP_from_prior
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
-from dccxjax.utils import broadcast_jaxtree, pprint_dtype_shape_of_tree
+from dccxjax.utils import broadcast_jaxtree
 from dccxjax.infer.dcc.abstract_dcc import InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC
 from dccxjax.parallelisation import ParallelisationType, is_sequential
 from dccxjax.infer.dcc.mc_dcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, LogWeightedSample

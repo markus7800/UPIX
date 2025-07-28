@@ -1,12 +1,12 @@
 
 import logging
 import jax
-from jax._src.core import full_lower
 import contextlib
-from typing import Sequence, TypeVar, List, Optional, Callable
+from typing import Sequence, TypeVar, List, Optional, Callable, Dict, Any
 from tqdm.contrib.logging import logging_redirect_tqdm
 from tqdm.auto import tqdm
 import os
+from jax._src.config import trace_context
 
 __all__ = [
     "bcolors",
@@ -47,44 +47,40 @@ def setup_logging(level: int | str):
 class JitVariationTracker:
     def __init__(self, name: str) -> None:
         self.name = name
-        self.variations: List[str] = []
-    def add_variation(self, variation: str):
-        self.variations.append(variation)
-    def has_variation(self):
-        return len(self.variations) > 0
+        self.variations: Dict[str, List[str]] = dict()
+    def add_variation(self, axis_env: str, variation: str):
+        if axis_env not in self.variations:
+            self.variations[axis_env] = []
+        self.variations[axis_env].append(variation)
+    def has_variation(self, axis_env: str):
+        if axis_env not in self.variations:
+            return False
+        return len(self.variations[axis_env]) > 0
+    def get_variations(self, axis_env: str) -> List[str]:
+        if axis_env not in self.variations:
+            return []
+        return self.variations[axis_env]
 
-from jax._src.config import trace_context
 
-def maybe_jit_warning(tracker: JitVariationTracker, input: str):
-    msg = f"Compile {tracker.name} and for input: {input}"
+def maybe_jit_warning(tracker: JitVariationTracker, input: Any):
+    axis_env_str = str(trace_context()[0])
+    input_str = get_dtype_shape_str_of_tree(input)
+    msg = f"Compile {tracker.name} and for input: {input_str} and axis-env: {axis_env_str}"
     with logging_redirect_tqdm(loggers=[logger]):
-        if tracker.has_variation():
+        if tracker.has_variation(axis_env_str):
             if logger.level <= logging.DEBUG:
                 tabs = " " * (len(msg) - len(input) + len("dccxjax - WARNING: ") - 9)
-                msg += "".join([f"\n{tabs}prev-input: {prev_input}" for prev_input in tracker.variations])
+                msg += "".join([f"\n{tabs}prev-input: {prev_input}" for prev_input in tracker.get_variations(axis_env_str)])
             logger.warning("Re-" + msg)
         else:
             logger.debug(msg)
-    tracker.add_variation(input)
+    tracker.add_variation(axis_env_str, input_str)
 
-# def to_shaped_arrays(tree):
-#     return jax.tree.map(lambda v: full_lower(v).aval, tree)
-
-# def to_shaped_arrays_str_short(tree):
-#     return jax.tree.map(lambda v: full_lower(v).str_short(), tree)
-
-# TODO: rename or rewrite maybe_jit_warning
-def pprint_dtype_shape_of_tree(tree):
+def get_dtype_shape_str_of_tree(tree):
     def _dtype_shape(v):
-        # v = full_lower(v)
-        # shape_str = ",".join(f"{d:_}" for d in v.shape)
-        # return f"{v.dtype}[{shape_str}]"
         return str(jax.typeof(v))
     s = repr(jax.tree.map(_dtype_shape, tree))
-    return s.replace("'", "") + f" with axis-env {trace_context()[0]}"
-
-def to_shaped_arrays_str_short(tree):
-    return pprint_dtype_shape_of_tree(tree)
+    return s.replace("'", "")
 
 JAX_TREE = TypeVar("JAX_TREE")
 def broadcast_jaxtree(tree: JAX_TREE, sizes: Sequence[int]) -> JAX_TREE:

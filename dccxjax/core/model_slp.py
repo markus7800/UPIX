@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Callable, Optional, Any, Set, Tuple, Dict, TypeVar, ParamSpec
 from dccxjax.core.samplecontext import LogprobCtx, LogprobTraceCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx, AnnealingMask
 from dccxjax.types import Trace, PRNGKey, FloatArray, BoolArray
-from dccxjax.utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
+from dccxjax.utils import JitVariationTracker, maybe_jit_warning
 from dccxjax.core.branching_tracer import BranchingDecisions, trace_branching, retrace_branching
 
 from typing import TYPE_CHECKING
@@ -96,7 +96,7 @@ def _make_slp_path_indicator(slp: "SLP",  model: Model, branching_decisions: Bra
     jit_tracker = JitVariationTracker(f"_path_indicator for {slp.short_repr()}")
     @jax.jit
     def _path_indicator(X: Trace):
-        maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree(X)))
+        maybe_jit_warning(jit_tracker, X)
         def _replay(_X: Trace):
             with ReplayCtx(_X):
                 model()
@@ -111,7 +111,7 @@ def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_deci
     jit_tracker = JitVariationTracker(f"_slp_log_prob for {slp.short_repr()}")
     @jax.jit
     def _log_prob(X: Trace, annealing_masks: AnnealingMask):
-        maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree((X, annealing_masks))))
+        maybe_jit_warning(jit_tracker, (X, annealing_masks))
         
         def _logprob(_X: Trace, _annealing_masks: AnnealingMask):
             with LogprobCtx(_X, _annealing_masks) as ctx:
@@ -124,20 +124,11 @@ def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_deci
 
     return _log_prob
 
-
-# def _make_slp_log_prob_and_grad(slp: "SLP") -> Callable[[Trace], Tuple[float,Trace]]:
-#     jit_tracker = JitVariationTracker(f"_slp_grad_log_prob for {slp.short_repr()}")
-#     @jax.jit
-#     def _grad_log_prob(X: Trace):
-#         maybe_jit_warning(jit_tracker, str(to_shaped_array_trace(X)))
-#         return jax.value_and_grad(slp._log_prob)(X)
-#     return _grad_log_prob
-
 def _make_slp_unconstrained_log_prior_likeli_pathcond(slp: "SLP", model: Model, branching_decisions: BranchingDecisions) -> Callable[[Trace,AnnealingMask], Tuple[FloatArray,FloatArray,BoolArray,Trace]]:
     jit_tracker = JitVariationTracker(f"_slp_unconstrained_log_prob for {slp.short_repr()}")
     @jax.jit
     def _unconstrained_log_prior_likeli_pathcond(X_unconstrained: Trace, annealing_masks: AnnealingMask):
-        maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree((X_unconstrained, annealing_masks))))
+        maybe_jit_warning(jit_tracker, (X_unconstrained, annealing_masks))
         
         def _unconstrained_log_prior_likeli_pathcond_with_ctx(_X_unconstrained: Trace, _annealing_masks: AnnealingMask):
             with UnconstrainedLogprobCtx(_X_unconstrained, _annealing_masks) as ctx:
@@ -173,7 +164,7 @@ def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, branching_decision
     jit_tracker = JitVariationTracker(f"slp_gen_likelihood_weight for {slp.short_repr()}")
     @jax.jit
     def _gen_likelihood_weight(key: PRNGKey):
-        maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree(key)))
+        maybe_jit_warning(jit_tracker, key)
 
         # cannot do @jax.jit here because model can do branching and has to be controlled by trace_branching transformation, before jitting
         def _gen_log_likelihood_and_X_from_prior(key: PRNGKey):

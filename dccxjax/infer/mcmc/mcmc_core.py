@@ -8,7 +8,7 @@ from dccxjax.infer.variable_selector import VariableSelector
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from dccxjax.core.model_slp import SLP, AnnealingMask
-from dccxjax.utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree, broadcast_jaxtree
+from dccxjax.utils import JitVariationTracker, maybe_jit_warning, broadcast_jaxtree
 from time import time
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
@@ -247,7 +247,7 @@ def get_mcmc_kernel(
     jit_tracker = JitVariationTracker(f"_mcmc_step for {slp.short_repr()}")
     @jax.jit
     def _one_step(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
-        maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree(state)))
+        maybe_jit_warning(jit_tracker, state)
         
         # rng_key = state.rng_key
         position = state.position
@@ -315,7 +315,7 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
     @jax.jit
     def _vectorised_kernel(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
         n_chains = state.log_prob.shape[0]
-        maybe_jit_warning(jit_tracker, f"n_chains={n_chains}")
+        maybe_jit_warning(jit_tracker, n_chains)
         chain_keys = jax.random.split(rng_key, n_chains)
         mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
         return jax.vmap(kernel, in_axes=(mcmc_state_axes,0), out_axes=(mcmc_state_axes,0))(state, chain_keys)

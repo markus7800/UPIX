@@ -15,7 +15,7 @@ from time import time
 from setup_parallelisation import get_parallelisation_config
 
 import logging
-setup_logging(logging.WARNING)
+setup_logging(logging.WARN)
 
 compilation_time_tracker = CompilationTimeTracker()
 jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)

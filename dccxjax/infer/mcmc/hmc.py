@@ -6,7 +6,7 @@ from dccxjax.infer.mcmc.mcmc_core import MCMCState, InferenceInfo, KernelState, 
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
 from dccxjax.infer.gibbs_model import GibbsModel, SLP
-from dccxjax.utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
+from dccxjax.utils import JitVariationTracker, maybe_jit_warning
 from dccxjax.infer.variable_selector import VariableSelector, AllVariables
 
 __all__ = [
@@ -142,7 +142,7 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
         jit_tracker = JitVariationTracker(f"_hmc_kernel for Inference step {step_number}: <HMC at {hex(id(self))}>")
         @jax.jit
         def _hmc_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
-            maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree((temperature, state))))
+            maybe_jit_warning(jit_tracker, (temperature, state))
             # jax.debug.print("key={k}", k=rng_key)
             
             X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
@@ -324,7 +324,7 @@ class DiscontinuousHamiltonianMonteCarlo(MCMCInferenceAlgorithm):
         jit_tracker = JitVariationTracker(f"_dhmc_kernel for Inference step {step_number}: <DHMC at {hex(id(self))}>")
         @jax.jit
         def _dhmc_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
-            maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree((temperature, state))))
+            maybe_jit_warning(jit_tracker, (temperature, state))
             
             X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
 

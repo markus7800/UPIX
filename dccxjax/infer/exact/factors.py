@@ -10,7 +10,6 @@ from dccxjax.types import Trace, FloatArray, PRNGKey, FloatArrayLike, IntArray
 from dccxjax.distributions import Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE
 import jax.numpy as jnp
 from dccxjax.infer.variable_selector import VariableSelector
-from dccxjax.utils import to_shaped_arrays_str_short
 
 __all__ = [
     "get_supports",

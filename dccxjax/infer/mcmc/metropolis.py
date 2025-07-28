@@ -3,12 +3,13 @@ import jax.numpy as jnp
 from typing import Callable, Dict, Optional, Set, Tuple, NamedTuple, List
 from dccxjax.types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
 import dccxjax.distributions as dist
-from .mcmc_core import InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, CarryStats, AnnealingMask
+from dccxjax.infer.mcmc.mcmc_core import InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, CarryStats, AnnealingMask
 import math
-from dccxjax.utils import JitVariationTracker, maybe_jit_warning, pprint_dtype_shape_of_tree
+from dccxjax.utils import JitVariationTracker, maybe_jit_warning
 from dccxjax.infer.gibbs_model import GibbsModel
 from abc import ABC, abstractmethod
 from multipledispatch import dispatch
+from dccxjax.parallelisation import SHARDING_AXIS
 
 
 __all__ = [
@@ -81,7 +82,7 @@ def rw_kernel_sparse(
         return (new_value_flat, new_log_prob, n_accepted + accept), None
     
     scan_keys = jax.random.split(rng_key, int(math.ceil(1./p)))
-    (last_position, last_log_prob, n_accepted), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_position, current_log_prob, jax.lax.pvary(jnp.array(0,int),("i",))), scan_keys)
+    (last_position, last_log_prob, n_accepted), _ = jax.lax.scan(lambda c, s : step(*c, s), (current_position, current_log_prob, jax.lax.pvary(jnp.array(0,int),(SHARDING_AXIS,))), scan_keys)
 
 
     return last_position, last_log_prob, n_accepted
@@ -115,7 +116,7 @@ def rw_kernel_elementwise(
         return jax.lax.cond(accept, lambda _: (proposed_position, proposed_log_prob, n_accept + 1, body_rng_key), lambda _: (current_position, current_log_prob, n_accept, body_rng_key), operand=None)
 
 
-    new_position, new_log_prob, n_accepted, _ = jax.lax.fori_loop(0, n_dim, lambda i, a: _body(i, *a), (current_position, current_log_prob, jax.lax.pvary(jnp.array(0,int), ("i",)), rng_key))
+    new_position, new_log_prob, n_accepted, _ = jax.lax.fori_loop(0, n_dim, lambda i, a: _body(i, *a), (current_position, current_log_prob, jax.lax.pvary(jnp.array(0,int), (SHARDING_AXIS,)), rng_key))
     
     return new_position, new_log_prob, n_accepted
     
@@ -198,7 +199,7 @@ class RandomWalk(MCMCInferenceAlgorithm):
         jit_tracker = JitVariationTracker(f"_rw_kernel for Inference step {step_number}: <RandomWalk at {hex(id(self))}>")
         @jax.jit
         def _rw_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
-            maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree((temperature, data_annealing, state))))
+            maybe_jit_warning(jit_tracker, (temperature, data_annealing, state))
             
             X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
 
@@ -274,7 +275,7 @@ class MetropolisHastings(MCMCInferenceAlgorithm):
         jit_tracker = JitVariationTracker(f"_mh_kernel for Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>")
         @jax.jit
         def _mh_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
-            maybe_jit_warning(jit_tracker, str(pprint_dtype_shape_of_tree((temperature, state))))
+            maybe_jit_warning(jit_tracker, (temperature, state))
             assert "position" in state.carry_stats
             assert "log_prob" in state.carry_stats
 
