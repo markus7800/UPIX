@@ -2,17 +2,20 @@ import jax
 import jax.experimental
 from typing import Optional, Callable
 from tqdm.auto import tqdm
+import threading
 
 __all__ = [
     
 ]
-
 class ProgressbarManager:
-    def __init__(self, desc: str, shared_tqdm_bar: tqdm | None) -> None:
+    def __init__(self, desc: str, shared_tqdm_bar: tqdm | None, thread_locked: bool = False) -> None:
         self.desc = desc
         self.tqdm_bar: Optional[tqdm] = shared_tqdm_bar
         self.share_bar: bool = shared_tqdm_bar is not None
         self.num_samples = 0
+        self.thread_locked = thread_locked
+        if self.thread_locked:
+            self._lock = threading.Lock()
 
     def set_num_samples(self, num_samples: int):
         self.num_samples = num_samples # affects for tqdm bar lenght, not print rate
@@ -24,14 +27,24 @@ class ProgressbarManager:
             self.tqdm_bar.reset(total=self.num_samples)
         self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=True)
 
-    def _init_tqdm(self, increment):
+    def _update_bar(self, iternum, n):
+        if self.tqdm_bar is not None:
+            if self.thread_locked:
+                with self._lock:
+                    if self.tqdm_bar.n < iternum:
+                        self.tqdm_bar.update(n)
+            else:
+                if self.tqdm_bar.n < iternum:
+                    self.tqdm_bar.update(n)
+
+    def _init_tqdm(self, iternum):
         if self.tqdm_bar is None: 
             self.tqdm_bar = tqdm(total=self.num_samples, position=0)
         else:
             self.tqdm_bar.reset(total=self.num_samples)
-        increment = int(increment)
+        iternum = int(iternum)
         self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
-        self.tqdm_bar.update(increment)
+        self._update_bar(iternum, 0)
 
     def _update_tqdm(self, iternum, increment, remainder):
         if self.tqdm_bar is not None:
@@ -41,15 +54,15 @@ class ProgressbarManager:
             if iternum == self.num_samples:
                 if remainder == 0:
                     # update and close event happen at same time
-                    self.tqdm_bar.update(increment)
+                    self._update_bar(iternum, increment)
                 else:
-                    self.tqdm_bar.update(remainder)
+                    self._update_bar(iternum, remainder)
                 # tqdm_auto.write(f"Close pbar {self}")
                 if not self.share_bar:
                     self.tqdm_bar.close()
                     self.tqdm_bar = None
             else:
-                self.tqdm_bar.update(increment)
+                self._update_bar(iternum, increment)
 
 
 # adapted form numpyro/util.py

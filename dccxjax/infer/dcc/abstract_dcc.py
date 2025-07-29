@@ -191,7 +191,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         self.iteration_counter = 0
         
         if is_sequential(self.pconfig) and self.share_progress_bar:
-            self.shared_progress_bar = tqdm(total=0,position=0, leave=False)
+            # set bar_format to make bar completely invisible at beginning
+            self.shared_progress_bar = tqdm(total=0, position=0, leave=False, bar_format="{bar}")
+            self.shared_progress_bar.bar_format = "{l_bar}{bar}{r_bar}"
             outer_bar = tqdm(total=0, position=1, leave=False, desc="Iteration 0")
         else:
             outer_bar = tqdm(total=0, position=0, leave=False, desc="Iteration 0")

@@ -110,10 +110,10 @@ class DCCConfig(MCMCDCC[T]):
 dcc_obj = DCCConfig(m, verbose=2,
               parallelisation=get_parallelisation_config(args),
               init_n_samples=250,
-              init_estimate_weight_n_samples=2**20,
+              init_estimate_weight_n_samples=2**20, # ~10**6
               mcmc_n_chains=16,
               mcmc_n_samples_per_chain=25_000,
-              estimate_weight_n_samples=2**23,
+              estimate_weight_n_samples=2**23, # ~10**7
               max_iterations=1,
               mcmc_collect_for_all_traces=True,
               mcmc_optimise_memory_with_early_return_map=True,

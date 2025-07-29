@@ -356,7 +356,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         self.regime = regime
         self.n_chains = n_chains
         self.show_progress = show_progress
-        self.progress_bar_mngr = ProgressbarManager("MCMC for "+self.slp.formatted(), shared_progressbar)
+        self.progress_bar_mngr = ProgressbarManager("MCMC for "+self.slp.formatted(), shared_progressbar, thread_locked=pconfig.vectorsisation==VectorisationType.PMAP)
 
         self.temperature = temperature
         self.data_annealing = data_annealing
@@ -408,12 +408,12 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         if self.cached_mcmc_scan:
             scan_fn = self.cached_mcmc_scan
         else:
-            # scan_fn = (
-            #     get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr)
-            #     if self.show_progress else
-            #     get_mcmc_scan_without_progressbar(self.kernel)
-            # )
-            scan_fn = get_mcmc_scan_without_progressbar(self.kernel)
+            scan_fn = (
+                get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr)
+                if self.show_progress else
+                get_mcmc_scan_without_progressbar(self.kernel)
+            )
+            # scan_fn = get_mcmc_scan_without_progressbar(self.kernel)
             mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
             scan_fn = vectorise(scan_fn, in_axes=(mcmc_state_axes,0), out_axes=(0,1), batch_axis_size=self.n_chains, pconfig=self.pconfig)
             self.cached_mcmc_scan = scan_fn
