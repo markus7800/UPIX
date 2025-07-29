@@ -324,7 +324,7 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
 def get_mcmc_scan_with_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], progressbar_mngr: ProgressbarManager) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
     def scan_with_bar(init: MCMCState, xs: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
         # will be recompiled if num_samples changes
-        kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, progressbar_mngr.num_samples)
+        kernel_with_bar = _add_progress_bar(kernel, lambda carry: carry.iteration, progressbar_mngr, progressbar_mngr.num_samples)
         progressbar_mngr.start_progress()
         jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, init.iteration)
         return jax.lax.scan(kernel_with_bar, init, xs)
@@ -407,23 +407,13 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             
         if self.cached_mcmc_scan:
             scan_fn = self.cached_mcmc_scan
-        else:
-            # scan_fn = (
-            #     get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr)
-            #     if self.show_progress else
-            #     get_mcmc_scan_without_progressbar(self.kernel)
-            # )
-            # scan_fn = get_mcmc_scan_without_progressbar(self.kernel)
-            # mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
-            # scan_fn = vectorise(scan_fn, in_axes=(mcmc_state_axes,1), out_axes=(0,1), batch_axis_size=self.n_chains, pconfig=self.pconfig)
-            
+        else:  
             mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
-            scan_fn = vectorise_scan(self.kernel, carry_axes=mcmc_state_axes, pmap_data_axes=1, batch_axis_size=self.n_chains, pconfig=self.pconfig)
-            
+            scan_fn = vectorise_scan(self.kernel, carry_axes=mcmc_state_axes, pmap_data_axes=1, batch_axis_size=self.n_chains, pconfig=self.pconfig,
+                                        progressbar_mngr=self.progress_bar_mngr if self.show_progress else None, get_iternum_fn=lambda carry: carry.iteration)
             self.cached_mcmc_scan = scan_fn
         
         if self.vectorisation == "none":
-            # keys = jax.random.split(rng_key, (self.n_chains,n_samples_per_chain))
             keys = jax.random.split(rng_key, (n_samples_per_chain,self.n_chains))
         else:
             keys = jax.random.split(rng_key, (n_samples_per_chain,))

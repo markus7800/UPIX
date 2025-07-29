@@ -95,7 +95,6 @@ class DCCConfig(MCMCDCC[T]):
                 self.add_to_log_weight_estimates(slp, LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, estimate_weight_n_samples))
                 active_slps.append(slp)
                 tqdm.write(f"Make SLP {slp.formatted()} active (log_Z={log_Z.item():.4f}).")
-                # break
             else:
                 # we are so far past maximum likely SLP that we can safely break
                 break

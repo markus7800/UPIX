@@ -8,6 +8,7 @@ from jax.experimental.mesh_utils import create_device_mesh
 from dccxjax.utils import bcolors
 from typing import Callable, TypeVar, Tuple
 from dccxjax.jax_utils import smap_vmap, pmap_vmap, batch_func_args, unbatch_output
+from dccxjax.types import IntArray
 
 __all__ = [
     "ParallelisationType",
@@ -108,11 +109,20 @@ def parallel_run(fn: Callable[..., FUNCTION_RET_TYPE], args: Tuple, batch_axis_s
 SCAN_DATA_TYPE = TypeVar("SCAN_DATA_TYPE")
 SCAN_RETURN_TYPE = TypeVar("SCAN_RETURN_TYPE")
 SCAN_CARRY_TYPE = TypeVar("SCAN_CARRY_TYPE")
-def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]], carry_axes, pmap_data_axes, batch_axis_size: int, pconfig: ParallelisationConfig):
+
+from dccxjax.progress_bar import ProgressbarManager, _add_progress_bar
+import jax.experimental
+
+def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]],
+                   carry_axes, pmap_data_axes, batch_axis_size: int, pconfig: ParallelisationConfig,
+                   progressbar_mngr: ProgressbarManager | None = None, get_iternum_fn: Callable[[SCAN_CARRY_TYPE], IntArray] | None = None):
     
     device_count = jax.device_count()
     
     def _scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
+        if progressbar_mngr is not None:
+            progressbar_mngr.start_progress()
+            
         if pconfig.vectorsisation == VectorisationType.LocalVMAP:
             _step = step
         elif pconfig.vectorsisation == VectorisationType.GlobalVMAP:
@@ -127,6 +137,12 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
         else:
             assert pconfig.vectorsisation == VectorisationType.GlobalSMAP
             _step = smap_vmap(step, axis_name=SHARDING_AXIS, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
+            
+        if progressbar_mngr is not None:
+            assert get_iternum_fn is not None
+            _step = _add_progress_bar(_step, get_iternum_fn, progressbar_mngr, progressbar_mngr.num_samples)
+            jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, get_iternum_fn(init))
+ 
         return jax.lax.scan(_step, init, data)
         
         

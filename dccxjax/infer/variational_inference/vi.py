@@ -2,7 +2,7 @@ import jax.flatten_util
 from dccxjax.core.samplecontext import GuideContext
 from dccxjax.distributions import Transform, Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE, TransformedDistribution, MultivariateNormal, Normal
 from typing import Optional, Sequence, List, Dict, Tuple, NamedTuple, Callable, Generic, TypeVar, Any, cast
-from dccxjax.types import FloatArray, FloatArrayLike, PRNGKey, Trace
+from dccxjax.types import FloatArray, FloatArrayLike, PRNGKey, Trace, IntArray
 from abc import abstractmethod, ABC
 from enum import Enum
 import jax
@@ -11,7 +11,7 @@ from dccxjax.distributions.constraints import Constraint, real, scaled_unit_lowe
 import numpyro.distributions.transforms as transforms
 from dccxjax.core.model_slp import Model, SLP
 from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
-from .optimizers import OPTIMIZER_STATE, Optimizer
+from dccxjax.infer.variational_inference.optimizers import OPTIMIZER_STATE, Optimizer
 from math import prod
 from dccxjax.infer.gibbs_model import GibbsModel
 import jax.experimental
@@ -220,7 +220,7 @@ class FullRankNormalGuide(Guide):
     
 
 class ADVIState(NamedTuple, Generic[OPTIMIZER_STATE]):
-    iteration: int
+    iteration: IntArray
     optimizer_state: OPTIMIZER_STATE
 
 def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE], L: int):
@@ -246,7 +246,7 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
         iteration, optimizer_state = advi_state
         params = optimizer.get_params_fn(optimizer_state)
         elbo, elbo_grad = jax.value_and_grad(elbo_fn, argnums=0)(params, rng_key)
-        new_optimizer_state = optimizer.update_fn(iteration, -elbo_grad, optimizer_state)
+        new_optimizer_state = optimizer.update_fn(cast(int, iteration), -elbo_grad, optimizer_state)
         return ADVIState(iteration + 1, new_optimizer_state), elbo
     
     return advi_step
@@ -257,7 +257,7 @@ def get_advi_scan_with_progressbar(kernel: Callable[[ADVIState[OPTIMIZER_STATE],
     def scan_with_bar(init: ADVIState[OPTIMIZER_STATE], xs: PRNGKey) -> Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]:
         # will be recompiled if num_samples changes
         progressbar_mngr.start_progress()
-        kernel_with_bar = _add_progress_bar(kernel, progressbar_mngr, progressbar_mngr.num_samples)
+        kernel_with_bar = _add_progress_bar(kernel, lambda carry: carry.iteration, progressbar_mngr, progressbar_mngr.num_samples)
         jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)
         return jax.lax.scan(kernel_with_bar, init, xs)
     return jax.jit(scan_with_bar)
@@ -287,7 +287,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
 
         self.cached_advi_scan: Optional[Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]] = None
 
-    def continue_run(self, rng_key: PRNGKey, state: ADVIState[OPTIMIZER_STATE], *, iteration: int = 0, n_iter: int):
+    def continue_run(self, rng_key: PRNGKey, state: ADVIState[OPTIMIZER_STATE], *, iteration: IntArray = jnp.array(0,int), n_iter: int):
         keys = jax.random.split(rng_key, n_iter)
         init_state = ADVIState(iteration, state.optimizer_state)
         
@@ -307,12 +307,12 @@ class ADVI(Generic[OPTIMIZER_STATE]):
         return last_state, elbo
 
     def run(self, rng_key: PRNGKey, *, n_iter: int):
-        init_state = ADVIState(0, self.optimizer.init_fn(self.guide.get_params()))
+        init_state = ADVIState(jnp.array(0,int), self.optimizer.init_fn(self.guide.get_params()))
         return self.continue_run(rng_key, init_state, n_iter=n_iter)
     
     def run_fn(self, rng_key: PRNGKey, *, n_iter: int):
         keys = jax.random.split(rng_key, n_iter)
-        init_state = ADVIState(0, self.optimizer.init_fn(self.guide.get_params()))
+        init_state = ADVIState(jnp.array(0,int), self.optimizer.init_fn(self.guide.get_params()))
         scan_fn = get_advi_scan_without_progressbar(self.advi_step)
         last_state, elbo = scan_fn(init_state, keys)
         return last_state, elbo

@@ -1,8 +1,9 @@
 import jax
 import jax.experimental
-from typing import Optional, Callable
+from typing import Optional, Callable, TypeVar, Tuple
 from tqdm.auto import tqdm
 import threading
+from dccxjax.types import IntArray
 
 __all__ = [
     
@@ -18,15 +19,14 @@ class ProgressbarManager:
             self._lock = threading.Lock()
 
     def set_num_samples(self, num_samples: int):
-        self.num_samples = num_samples # affects for tqdm bar lenght, not print rate
+        self.num_samples = num_samples # affects only tqdm bar length, not print rate
 
     def start_progress(self):
         if self.tqdm_bar is None:
             self.tqdm_bar = tqdm(total=self.num_samples, position=0)
-        else:
-            self.tqdm_bar.reset(total=self.num_samples)
+        self.tqdm_bar.reset(total=self.num_samples)
         self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=True)
-
+        
     def _update_bar(self, iternum, n):
         if self.tqdm_bar is not None:
             if self.thread_locked:
@@ -61,20 +61,29 @@ class ProgressbarManager:
                 if not self.share_bar:
                     self.tqdm_bar.close()
                     self.tqdm_bar = None
+                else:
+                    tqdm.clear(self.tqdm_bar)
             else:
                 self._update_bar(iternum, increment)
 
 
 # adapted form numpyro/util.py
-def _add_progress_bar(kernel: Callable, progressbar_mngr: ProgressbarManager, num_samples: int) -> Callable:
+
+SCAN_DATA_TYPE = TypeVar("SCAN_DATA_TYPE")
+SCAN_RETURN_TYPE = TypeVar("SCAN_RETURN_TYPE")
+SCAN_CARRY_TYPE = TypeVar("SCAN_CARRY_TYPE")
+
+def _add_progress_bar(
+    step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]],
+    get_iternum_fn: Callable[[SCAN_CARRY_TYPE], IntArray],
+    progressbar_mngr: ProgressbarManager,
+    num_samples: int) -> Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]]:
+    
     print_rate = max(int(num_samples / 100), 1)
 
     remainder = num_samples % print_rate
 
     def _update_progress_bar(iter_num: jax.Array):
-        # nonlocal t0
-        # t0 = time()
-        
         iter_num = iter_num + 1 # all chains are at the same iteration, init iteration=0
         _ = jax.lax.cond(
             (iter_num % print_rate == 0) | (iter_num == num_samples),
@@ -83,9 +92,9 @@ def _add_progress_bar(kernel: Callable, progressbar_mngr: ProgressbarManager, nu
             operand=None,
         )
     
-    def wrapped_kernel(state, data):
-        result = kernel(state, data)
-        _update_progress_bar(state.iteration) # NOTE: we don't have to return something for this to work?
+    def wrapped_step(carry: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
+        result = step(carry, data)
+        _update_progress_bar(get_iternum_fn(carry))
         return result
     
-    return wrapped_kernel
+    return wrapped_step
