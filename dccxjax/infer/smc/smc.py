@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from abc import ABC, abstractmethod
 from jax.flatten_util import ravel_pytree
 import jax.experimental
-from dccxjax.infer.progress_bar import _add_progress_bar, ProgressbarManager
+from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
 
 __all__ = [
     "ResampleType",

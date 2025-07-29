@@ -13,10 +13,10 @@ from time import time
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
 from dccxjax.infer.variable_selector import AllVariables
-from dccxjax.infer.progress_bar import _add_progress_bar, ProgressbarManager
+from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
 from tqdm.auto import tqdm
 from dccxjax.jax_utils import smap_vmap, pmap_vmap
-from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, SHARDING_AXIS, VectorisationType, vectorise, parallel_run
+from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, SHARDING_AXIS, VectorisationType, vectorise, parallel_run, vectorise_scan
 
 __all__ = [
     "MCMCRegime",
@@ -408,18 +408,23 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         if self.cached_mcmc_scan:
             scan_fn = self.cached_mcmc_scan
         else:
-            scan_fn = (
-                get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr)
-                if self.show_progress else
-                get_mcmc_scan_without_progressbar(self.kernel)
-            )
+            # scan_fn = (
+            #     get_mcmc_scan_with_progressbar(self.kernel, self.progress_bar_mngr)
+            #     if self.show_progress else
+            #     get_mcmc_scan_without_progressbar(self.kernel)
+            # )
             # scan_fn = get_mcmc_scan_without_progressbar(self.kernel)
+            # mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
+            # scan_fn = vectorise(scan_fn, in_axes=(mcmc_state_axes,1), out_axes=(0,1), batch_axis_size=self.n_chains, pconfig=self.pconfig)
+            
             mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
-            scan_fn = vectorise(scan_fn, in_axes=(mcmc_state_axes,0), out_axes=(0,1), batch_axis_size=self.n_chains, pconfig=self.pconfig)
+            scan_fn = vectorise_scan(self.kernel, carry_axes=mcmc_state_axes, pmap_data_axes=1, batch_axis_size=self.n_chains, pconfig=self.pconfig)
+            
             self.cached_mcmc_scan = scan_fn
         
         if self.vectorisation == "none":
-            keys = jax.random.split(rng_key, (self.n_chains,n_samples_per_chain))
+            # keys = jax.random.split(rng_key, (self.n_chains,n_samples_per_chain))
+            keys = jax.random.split(rng_key, (n_samples_per_chain,self.n_chains))
         else:
             keys = jax.random.split(rng_key, (n_samples_per_chain,))
         

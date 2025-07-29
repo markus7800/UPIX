@@ -7,7 +7,7 @@ from jax.sharding import Mesh
 from jax.experimental.mesh_utils import create_device_mesh
 from dccxjax.utils import bcolors
 from typing import Callable, TypeVar, Tuple
-from dccxjax.jax_utils import smap_vmap, pmap_vmap
+from dccxjax.jax_utils import smap_vmap, pmap_vmap, batch_func_args, unbatch_output
 
 __all__ = [
     "ParallelisationType",
@@ -17,6 +17,7 @@ __all__ = [
     "create_default_device_mesh",
     "SHARDING_AXIS",
     "vectorise",
+    "vectorise_scan",
     "parallel_run",
 ]
 
@@ -99,3 +100,50 @@ def parallel_run(fn: Callable[..., FUNCTION_RET_TYPE], args: Tuple, batch_axis_s
             return fn(*args)
     else:
         return fn(*args)
+    
+# from tqdm.auto import tqdm
+# def typeoftree(tree):
+#     return jax.tree.map(jax.typeof, tree)
+
+SCAN_DATA_TYPE = TypeVar("SCAN_DATA_TYPE")
+SCAN_RETURN_TYPE = TypeVar("SCAN_RETURN_TYPE")
+SCAN_CARRY_TYPE = TypeVar("SCAN_CARRY_TYPE")
+def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]], carry_axes, pmap_data_axes, batch_axis_size: int, pconfig: ParallelisationConfig):
+    
+    device_count = jax.device_count()
+    
+    def _scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
+        if pconfig.vectorsisation == VectorisationType.LocalVMAP:
+            _step = step
+        elif pconfig.vectorsisation == VectorisationType.GlobalVMAP:
+            _step = jax.vmap(step, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
+        elif pconfig.vectorsisation == VectorisationType.PMAP:
+            if batch_axis_size <= device_count:
+                _step = step
+            else:
+                _step = jax.vmap(step, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
+        elif pconfig.vectorsisation == VectorisationType.LocalSMAP:
+            _step = step
+        else:
+            assert pconfig.vectorsisation == VectorisationType.GlobalSMAP
+            _step = smap_vmap(step, axis_name=SHARDING_AXIS, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
+        return jax.lax.scan(_step, init, data)
+        
+        
+    if pconfig.vectorsisation == VectorisationType.PMAP:
+        if batch_axis_size <= device_count:
+            return jax.pmap(_scan, axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
+        else:
+            assert batch_axis_size % device_count == 0
+            batch_size = batch_axis_size // device_count
+            def _batched_scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
+                args = (init, data)
+                batched_args, num_batches = batch_func_args(args, (carry_axes,pmap_data_axes), batch_size)
+                pfun = jax.pmap(_scan, axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
+                batched_out = pfun(*batched_args)
+                return unbatch_output(batched_out, (carry_axes,pmap_data_axes), batch_size, num_batches)
+            return _batched_scan
+            
+    else:
+        return _scan
+        

@@ -10,7 +10,7 @@ import jax.numpy as jnp
 from dccxjax.distributions.constraints import Constraint, real, scaled_unit_lower_cholesky
 import numpyro.distributions.transforms as transforms
 from dccxjax.core.model_slp import Model, SLP
-from dccxjax.infer.progress_bar import _add_progress_bar, ProgressbarManager
+from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
 from .optimizers import OPTIMIZER_STATE, Optimizer
 from math import prod
 from dccxjax.infer.gibbs_model import GibbsModel
