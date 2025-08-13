@@ -117,12 +117,12 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
                    carry_axes, pmap_data_axes, batch_axis_size: int, pconfig: ParallelisationConfig,
                    progressbar_mngr: ProgressbarManager | None = None, get_iternum_fn: Callable[[SCAN_CARRY_TYPE], IntArray] | None = None):
     
-    tracker = JitVariationTracker("_vectorise_scan")
+    # tracker = JitVariationTracker("_vectorise_scan")
     device_count = jax.device_count()
     
     @jax.jit
     def _scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
-        maybe_jit_warning(tracker, (init, data))
+        # maybe_jit_warning(tracker, (init, data))
         if progressbar_mngr is not None:
             progressbar_mngr.start_progress()
             

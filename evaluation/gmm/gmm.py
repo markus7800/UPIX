@@ -1,8 +1,8 @@
 import sys
 sys.path.append("evaluation")
 from parse_args import parse_args_and_setup
-from setup_parallelisation import get_parallelisation_config
 args = parse_args_and_setup()
+from setup_parallelisation import get_parallelisation_config
 
 import jax
 from dccxjax.all import *

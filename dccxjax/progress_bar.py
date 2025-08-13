@@ -26,7 +26,7 @@ class ProgressbarManager:
         if self.tqdm_bar is None:
             self.tqdm_bar = tqdm(total=self.num_samples, position=0)
         # tqdm.write(f"start_progress {self} {time_ns()/10**9}")
-        self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=False)
+        self.tqdm_bar.set_description(f"Compiling {self.desc}", refresh=False)
         self.tqdm_bar.reset(total=self.num_samples)
         
     def _maybe_with_lock(self, func: Callable):

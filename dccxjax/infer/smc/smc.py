@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from jax.flatten_util import ravel_pytree
 import jax.experimental
 from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
+from tqdm.auto import tqdm
+from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType, vectorise_scan
 
 __all__ = [
     "ResampleType",
@@ -234,20 +236,6 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
 
     return smc_step
 
-def get_smc_scan_with_progressbar(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]], progressbar_mngr: ProgressbarManager) -> Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]:
-    def scan_with_bar(init: SMCState, xs: SMCStepData) -> Tuple[SMCState,FloatArray]:
-        # will be recompiled if num_samples changes
-        kernel_with_bar = _add_progress_bar(kernel, lambda carry: carry.iteration, progressbar_mngr, progressbar_mngr.num_samples)
-        progressbar_mngr.start_progress()
-        jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)
-        return jax.lax.scan(kernel_with_bar, init, xs)
-    return jax.jit(scan_with_bar)
-def get_smc_scan_without_progressbar(kernel: Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]) -> Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]:
-    def scan_without_bar(init: SMCState, xs: SMCStepData) -> Tuple[SMCState,FloatArray]:
-        return jax.lax.scan(kernel, init, xs)
-    return jax.jit(scan_without_bar)
-
-
 class SMC:
     def __init__(self,
                  slp: SLP,
@@ -259,15 +247,22 @@ class SMC:
                  rejuvination_regime: MCMCRegime,
                  rejuvination_attempts: int = 1,
                  *,
+                 pconfig: ParallelisationConfig,
                  collect_inference_info: bool = False,
-                 progress_bar: bool = False) -> None:
+                 show_progress: bool = False,
+                 shared_progressbar: tqdm | None = None) -> None:
         
         self.slp = slp
         self.n_particles = n_particles
-        self.progress_bar = progress_bar
-        self.progress_bar_mngr = ProgressbarManager("SMC for "+self.slp.formatted())
-
-        rejuvination_kernel, rejuv_init_carry_stat_names = get_mcmc_kernel(slp, rejuvination_regime, collect_inference_info=collect_inference_info, vectorised=True, return_map=lambda _: None)
+        self.show_progress = show_progress
+        self.progressbar_mngr = ProgressbarManager(
+            "SMC for "+self.slp.formatted(),
+            shared_progressbar,
+            thread_locked=pconfig.vectorisation==VectorisationType.PMAP
+        )
+        self.pconfig = pconfig
+        
+        rejuvination_kernel, rejuv_init_carry_stat_names = get_mcmc_kernel(slp, rejuvination_regime, collect_inference_info=collect_inference_info, vectorisation="vmap", return_map=lambda _: None)
         assert len(rejuv_init_carry_stat_names) == 0, "CarryStats in MCMC currently not supported."
 
         self.rejuvination_regime = rejuvination_regime
@@ -317,18 +312,18 @@ class SMC:
         init_state = SMCState(jnp.array(0,int), particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infoss)
         smc_data = SMCStepData(smc_keys, self.tempereture_schedule.temperature, self.data_annealing_schedule.data_annealing)
 
-        self.progress_bar_mngr.set_num_samples(self.n_steps)
+        self.progressbar_mngr.set_num_samples(self.n_steps)
             
         if self.cached_smc_scan:
-            last_state, ess = self.cached_smc_scan(init_state, smc_data)
+            scan_fn = self.cached_smc_scan
         else:
-            scan_fn = (
-                get_smc_scan_with_progressbar(self.smc_step, self.progress_bar_mngr)
-                if self.progress_bar else
-                get_smc_scan_without_progressbar(self.smc_step)
-            )
+            assert self.pconfig.vectorisation == VectorisationType.LocalVMAP
+            smc_state_axes = SMCState(iteration=None, particles=0, log_particle_weights=0, ta_log_likelihood=0, ta_log_prob=0, mcmc_infos=0) # type: ignore
+            scan_fn = vectorise_scan(self.smc_step, carry_axes=smc_state_axes, pmap_data_axes=1, batch_axis_size=0, pconfig=self.pconfig,
+                                     progressbar_mngr=self.progressbar_mngr if self.show_progress else None, get_iternum_fn=lambda carry: carry.iteration)
             self.cached_smc_scan = scan_fn
-            last_state, ess = scan_fn(init_state, smc_data)
+        
+        last_state, ess = scan_fn(init_state, smc_data)
 
         return last_state, ess 
     

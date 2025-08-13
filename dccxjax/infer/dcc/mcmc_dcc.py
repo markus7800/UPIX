@@ -142,7 +142,7 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         return mcmc
     
     def make_estimate_log_weight_task(self, slp: SLP, rng_key: PRNGKey) -> EstimateLogWeightTask:
-        def _f(rng_key: PRNGKey):
+        def _task(rng_key: PRNGKey):
             log_Z, ESS, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.estimate_weight_n_samples, rng_key, self.pconfig)
             return LogWeightEstimateFromPrior(log_Z, ESS, frac_in_support, self.estimate_weight_n_samples)
         
@@ -152,7 +152,7 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
                 return f"Estimated log weight for {slp.formatted()}: {result.log_Z.item()} (ESS={result.ESS.item():_.0f})"
             return ""
         
-        return EstimateLogWeightTask(_f, (rng_key,), post_info=_post_info)
+        return EstimateLogWeightTask(_task, (rng_key,), post_info=_post_info)
 
     def make_inference_task(self, slp: SLP, rng_key: PRNGKey) -> InferenceTask:
         mcmc = self.get_MCMC(slp)

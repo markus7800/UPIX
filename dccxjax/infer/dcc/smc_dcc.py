@@ -6,11 +6,13 @@ from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, St
 from dccxjax.utils import broadcast_jaxtree
 from dataclasses import dataclass
 from dccxjax.infer.smc import SMC, DataAnnealingSchedule, TemperetureSchedule, ReweightingType, StratifiedResampling, ResampleType, ResampleTime
+# from dccxjax.infer.smc.smc import SMCState
+from dccxjax.infer.mcmc.mcmc_core import InferenceInfos
 from dccxjax.infer.mcmc import MCMCRegime, summarise_mcmc_infos, MCMC, lmh
 from dccxjax.infer.importance_sampling import estimate_log_Z_for_SLP_from_prior
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
-from dccxjax.infer.dcc.abstract_dcc import InferenceResult, LogWeightEstimate, AbstractDCC
+from dccxjax.infer.dcc.abstract_dcc import InferenceResult, LogWeightEstimate, AbstractDCC, InferenceTask, EstimateLogWeightTask, is_sequential
 from dccxjax.infer.dcc.mc_dcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimate, MCInferenceResult, LogWeightedSample
 from textwrap import indent
 
@@ -24,6 +26,7 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
     log_particle_weight: FloatArray
     n_particles: int
     optimised_memory_with_early_return_map: bool
+    mcmc_infos: InferenceInfos | None
     def combine_results(self, other: InferenceResult) -> "SMCInferenceResult":
         if not isinstance(other, SMCInferenceResult):
             raise TypeError
@@ -38,7 +41,7 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
 
         assert self.optimised_memory_with_early_return_map == other.optimised_memory_with_early_return_map
 
-        return SMCInferenceResult(particles, log_particle_weight, self.n_particles, self.optimised_memory_with_early_return_map)
+        return SMCInferenceResult(particles, log_particle_weight, self.n_particles, self.optimised_memory_with_early_return_map, None)
     
     def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> LogWeightedSample[DCC_COLLECT_TYPE]:
         # shape = (#repeats smc, n_particles, ...)
@@ -113,8 +116,10 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             StratifiedResampling(ResampleType.Adaptive, ResampleTime.BeforeMove),
             self.get_SMC_rejuvination_kernel(slp),
             self.smc_rejuvination_attempts,
+            pconfig=self.pconfig,
             collect_inference_info=self.smc_collect_inference_info,
-            progress_bar=True
+            show_progress=self.verbose >= 1 and is_sequential(self.pconfig),
+            shared_progressbar=self.shared_progress_bar
         )
 
         self.inference_method_cache[slp] = smc
@@ -127,13 +132,14 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         mcmc = MCMC(
             slp,
             smc.rejuvination_regime,
+            pconfig=self.pconfig,
             n_chains=smc.n_particles,
             reuse_kernel=smc.rejuvination_kernel,
             reuse_kernel_init_carry_stat_names=smc.rejuvination_kernel_init_carry_stat_names,
             data_annealing = smc.data_annealing_schedule.prior_mask() if smc.data_annealing_schedule is not None else dict(),
             temperature = jnp.array(0.,float),
             collect_inference_info=smc.collect_inference_info,
-            progress_bar=True
+            show_progress=True
         )
         init_positions = StackedTrace(broadcast_jaxtree(slp.decision_representative, (mcmc.n_chains,)), mcmc.n_chains)
 
@@ -147,45 +153,55 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
 
         return StackedTrace(last_state.position, mcmc.n_chains), last_state.log_prob
 
-    def run_inference(self, slp: SLP, rng_key: PRNGKey) -> InferenceResult:
+    def make_inference_task(self, slp: SLP, rng_key: PRNGKey) -> InferenceTask:
         smc = self.get_SMC(slp)
         
-        prior_key, smc_key = jax.random.split(rng_key)
+        def _task(rng_key: PRNGKey):
+            prior_key, smc_key = jax.random.split(rng_key)
 
-        init_positions, init_log_prob = self.produce_samples_from_prior(slp, prior_key)
+            init_positions, init_log_prob = self.produce_samples_from_prior(slp, prior_key)
 
-        last_state, ess = smc.run(smc_key, init_positions, init_log_prob)
-        if self.verbose >= 2:
-            if self.smc_collect_inference_info:
-                assert last_state.mcmc_infos is not None
-                info_str = "Rejuvination Infos:\n"
-                info_str += indent(summarise_mcmc_infos(last_state.mcmc_infos, smc.n_steps*smc.rejuvination_attempts), "\t")
-                tqdm.write(info_str)
+            last_state, ess = smc.run(smc_key, init_positions, init_log_prob)
+                    
+            if self.smc_optimise_memory_with_early_return_map:
+                return_result = self.return_map(last_state.particles)
+            else:
+                return_result = last_state.particles
+            return SMCInferenceResult(return_result, last_state.log_particle_weights, smc.n_particles, self.smc_optimise_memory_with_early_return_map, last_state.mcmc_infos)
+
         
-        if self.smc_optimise_memory_with_early_return_map:
-            return_result = self.return_map(last_state.particles)
-        else:
-            return_result = last_state.particles
-        return SMCInferenceResult(return_result, last_state.log_particle_weights, smc.n_particles, self.smc_optimise_memory_with_early_return_map)
+        def _post_info(result: InferenceResult):
+            assert isinstance(result, SMCInferenceResult)
+            if self.verbose >= 2:
+                if self.smc_collect_inference_info:
+                    assert result.mcmc_infos is not None
+                    info_str = "Rejuvination Infos:\n"
+                    info_str += indent(summarise_mcmc_infos(result.mcmc_infos, smc.n_steps*smc.rejuvination_attempts), "\t")
+                    return info_str
+            return ""
+        
+        return InferenceTask(_task, (rng_key,), post_info=_post_info)
     
     def estimate_path_log_prob(self, slp: SLP, rng_key: PRNGKey) -> FloatArray:
-        _, _, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.est_path_log_prob_n_samples, rng_key)
+        _, _, frac_in_support = estimate_log_Z_for_SLP_from_prior(slp, self.est_path_log_prob_n_samples, rng_key, self.pconfig)
         return jax.lax.log(frac_in_support)
 
-    def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
+    def make_estimate_log_weight_task(self, slp: SLP, rng_key: PRNGKey) -> EstimateLogWeightTask:
         inference_results = self.inference_results.get(slp, [])
         if len(inference_results) > 0:
-            path_log_prob = self.estimate_path_log_prob(slp, rng_key)
+            def _task(rng_key: PRNGKey):
+                path_log_prob = self.estimate_path_log_prob(slp, rng_key)
 
-            last_result = inference_results[-1]
-            assert isinstance(last_result, SMCInferenceResult)
-            assert len(last_result.log_particle_weight.shape) == 1, "Attempted to get log_weight from combined result"
-            log_Z = jax.scipy.special.logsumexp(last_result.log_particle_weight)
-            log_ess = log_Z * 2 - jax.scipy.special.logsumexp(last_result.log_particle_weight * 2)
-            ESS = jax.lax.exp(log_ess)
-            if self.verbose >= 2:
-                tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():_.0f})")
-            return LogWeightEstimateFromSMC(log_Z + path_log_prob, ESS, last_result.n_particles)
+                last_result = inference_results[-1]
+                assert isinstance(last_result, SMCInferenceResult)
+                assert len(last_result.log_particle_weight.shape) == 1, "Attempted to get log_weight from combined result"
+                log_Z = jax.scipy.special.logsumexp(last_result.log_particle_weight)
+                log_ess = log_Z * 2 - jax.scipy.special.logsumexp(last_result.log_particle_weight * 2)
+                ESS = jax.lax.exp(log_ess)
+                if self.verbose >= 2:
+                    tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():_.0f})")
+                return LogWeightEstimateFromSMC(log_Z + path_log_prob, ESS, last_result.n_particles)
+            return EstimateLogWeightTask(_task, (rng_key,))
         else:
             raise Exception("In SMCDCC we should perform one run of SMC before estimate_log_weight to reuse estimate")
     

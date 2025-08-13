@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model
 from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
-from dccxjax.infer.dcc.abstract_dcc import JaxTask, InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior, ParallelisationType
+from dccxjax.infer.dcc.abstract_dcc import JaxTask, InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior, ParallelisationType, is_sequential
 from dataclasses import dataclass
 from dccxjax.infer.variational_inference.vi import Guide, ADVI, ADVIState, Optimizer
 from dccxjax.infer.variational_inference.optimizers import Adagrad
@@ -91,8 +91,8 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             assert isinstance(advi, ADVI)
             return advi
         guide = self.get_guide(slp)
-        advi = ADVI(slp, guide, self.advi_optimizer, self.advi_L,
-                    show_progress=self.verbose >= 1 and self.parallelisation.type == ParallelisationType.Sequential,
+        advi = ADVI(slp, guide, self.advi_optimizer, self.advi_L, pconfig=self.pconfig,
+                    show_progress=self.verbose >= 1 and is_sequential(self.pconfig),
                     shared_progressbar=self.shared_progress_bar)
         self.inference_method_cache[slp] = advi
         return advi
@@ -147,7 +147,7 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             # sets iteration count = 0 (may affect optimizers schedule)
             # iteration is also used in progressbar (so we would have to add additional counter if we want to set iteration to different start value)
             def _task_continue(rng_key, last_state):
-                last_state, elbo = advi.continue_run(rng_key, last_state, n_iter=self.advi_n_iter, iteration=0)
+                last_state, elbo = advi.continue_run(rng_key, last_state, n_iter=self.advi_n_iter, iteration=jnp.array(0,int))
                 return ADVIInferenceResult(last_state)
             return InferenceTask(_task_continue, (rng_key, last_result.last_state), _f_run_pre_info, _f_run_post_info)
         else:

@@ -194,9 +194,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             # set bar_format to make bar completely invisible at beginning
             self.shared_progress_bar = tqdm(total=0, position=0, leave=False, bar_format="{bar}")
             self.shared_progress_bar.bar_format = "{l_bar}{bar}{r_bar}"
-            outer_bar = tqdm(total=0, position=1, leave=False, desc="Iteration 0")
+            outer_bar = tqdm(total=0, position=1, leave=False, desc="Iteration 0", mininterval=0)
         else:
-            outer_bar = tqdm(total=0, position=0, leave=False, desc="Iteration 0")
+            outer_bar = tqdm(total=0, position=0, leave=False, desc="Iteration 0", mininterval=0)
 
         while len(self.active_slps) > 0:
             t0 = time.monotonic()
