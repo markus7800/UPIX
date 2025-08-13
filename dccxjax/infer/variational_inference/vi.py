@@ -19,6 +19,7 @@ from dccxjax.infer.variable_selector import VariableSelector, PredicateSelector
 from dccxjax.utils import broadcast_jaxtree
 from dccxjax.jax_utils import smap_vmap
 from dccxjax.parallelisation import ParallelisationConfig, SHARDING_AXIS, VectorisationType, vectorise_scan, parallel_run
+from tqdm.auto import tqdm
 
 __all__ = [
     "ADVI",
@@ -270,21 +271,6 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
     
     return advi_step
 
-from tqdm.auto import tqdm
-
-def get_advi_scan_with_progressbar(kernel: Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]], progressbar_mngr: ProgressbarManager) -> Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]:
-    def scan_with_bar(init: ADVIState[OPTIMIZER_STATE], xs: PRNGKey) -> Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]:
-        # will be recompiled if num_samples changes
-        progressbar_mngr.start_progress()
-        kernel_with_bar = _add_progress_bar(kernel, lambda carry: carry.iteration, progressbar_mngr, progressbar_mngr.num_samples)
-        jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, 0)
-        return jax.lax.scan(kernel_with_bar, init, xs)
-    return jax.jit(scan_with_bar)
-
-def get_advi_scan_without_progressbar(kernel: Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]) -> Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]:
-    def scan_without_bar(init: ADVIState[OPTIMIZER_STATE], xs: PRNGKey) -> Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]:
-        return jax.lax.scan(kernel, init, xs)
-    return jax.jit(scan_without_bar)
 
 class ADVI(Generic[OPTIMIZER_STATE]):
     def __init__(self,

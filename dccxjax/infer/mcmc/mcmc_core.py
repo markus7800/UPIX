@@ -320,21 +320,6 @@ def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCK
         return jax.vmap(kernel, in_axes=(mcmc_state_axes,0), out_axes=(mcmc_state_axes,0))(state, chain_keys)
     return _vectorised_kernel
 
-def get_mcmc_scan_with_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE], progressbar_mngr: ProgressbarManager) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
-    def scan_with_bar(init: MCMCState, xs: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
-        # will be recompiled if num_samples changes
-        kernel_with_bar = _add_progress_bar(kernel, lambda carry: carry.iteration, progressbar_mngr, progressbar_mngr.num_samples)
-        progressbar_mngr.start_progress()
-        jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, init.iteration)
-        return jax.lax.scan(kernel_with_bar, init, xs)
-    return jax.jit(scan_with_bar)
-
-def get_mcmc_scan_without_progressbar(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> Callable[[MCMCState, PRNGKey], Tuple[MCMCState,MCMC_COLLECT_TYPE]]:
-    def scan_without_bar(init: MCMCState, xs: PRNGKey) -> Tuple[MCMCState, MCMC_COLLECT_TYPE]:
-        return jax.lax.scan(kernel, init, xs)
-    return jax.jit(scan_without_bar)
-
-
 class MCMC(Generic[MCMC_COLLECT_TYPE]):
     def __init__(self,
         slp: SLP,
