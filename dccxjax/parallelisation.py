@@ -37,7 +37,7 @@ class VectorisationType(Enum):
 @dataclass
 class ParallelisationConfig:
     parallelisation: ParallelisationType = ParallelisationType.Sequential
-    vectorsisation: VectorisationType = VectorisationType.GlobalVMAP
+    vectorisation: VectorisationType = VectorisationType.GlobalVMAP
     num_workers: int = os.cpu_count() or 1
     cpu_affinity: bool = False
     environ: Dict[str, str] = field(default_factory= lambda: {
@@ -77,11 +77,11 @@ def create_default_device_mesh(dim: int):
 FUNCTION_TYPE = TypeVar("FUNCTION_TYPE", bound=Callable)
 FUNCTION_RET_TYPE = TypeVar("FUNCTION_RET_TYPE")
 def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, pconfig: ParallelisationConfig) -> FUNCTION_TYPE:
-    if pconfig.vectorsisation == VectorisationType.LocalVMAP:
+    if pconfig.vectorisation == VectorisationType.LocalVMAP:
         return jax.jit(fn) # type: ignore
-    elif pconfig.vectorsisation == VectorisationType.GlobalVMAP:
+    elif pconfig.vectorisation == VectorisationType.GlobalVMAP:
         return jax.jit(jax.vmap(fn, in_axes=in_axes, out_axes=out_axes)) # type: ignore
-    elif pconfig.vectorsisation == VectorisationType.PMAP:
+    elif pconfig.vectorisation == VectorisationType.PMAP:
         device_count = jax.device_count()
         if batch_axis_size <= device_count:
             return jax.pmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes)
@@ -89,14 +89,14 @@ def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, pconfi
             assert batch_axis_size % device_count == 0
             batch_size = batch_axis_size // device_count
             return pmap_vmap(fn, axis_name=SHARDING_AXIS, batch_size=batch_size, in_axes=in_axes, out_axes=out_axes)
-    elif pconfig.vectorsisation == VectorisationType.LocalSMAP:
+    elif pconfig.vectorisation == VectorisationType.LocalSMAP:
         return jax.jit(fn) # type: ignore
     else:
-        assert pconfig.vectorsisation == VectorisationType.GlobalSMAP
+        assert pconfig.vectorisation == VectorisationType.GlobalSMAP
         return jax.jit(smap_vmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes)) # type: ignore
         
 def parallel_run(fn: Callable[..., FUNCTION_RET_TYPE], args: Tuple, batch_axis_size: int, pconfig: ParallelisationConfig) -> FUNCTION_RET_TYPE:
-    if pconfig.vectorsisation == VectorisationType.LocalSMAP or pconfig.vectorsisation == VectorisationType.GlobalSMAP:
+    if pconfig.vectorisation == VectorisationType.LocalSMAP or pconfig.vectorisation == VectorisationType.GlobalSMAP:
         with jax.sharding.use_mesh(create_default_device_mesh(batch_axis_size)):
             return fn(*args)
     else:
@@ -126,19 +126,19 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
         if progressbar_mngr is not None:
             progressbar_mngr.start_progress()
             
-        if pconfig.vectorsisation == VectorisationType.LocalVMAP:
+        if pconfig.vectorisation == VectorisationType.LocalVMAP:
             _step = step
-        elif pconfig.vectorsisation == VectorisationType.GlobalVMAP:
+        elif pconfig.vectorisation == VectorisationType.GlobalVMAP:
             _step = jax.vmap(step, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
-        elif pconfig.vectorsisation == VectorisationType.PMAP:
+        elif pconfig.vectorisation == VectorisationType.PMAP:
             if batch_axis_size <= device_count:
                 _step = step
             else:
                 _step = jax.vmap(step, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
-        elif pconfig.vectorsisation == VectorisationType.LocalSMAP:
+        elif pconfig.vectorisation == VectorisationType.LocalSMAP:
             _step = step
         else:
-            assert pconfig.vectorsisation == VectorisationType.GlobalSMAP
+            assert pconfig.vectorisation == VectorisationType.GlobalSMAP
             _step = smap_vmap(step, axis_name=SHARDING_AXIS, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
             
         if progressbar_mngr is not None:
@@ -149,7 +149,7 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
         return jax.lax.scan(_step, init, data)
         
         
-    if pconfig.vectorsisation == VectorisationType.PMAP:
+    if pconfig.vectorisation == VectorisationType.PMAP:
         if batch_axis_size <= device_count:
             return jax.pmap(_scan, axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
         else:

@@ -15,29 +15,29 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
         if num_workers > 0:
             print(f"Ignoring num_workers '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
         if vectorisation == "vmap":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorsisation=VectorisationType.GlobalVMAP)
+            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalVMAP)
         elif vectorisation == "vmap_local":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorsisation=VectorisationType.LocalVMAP)
+            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.LocalVMAP)
         elif vectorisation == "vmap_global":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorsisation=VectorisationType.GlobalVMAP)
+            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalVMAP)
         else:
             if jax.device_count() == 1:
                 print(f"Warning: Vectorisation is set to'{vectorisation}' but only 1 jax devices is available.")
         if vectorisation == "pmap":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorsisation=VectorisationType.PMAP)
+            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.PMAP)
         if vectorisation == "smap":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorsisation=VectorisationType.GlobalSMAP)
+            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalSMAP)
         if vectorisation == "smap_local":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorsisation=VectorisationType.LocalSMAP)
+            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.LocalSMAP)
         if vectorisation == "smap_global":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorsisation=VectorisationType.GlobalSMAP)
+            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalSMAP)
     else:
         assert vectorisation in ("vmap", "vmap_local", "vmap_global")
         vectorisation_type = VectorisationType.LocalVMAP if vectorisation == "vmap_local" else VectorisationType.GlobalVMAP
         if parallelisation == "cpu_multiprocess":
             return ParallelisationConfig(
                 parallelisation=ParallelisationType.MultiProcessingCPU,
-                vectorsisation=vectorisation_type,
+                vectorisation=vectorisation_type,
                 num_workers=num_workers or os.cpu_count() or 1
             )
         else:
@@ -45,6 +45,6 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
             assert num_workers <= jax.device_count()
             return ParallelisationConfig(
                 parallelisation=ParallelisationType.MultiThreadingJAXDevices,
-                vectorsisation=vectorisation_type,
+                vectorisation=vectorisation_type,
                 num_workers=num_workers or jax.device_count()
             )

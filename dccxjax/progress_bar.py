@@ -29,22 +29,37 @@ class ProgressbarManager:
         self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=False)
         self.tqdm_bar.reset(total=self.num_samples)
         
+    def _maybe_with_lock(self, func: Callable):
+        if self.thread_locked:
+            with self._lock:
+                func()
+        else:
+            func()
+        
     def _update_bar(self, iternum, n):
-        if self.tqdm_bar is not None:
-            if self.thread_locked:
-                with self._lock:
-                    if self.tqdm_bar.n < iternum:
-                        self.tqdm_bar.update(n)
-            else:
+        def _update_fn():
+            if self.tqdm_bar is not None:
                 if self.tqdm_bar.n < iternum:
                     self.tqdm_bar.update(n)
+        self._maybe_with_lock(_update_fn)
+    
+    def _close_bar(self):
+        def _close_fn():
+            if self.tqdm_bar is not None:
+                if not self.share_bar:
+                    self.tqdm_bar.close()
+                    self.tqdm_bar = None
+                else:
+                    pass
+        self._maybe_with_lock(_close_fn)
+            
 
     def _init_tqdm(self, iternum):
         if self.tqdm_bar is None: 
             self.tqdm_bar = tqdm(total=self.num_samples, position=0)
         else:
             self.tqdm_bar.reset(total=self.num_samples)
-        # tqdm.write(f"init_tqdm {time_ns()/10**9}")
+        # tqdm.write(f"init_tqdm {self}")
         iternum = int(iternum)
         self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
         self._update_bar(iternum, 0)
@@ -60,14 +75,8 @@ class ProgressbarManager:
                     self._update_bar(iternum, increment)
                 else:
                     self._update_bar(iternum, remainder)
-                # tqdm.write(f"Close pbar {self}")
-                if not self.share_bar:
-                    self.tqdm_bar.close()
-                    self.tqdm_bar = None
-                else:
-                    pass
-                    # self.tqdm_bar.clear()
-                    # tqdm.clear(self.tqdm_bar)
+                # tqdm.write(f"Close pbar {self} {hex(id(self.tqdm_bar))}")
+                self._close_bar()
             else:
                 self._update_bar(iternum, increment)
 

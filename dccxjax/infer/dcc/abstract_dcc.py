@@ -150,15 +150,15 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         tqdm.write(f"Start DCC:") 
         
         devices_str = ",\n    ".join(map(str, jax.devices()))
-        if is_sequential(self.pconfig) and self.pconfig.vectorsisation == VectorisationType.LocalVMAP:
+        if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalVMAP:
             tqdm.write(f"parallelisation=Sequential(local vmap, device={get_default_device()})")
-        if is_sequential(self.pconfig) and self.pconfig.vectorsisation == VectorisationType.GlobalVMAP:
+        if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.GlobalVMAP:
             tqdm.write(f"parallelisation=Sequential(global vmap, device={get_default_device()})")
-        if is_sequential(self.pconfig) and self.pconfig.vectorsisation == VectorisationType.PMAP:
+        if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.PMAP:
             tqdm.write(f"parallelisation=Sequential(pmap, \ndevices=\n    {devices_str}\n)")
-        if is_sequential(self.pconfig) and self.pconfig.vectorsisation == VectorisationType.LocalSMAP:
+        if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalSMAP:
             tqdm.write(f"parallelisation=Sequential(local smap,\ndevices=\n    {devices_str}\n)")
-        if is_sequential(self.pconfig) and self.pconfig.vectorsisation == VectorisationType.GlobalSMAP:
+        if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.GlobalSMAP:
             tqdm.write(f"parallelisation=Sequential(global smap,\ndevices=\n    {devices_str}\n)")
         if self.pconfig.parallelisation == ParallelisationType.MultiProcessingCPU:
             tqdm.write(f"parallelisation=MultiProcessingCPU(num_workers={self.pconfig.num_workers})")

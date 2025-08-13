@@ -17,6 +17,8 @@ from dccxjax.infer.gibbs_model import GibbsModel
 import jax.experimental
 from dccxjax.infer.variable_selector import VariableSelector, PredicateSelector
 from dccxjax.utils import broadcast_jaxtree
+from dccxjax.jax_utils import smap_vmap
+from dccxjax.parallelisation import ParallelisationConfig, SHARDING_AXIS, VectorisationType, vectorise_scan, parallel_run
 
 __all__ = [
     "ADVI",
@@ -223,7 +225,8 @@ class ADVIState(NamedTuple, Generic[OPTIMIZER_STATE]):
     iteration: IntArray
     optimizer_state: OPTIMIZER_STATE
 
-def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE], L: int):
+def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE], L: int, vectorisation: str):
+    assert vectorisation in ("vmap", "smap", "psum")
     # log_prob_fn = gibbs_model.tempered_log_prob(jnp.array(1.,float), {})
     log_prob_fn = slp.log_prob
     def elbo_fn(params: jax.Array, rng_key: PRNGKey) -> FloatArray:
@@ -233,19 +236,35 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
             lp = log_prob_fn(X)
             elbo = lp - lq
         else:
-            def _elbo_step(elbo: FloatArray, sample_key: PRNGKey) -> Tuple[FloatArray, None]:
-                X, lq = guide.sample_and_log_prob(sample_key)
+            if vectorisation in "vmap":
+                X, lq = jax.vmap(guide.sample_and_log_prob)(jax.random.split(rng_key, L))
+                lp = jax.vmap(log_prob_fn)(X)
+                elbo = (lp - lq).sum() / L
+            elif vectorisation in "smap":
+                X, lq = smap_vmap(guide.sample_and_log_prob, axis_name=SHARDING_AXIS, in_axes=0, out_axes=0)(jax.random.split(rng_key, L))
+                lp = smap_vmap(log_prob_fn, axis_name=SHARDING_AXIS, in_axes=0, out_axes=0)(X)
+                elbo = (lp - lq).sum() / L
+            else:
+                assert vectorisation in "psum"
+                X, lq = guide.sample_and_log_prob(rng_key)
                 lp = log_prob_fn(X)
-                return elbo + (lp - lq), None
-            # TODO: vmap
-            elbo, _ = jax.lax.scan(_elbo_step, jnp.array(0., float), jax.random.split(rng_key, L))
-            elbo = elbo / L
+                elbo = lp - lq
+                
+            # def _elbo_step(elbo: FloatArray, sample_key: PRNGKey) -> Tuple[FloatArray, None]:
+            #     X, lq = guide.sample_and_log_prob(sample_key)
+            #     lp = log_prob_fn(X)
+            #     return elbo + (lp - lq), None
+            # elbo, _ = jax.lax.scan(_elbo_step, jnp.array(0., float), jax.random.split(rng_key, L))
+            # elbo = elbo / L
         return elbo
     
     def advi_step(advi_state: ADVIState[OPTIMIZER_STATE], rng_key: PRNGKey) -> Tuple[ADVIState[OPTIMIZER_STATE], FloatArray]:
         iteration, optimizer_state = advi_state
         params = optimizer.get_params_fn(optimizer_state)
         elbo, elbo_grad = jax.value_and_grad(elbo_fn, argnums=0)(params, rng_key)
+        if vectorisation in "psum":
+            elbo = jax.lax.psum(elbo, SHARDING_AXIS) / L
+            elbo_grad = jax.lax.psum(elbo_grad, SHARDING_AXIS) / L
         new_optimizer_state = optimizer.update_fn(cast(int, iteration), -elbo_grad, optimizer_state)
         return ADVIState(iteration + 1, new_optimizer_state), elbo
     
@@ -274,6 +293,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
                  optimizer: Optimizer[OPTIMIZER_STATE],
                  L: int,
                  *,
+                 pconfig: ParallelisationConfig,
                  show_progress: bool = False,
                  shared_progressbar: tqdm | None = None) -> None:
         self.slp = slp
@@ -281,45 +301,62 @@ class ADVI(Generic[OPTIMIZER_STATE]):
         self.optimizer = optimizer
         self.L = L
         self.show_progress = show_progress
-        self.progressbar_mngr = ProgressbarManager("ADVI for "+self.slp.formatted(), shared_progressbar)
+        self.progressbar_mngr = ProgressbarManager(
+            "ADVI for "+self.slp.formatted(),
+            shared_progressbar,
+            thread_locked=pconfig.vectorisation==VectorisationType.PMAP
+        )
 
-        self.advi_step = make_advi_step(slp, guide, optimizer, L)
+        self.pconfig = pconfig
+        
+        if pconfig.vectorisation in (VectorisationType.GlobalSMAP, VectorisationType.PMAP):
+            self.vectorisation = "psum"
+            # params are replicated and gradients are shared across all jax devices
+            # if device_count < L redundant computation happens as we only take one param set
+            assert jax.device_count() >= self.L, f"L={self.L} cannot be greater than device_count={jax.device_count()} for {pconfig.vectorisation}.\nUse local smap instead or increase number of jax devices."
+        elif pconfig.vectorisation == VectorisationType.LocalVMAP:
+            self.vectorisation = "vmap"
+        elif pconfig.vectorisation == VectorisationType.LocalSMAP:
+            self.vectorisation = "smap"
+        else:
+            assert pconfig.vectorisation == VectorisationType.GlobalVMAP
+            raise Exception(f"Vectoristiation: Global vmap not supported")
+
+        self.advi_step = make_advi_step(slp, guide, optimizer, L, self.vectorisation)
 
         self.cached_advi_scan: Optional[Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]] = None
 
     def continue_run(self, rng_key: PRNGKey, state: ADVIState[OPTIMIZER_STATE], *, iteration: IntArray = jnp.array(0,int), n_iter: int):
-        keys = jax.random.split(rng_key, n_iter)
-        init_state = ADVIState(iteration, state.optimizer_state)
         
         self.progressbar_mngr.set_num_samples(n_iter)
 
-        if self.cached_advi_scan:
-            last_state, elbo = self.cached_advi_scan(init_state, keys)
+        if self.vectorisation == "psum":
+            keys = jax.random.split(rng_key, (n_iter,self.L))
+            init_state = ADVIState(iteration, broadcast_jaxtree(state.optimizer_state, (self.L,)))
         else:
-            scan_fn = (
-                get_advi_scan_with_progressbar(self.advi_step, self.progressbar_mngr)
-                if self.show_progress else
-                get_advi_scan_without_progressbar(self.advi_step)
-            )
+            keys = jax.random.split(rng_key, n_iter)
+            init_state = ADVIState(iteration, state.optimizer_state)
+            
+        if self.cached_advi_scan:
+            scan_fn = self.cached_advi_scan
+        else:
+            advi_state_axes = ADVIState(iteration=None, optimizer_state=0) # type: ignore
+            scan_fn = vectorise_scan(self.advi_step, carry_axes=advi_state_axes, pmap_data_axes=1, batch_axis_size=self.L, pconfig=self.pconfig,
+                                    progressbar_mngr=self.progressbar_mngr if self.show_progress else None, get_iternum_fn=lambda carry: carry.iteration)
             self.cached_advi_scan = scan_fn
-            last_state, elbo = scan_fn(init_state, keys)
+        
+        last_state, elbo = parallel_run(scan_fn, (init_state, keys), batch_axis_size=self.L, pconfig=self.pconfig)
 
         return last_state, elbo
 
     def run(self, rng_key: PRNGKey, *, n_iter: int):
         init_state = ADVIState(jnp.array(0,int), self.optimizer.init_fn(self.guide.get_params()))
         return self.continue_run(rng_key, init_state, n_iter=n_iter)
-    
-    def run_fn(self, rng_key: PRNGKey, *, n_iter: int):
-        keys = jax.random.split(rng_key, n_iter)
-        init_state = ADVIState(jnp.array(0,int), self.optimizer.init_fn(self.guide.get_params()))
-        scan_fn = get_advi_scan_without_progressbar(self.advi_step)
-        last_state, elbo = scan_fn(init_state, keys)
-        return last_state, elbo
-
         
     def get_updated_guide(self, state: ADVIState[OPTIMIZER_STATE]) -> Guide:
         p = self.optimizer.get_params_fn(state.optimizer_state)
+        if self.vectorisation == "psum":
+            p = p[0,...] # params are identical along batched axis
         self.guide.update_params(p)
         return self.guide
    

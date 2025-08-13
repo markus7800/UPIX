@@ -14,9 +14,9 @@ def estimate_log_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey, pconfi
     rng_keys = jax.random.split(rng_key, N)
     
     # this does not really make a difference
-    if pconfig.vectorsisation == VectorisationType.LocalVMAP:
+    if pconfig.vectorisation == VectorisationType.LocalVMAP:
         _gen_likelihood_weight = jax.vmap(slp._gen_likelihood_weight)
-    elif pconfig.vectorsisation == VectorisationType.LocalSMAP:
+    elif pconfig.vectorisation == VectorisationType.LocalSMAP:
         _gen_likelihood_weight = smap_vmap(slp._gen_likelihood_weight, axis_name=SHARDING_AXIS)
     else:
         _gen_likelihood_weight = slp._gen_likelihood_weight

@@ -227,9 +227,8 @@ from jax.sharding import Mesh, PartitionSpec as P
 from jax._src.shard_map import smap
 
 def get_mcmc_kernel(
-        slp: SLP, regime: MCMCRegime, *,
-        collect_inference_info: bool = False, 
-        vectorisation: str = "vmap",
+        slp: SLP, regime: MCMCRegime, vectorisation: str, *,
+        collect_inference_info: bool = False,
         return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> Tuple[MCMCKernel[MCMC_COLLECT_TYPE], Set[str]]:
     assert vectorisation in ("none", "vmap", "smap")
     
@@ -356,7 +355,11 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
         self.regime = regime
         self.n_chains = n_chains
         self.show_progress = show_progress
-        self.progress_bar_mngr = ProgressbarManager("MCMC for "+self.slp.formatted(), shared_progressbar, thread_locked=pconfig.vectorsisation==VectorisationType.PMAP)
+        self.progressbar_mngr = ProgressbarManager(
+            "MCMC for "+self.slp.formatted(),
+            shared_progressbar,
+            thread_locked=pconfig.vectorisation==VectorisationType.PMAP
+        )
 
         self.temperature = temperature
         self.data_annealing = data_annealing
@@ -368,9 +371,9 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             kernel = reuse_kernel
             init_carry_stat_names = reuse_kernel_init_carry_stat_names
         else:
-            if pconfig.vectorsisation == VectorisationType.LocalVMAP:
+            if pconfig.vectorisation == VectorisationType.LocalVMAP:
                 self.vectorisation = "vmap"
-            elif pconfig.vectorsisation == VectorisationType.LocalSMAP:
+            elif pconfig.vectorisation == VectorisationType.LocalSMAP:
                 self.vectorisation = "smap"
             else:
                 self.vectorisation = "none"
@@ -403,20 +406,21 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             infos = init_inference_infos_for_chains(self.regime, self.n_chains) if self.collect_inference_info else None
             state = MCMCState(jnp.array(0, int), self.temperature, self.data_annealing, state.position, state.log_prob, state.carry_stats, infos)
 
-        self.progress_bar_mngr.set_num_samples(n_samples_per_chain)
+        self.progressbar_mngr.set_num_samples(n_samples_per_chain)
+            
+        if self.vectorisation == "none":
+            keys = jax.random.split(rng_key, (n_samples_per_chain,self.n_chains))
+        else:
+            keys = jax.random.split(rng_key, (n_samples_per_chain,))
             
         if self.cached_mcmc_scan:
             scan_fn = self.cached_mcmc_scan
         else:  
             mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
             scan_fn = vectorise_scan(self.kernel, carry_axes=mcmc_state_axes, pmap_data_axes=1, batch_axis_size=self.n_chains, pconfig=self.pconfig,
-                                        progressbar_mngr=self.progress_bar_mngr if self.show_progress else None, get_iternum_fn=lambda carry: carry.iteration)
+                                        progressbar_mngr=self.progressbar_mngr if self.show_progress else None, get_iternum_fn=lambda carry: carry.iteration)
             self.cached_mcmc_scan = scan_fn
         
-        if self.vectorisation == "none":
-            keys = jax.random.split(rng_key, (n_samples_per_chain,self.n_chains))
-        else:
-            keys = jax.random.split(rng_key, (n_samples_per_chain,))
         
         last_state, return_values = parallel_run(scan_fn, (state, keys), batch_axis_size=self.n_chains, pconfig=self.pconfig)
 

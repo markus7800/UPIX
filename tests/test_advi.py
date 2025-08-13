@@ -1,10 +1,15 @@
 #%%
+from dccxjax.backend import set_host_device_count, set_platform
+set_host_device_count(10)
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpyro.distributions as dist
 from typing import Callable
 from time import time
+from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType
+from dccxjax.utils import get_dtype_shape_str_of_tree
 
 def make_mh_kernel(k:Callable[[jax.Array],dist.Distribution], log_p:Callable[[jax.Array], jax.Array]):
     @jax.jit
@@ -73,7 +78,7 @@ N = 1_000_000
 from dccxjax.all import *
 import dccxjax.distributions as dist
 import dccxjax.distributions.constraints as constraints
-from dccxjax.infer.optimizers import Adagrad
+from dccxjax.infer.variational_inference.optimizers import Adagrad
 
 @model
 def normal():
@@ -99,7 +104,12 @@ print(g.sample_and_log_prob(jax.random.key(0), ()))
 x, lp = g.sample_and_log_prob(jax.random.key(0), (10,3))
 print(x["x"].shape, lp.shape)
 
-advi = ADVI(slp, AllVariables(), g, Adagrad(1.), 100, progress_bar=True)
+pconfig = ParallelisationConfig(
+    ParallelisationType.Sequential,
+    VectorisationType.GlobalSMAP
+)
+print(pconfig)
+advi = ADVI(slp, g, Adagrad(1.), 100, pconfig=pconfig, show_progress=True)
 
 last_state, elbo = advi.run(jax.random.key(0), n_iter=1_000)
 plt.figure()
@@ -107,6 +117,11 @@ plt.plot(elbo)
 # plt.show()
 
 g = advi.get_updated_guide(last_state)
+_params = advi.optimizer.get_params_fn(last_state.optimizer_state)
+print(get_dtype_shape_str_of_tree(_params))
+print(_params)
+print(g.get_params())
+
 posterior = g.sample(jax.random.key(0), (1_000_000,))
 plt.figure()
 plt.hist(posterior["x"], bins=100, density=True)
