@@ -2,6 +2,7 @@
 import sys
 sys.path.append("evaluation")
 from parse_args import parse_args_and_setup
+from setup_parallelisation import get_parallelisation_config
 args = parse_args_and_setup()
 
 from dccxjax.all import *
@@ -12,7 +13,6 @@ from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List, Dict
 from time import time
-from setup_parallelisation import get_parallelisation_config
 
 import logging
 setup_logging(logging.WARN)

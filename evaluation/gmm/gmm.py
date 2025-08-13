@@ -1,15 +1,8 @@
-import os
-import argparse
-
-parser = argparse.ArgumentParser()
-parser.add_argument("parallelisation", default="sequential", help="sequential | cpu_multiprocess | jax_devices")
-parser.add_argument("-cpu", action="store_true")
-args = parser.parse_args()
-
-if args.cpu:
-    print("Force run on CPU.")
-    from dccxjax.backend import *
-    set_platform("cpu")
+import sys
+sys.path.append("evaluation")
+from parse_args import parse_args_and_setup
+from setup_parallelisation import get_parallelisation_config
+args = parse_args_and_setup()
 
 import jax
 from dccxjax.all import *
@@ -243,30 +236,12 @@ class StaticDCCConfig(DCCConfig):
     # def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
     #     return {slp: jnp.array(0., float) for slp in log_weight_estimates.keys()}
 
-assert args.parallelisation in ("sequential", "cpu_multiprocess", "jax_devices")
-
-if args.parallelisation == "sequential":
-    parallelisation = ParallelisationConfig(
-        type=ParallelisationType.Sequential
-    )
-elif args.parallelisation == "cpu_multiprocess":
-    parallelisation = ParallelisationConfig(
-        type=ParallelisationType.MultiProcessingCPU,
-        num_workers=os.cpu_count() or 1
-    )
-else:
-    assert args.parallelisation == "jax_devices"
-    parallelisation = ParallelisationConfig(
-        type=ParallelisationType.MultiThreadingJAXDevices,
-        num_workers=len(jax.devices())
-    )
-
 dcc_obj = StaticDCCConfig(m, verbose=2,
               mcmc_n_chains=100,
               mcmc_n_samples_per_chain=25_000,
               mcmc_collect_for_all_traces=True,
               estimate_weight_n_samples=1000,
-              parallelisation=parallelisation
+              parallelisation=get_parallelisation_config(args)
             #   debug_memory=True,
 )
 

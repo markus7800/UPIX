@@ -5,7 +5,7 @@ from enum import Enum, auto
 import jax
 from jax.sharding import Mesh
 from jax.experimental.mesh_utils import create_device_mesh
-from dccxjax.utils import bcolors
+from dccxjax.utils import bcolors, maybe_jit_warning, JitVariationTracker
 from typing import Callable, TypeVar, Tuple
 from dccxjax.jax_utils import smap_vmap, pmap_vmap, batch_func_args, unbatch_output
 from dccxjax.types import IntArray
@@ -117,9 +117,12 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
                    carry_axes, pmap_data_axes, batch_axis_size: int, pconfig: ParallelisationConfig,
                    progressbar_mngr: ProgressbarManager | None = None, get_iternum_fn: Callable[[SCAN_CARRY_TYPE], IntArray] | None = None):
     
+    tracker = JitVariationTracker("_vectorise_scan")
     device_count = jax.device_count()
     
+    @jax.jit
     def _scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
+        maybe_jit_warning(tracker, (init, data))
         if progressbar_mngr is not None:
             progressbar_mngr.start_progress()
             

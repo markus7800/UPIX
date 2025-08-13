@@ -4,6 +4,7 @@ from typing import Optional, Callable, TypeVar, Tuple
 from tqdm.auto import tqdm
 import threading
 from dccxjax.types import IntArray
+from time import time_ns
 
 __all__ = [
     
@@ -24,8 +25,9 @@ class ProgressbarManager:
     def start_progress(self):
         if self.tqdm_bar is None:
             self.tqdm_bar = tqdm(total=self.num_samples, position=0)
+        # tqdm.write(f"start_progress {self} {time_ns()/10**9}")
+        self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=False)
         self.tqdm_bar.reset(total=self.num_samples)
-        self.tqdm_bar.set_description(f"Compiling {self.desc}... ", refresh=True)
         
     def _update_bar(self, iternum, n):
         if self.tqdm_bar is not None:
@@ -42,6 +44,7 @@ class ProgressbarManager:
             self.tqdm_bar = tqdm(total=self.num_samples, position=0)
         else:
             self.tqdm_bar.reset(total=self.num_samples)
+        # tqdm.write(f"init_tqdm {time_ns()/10**9}")
         iternum = int(iternum)
         self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
         self._update_bar(iternum, 0)
@@ -57,12 +60,14 @@ class ProgressbarManager:
                     self._update_bar(iternum, increment)
                 else:
                     self._update_bar(iternum, remainder)
-                # tqdm_auto.write(f"Close pbar {self}")
+                # tqdm.write(f"Close pbar {self}")
                 if not self.share_bar:
                     self.tqdm_bar.close()
                     self.tqdm_bar = None
                 else:
-                    tqdm.clear(self.tqdm_bar)
+                    pass
+                    # self.tqdm_bar.clear()
+                    # tqdm.clear(self.tqdm_bar)
             else:
                 self._update_bar(iternum, increment)
 
