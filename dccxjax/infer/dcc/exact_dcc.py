@@ -3,8 +3,9 @@ from typing import List, Dict, Optional
 from dccxjax.types import FloatArray, IntArray
 from dccxjax.core import Model, SLP
 from dccxjax.types import PRNGKey
-from dccxjax.infer.exact import Factor, compute_factors, get_greedy_elimination_order, variable_elimination, get_supports
+from dccxjax.infer.exact import Factor, compute_factors, get_greedy_elimination_order, variable_elimination, get_supports, get_supports_size, get_factors_size
 from dccxjax.infer.dcc.abstract_dcc import InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
+from dccxjax.parallelisation import VectorisationType
 from tqdm.auto import tqdm
 from dataclasses import dataclass
 import jax
@@ -55,6 +56,8 @@ class ExactDCC(AbstractDCC[ExactDCCResult]):
         self.init_n_samples: int = self.config.get("init_n_samples", 100)
         self.jit_inference: bool = self.config.get("jit_inference", False)
         
+        assert self.pconfig.vectorisation == VectorisationType.LocalVMAP
+        
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
         initialise_active_slps_from_prior(self.model, self.verbose, self.init_n_samples, active_slps, inactive_slps, rng_key)
 
@@ -95,17 +98,20 @@ class ExactDCC(AbstractDCC[ExactDCCResult]):
             t1 = time.time()
             if self.verbose >= 2:
                 tqdm.write(f"Computed supports in {t1-t0:.3f}s")
-                
+            #     tqdm.write(str([support.shape for support in supports.values() if support is not None]))
             def _compute_exact(supports):
                 t0 = time.time()
                 factors = self.get_factors(slp, supports)
                 t1 = time.time()
                 if self.verbose >= 2 and not self.jit_inference:
                     tqdm.write(f"Computed factors in {t1-t0:.3f}s")
+                if self.verbose >= 2:
+                    tqdm.write(f"Factors size: {get_factors_size(factors):,}")
                 elimination_order = self.get_elimination_order(slp, factors)
                 t0 = time.time()
                 @jax.jit
                 def _ve_jitted(factors: List[Factor]):
+                    # elimination order cannot be used as static argument
                     return variable_elimination(factors, elimination_order)
                 result_factor, log_evidence = _ve_jitted(factors)
                 t1 = time.time()

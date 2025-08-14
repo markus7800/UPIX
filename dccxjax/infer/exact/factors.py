@@ -13,9 +13,11 @@ from dccxjax.infer.variable_selector import VariableSelector
 
 __all__ = [
     "get_supports",
+    "get_supports_size",
     "compute_factors",
     "compute_factors_optimised",
     "Factor",
+    "get_factors_size",
 ]
 
 
@@ -111,6 +113,9 @@ def get_supports(slp: SLP) -> Dict[str,Optional[IntArray]]:
     with SupportCtx(slp.decision_representative) as ctx:
         slp.model()
         return ctx.supports
+    
+def get_supports_size(supports: Dict[str,Optional[IntArray]]):
+    return sum(support.size if support is not None else 0 for support in supports.values())
 
 def make_all_factors_fn(slp: SLP):
     def _fs(_X: Dict) -> Dict[str,FloatArray]:
@@ -359,3 +364,7 @@ def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelecto
     assert all(factor_computed)
     return factors
     
+    
+
+def get_factors_size(factors: List[Factor]):
+    return sum(factor.table.size for factor in factors)

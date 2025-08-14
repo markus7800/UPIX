@@ -1,9 +1,8 @@
 import sys
-if len(sys.argv) > 1:
-    if sys.argv[1].endswith("cpu"):
-        print("Force run on CPU.")
-        from dccxjax.backend import *
-        set_platform("cpu")
+sys.path.append("evaluation")
+from parse_args import parse_args_and_setup
+args = parse_args_and_setup()
+from setup_parallelisation import get_parallelisation_config
         
 from dccxjax.all import *
 import dccxjax.distributions as dist
@@ -44,7 +43,7 @@ m.set_slp_sort_key(_get_n)
     
 class Config(ExactDCC):
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
-        for N in range(1,15+1):
+        for N in range(1,20+1):
             X, _ = m.generate(jax.random.key(0), {"N": jnp.array(N,int)})
             slp = slp_from_decision_representative(m, X)
             tqdm.write(f"Make SLP {slp.formatted()} active.")
@@ -84,10 +83,7 @@ class Config(ExactDCC):
     
     
 config = Config(m, verbose=2,
-    parallelisation = ParallelisationConfig(
-        type=ParallelisationType.MultiProcessingCPU,
-        num_workers=15,
-        cpu_affinity=True),
+    parallelisation = get_parallelisation_config(args),
     jit_inference=True,
     share_progress_bar=False
 )
