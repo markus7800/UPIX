@@ -195,7 +195,7 @@ class SMCDCCConfig(SMCDCC[T]):
 
 smc_dcc_obj = SMCDCCConfig(m, verbose=2,
     smc_rejuvination_attempts=8,
-    smc_n_particles=10,
+    smc_n_particles=100,
     smc_collect_inference_info=True,
     max_iterations = 5,
     n_lmh_update_samples = 250,
@@ -204,6 +204,28 @@ smc_dcc_obj = SMCDCCConfig(m, verbose=2,
     one_inference_run_per_slp = True,
     parallelisation = get_parallelisation_config(args)
 )
+
+# from dccxjax.utils import JitVariationTracker, maybe_jit_warning, get_dtype_shape_str_of_tree
+# tracker = JitVariationTracker("f")
+# @jax.jit
+# def _f(x):
+#     maybe_jit_warning(tracker, x)
+#     return x*2
+
+# X = jnp.arange(0, 100)
+# _f(X)
+
+# f = smap_vmap(_f, axis_name=SHARDING_AXIS, in_axes=0, out_axes=0)
+# mesh = create_default_device_mesh(100)
+# print(mesh)
+# with jax.sharding.use_mesh(mesh):
+#     print(get_dtype_shape_str_of_tree(f(X)))
+
+# from jax.sharding import PartitionSpec as P
+# res = jax.shard_map(_f, in_specs=P(SHARDING_AXIS), out_specs=P(SHARDING_AXIS), mesh=mesh)(X)
+# print(get_dtype_shape_str_of_tree(res))
+# print(get_dtype_shape_str_of_tree(jax.device_get(res)))
+# exit()
 
 do_smc = True
 if do_smc:
@@ -370,7 +392,7 @@ vi_dcc_obj = VIConfig(m, verbose=2,
     parallelisation = get_parallelisation_config(args)
 )
 
-do_vi = True
+do_vi = False
 if do_vi:
     result = timed(vi_dcc_obj.run)(jax.random.key(0))
     result.pprint()

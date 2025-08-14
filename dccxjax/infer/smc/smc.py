@@ -10,7 +10,7 @@ from jax.flatten_util import ravel_pytree
 import jax.experimental
 from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
 from tqdm.auto import tqdm
-from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType, vectorise_scan
+from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType, vectorise_scan, parallel_run, smap_vmap, SHARDING_AXIS
 
 __all__ = [
     "ResampleType",
@@ -147,8 +147,14 @@ class SMCStepData(NamedTuple):
     temperature: FloatArray
     data_annealing: AnnealingMask
 
-def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None], rejuvination_attempts: int) -> Callable[[SMCState, SMCStepData],Tuple[SMCState,FloatArray]]:
-
+from functools import partial
+def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None], rejuvination_attempts: int, vectorisation: str) -> Callable[[SMCState, SMCStepData],Tuple[SMCState,FloatArray]]:
+    assert vectorisation in ("vmap", "smap")
+    if vectorisation == "vmap":
+        _vmap = partial(jax.vmap, in_axes=(0,None), out_axes=0)
+    else:
+        _vmap = partial(smap_vmap, axis_name=SHARDING_AXIS, in_axes=(0,None), out_axes=0)
+        
     def do_resample_fn(particles: Trace, log_prob: FloatArray, log_particle_weights: FloatArray, rng_key: PRNGKey):
         log_particle_weigths_sum = jax.scipy.special.logsumexp(log_particle_weights)
         weights = jax.lax.exp(log_particle_weights - log_particle_weigths_sum)
@@ -169,12 +175,13 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
             raise Exception
 
 
+
     @jax.jit
     def smc_step(smc_state: SMCState, step_data: SMCStepData) -> Tuple[SMCState, FloatArray]:
         rejuvinate_key, resample_key = jax.random.split(step_data.rng_key)
 
         # density with respect to current tempering / annealing
-        a_log_prior_current, a_log_likelihood_current, _ = jax.vmap(slp._log_prior_likeli_pathcond, in_axes=(0,None))(smc_state.particles, step_data.data_annealing)
+        a_log_prior_current, a_log_likelihood_current, _ = _vmap(slp._log_prior_likeli_pathcond)(smc_state.particles, step_data.data_annealing)
         ta_log_likelihood_current = step_data.temperature * a_log_likelihood_current
         ta_log_prob_current = a_log_prior_current + ta_log_likelihood_current
         particles_current = smc_state.particles
@@ -230,7 +237,7 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
         if resampling.resample_time == ResampleTime.AfterMove:
             particles, ta_log_prob, log_particle_weights = maybe_resample(particles, ta_log_prob, log_particle_weights, log_ess, resample_key)
 
-        ta_log_likelihood = jax.vmap(slp.log_likelihood, in_axes=(0,None))(particles, step_data.data_annealing) if reweighting_type == ReweightingType.Bootstrap else None
+        ta_log_likelihood = _vmap(slp.log_likelihood)(particles, step_data.data_annealing) if reweighting_type == ReweightingType.Bootstrap else None
 
         return SMCState(smc_state.iteration+1, particles, log_particle_weights, ta_log_likelihood, ta_log_prob, next_mcmc_state.infos), jax.lax.exp(log_ess)
 
@@ -262,7 +269,13 @@ class SMC:
         )
         self.pconfig = pconfig
         
-        rejuvination_kernel, rejuv_init_carry_stat_names = get_mcmc_kernel(slp, rejuvination_regime, collect_inference_info=collect_inference_info, vectorisation="vmap", return_map=lambda _: None)
+        assert pconfig.vectorisation in (VectorisationType.LocalVMAP, VectorisationType.LocalSMAP)
+        if pconfig.vectorisation == VectorisationType.LocalSMAP:
+            self.vectorisation = "smap"
+        else:
+            self.vectorisation = "vmap"
+        
+        rejuvination_kernel, rejuv_init_carry_stat_names = get_mcmc_kernel(slp, rejuvination_regime, collect_inference_info=collect_inference_info, vectorisation=self.vectorisation, return_map=lambda _: None)
         assert len(rejuv_init_carry_stat_names) == 0, "CarryStats in MCMC currently not supported."
 
         self.rejuvination_regime = rejuvination_regime
@@ -288,7 +301,7 @@ class SMC:
         self.reweighting_type = reweighting_type
         self.resampling = resampling
 
-        self.smc_step = get_smc_step(slp, n_particles, reweighting_type, resampling, rejuvination_kernel, self.rejuvination_attempts)
+        self.smc_step = get_smc_step(slp, n_particles, reweighting_type, resampling, rejuvination_kernel, self.rejuvination_attempts, self.vectorisation)
 
         self.cached_smc_scan: Optional[Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]] = None
 
@@ -317,13 +330,12 @@ class SMC:
         if self.cached_smc_scan:
             scan_fn = self.cached_smc_scan
         else:
-            assert self.pconfig.vectorisation == VectorisationType.LocalVMAP
             smc_state_axes = SMCState(iteration=None, particles=0, log_particle_weights=0, ta_log_likelihood=0, ta_log_prob=0, mcmc_infos=0) # type: ignore
-            scan_fn = vectorise_scan(self.smc_step, carry_axes=smc_state_axes, pmap_data_axes=1, batch_axis_size=0, pconfig=self.pconfig,
+            scan_fn = vectorise_scan(self.smc_step, carry_axes=smc_state_axes, pmap_data_axes=1, batch_axis_size=self.n_particles, pconfig=self.pconfig,
                                      progressbar_mngr=self.progressbar_mngr if self.show_progress else None, get_iternum_fn=lambda carry: carry.iteration)
             self.cached_smc_scan = scan_fn
         
-        last_state, ess = scan_fn(init_state, smc_data)
+        last_state, ess = parallel_run(scan_fn, (init_state, smc_data), self.n_particles, self.pconfig)
 
         return last_state, ess 
     

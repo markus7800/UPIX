@@ -39,6 +39,11 @@ def get_default_device():
 logger = logging.getLogger("dccxjax")
 
 def setup_logging(level: int | str):
+    # logging.DEBUG 10
+    # logging.INFO 20
+    # logging.WARN 30
+    # logging.ERROR 40
+    # logging.CRITICAL 50
     logger.setLevel(level)
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(name)s - %(levelname)s: %(message)s'))
@@ -65,22 +70,23 @@ class JitVariationTracker:
 def maybe_jit_warning(tracker: JitVariationTracker, input: Any):
     axis_env_str = str(trace_context()[0])
     input_str = get_dtype_shape_str_of_tree(input)
-    msg = f"Compile {tracker.name} and for input: {input_str} and axis-env: {axis_env_str}"
+    msg = f"Compile {tracker.name} with input: {input_str} and axis-env: {axis_env_str}"
+    # msg += "\n context:"+repr(trace_context())
     with logging_redirect_tqdm(loggers=[logger]):
         if tracker.has_variation(axis_env_str):
             if logger.level <= logging.DEBUG:
-                tabs = " " * (len(msg) - len(input) + len("dccxjax - WARNING: ") - 9)
+                tabs = " " * (len("dccxjax - WARNING: ") + len(f"Compile {tracker.name} with input:") - 8)
                 msg += "".join([f"\n{tabs}prev-input: {prev_input}" for prev_input in tracker.get_variations(axis_env_str)])
             logger.warning("Re-" + msg)
         else:
-            logger.debug(msg)
+            logger.info(msg)
     tracker.add_variation(axis_env_str, input_str)
 
 def get_dtype_shape_str_of_tree(tree):
     def _dtype_shape(v):
-        return str(jax.typeof(v))
-    s = repr(jax.tree.map(_dtype_shape, tree))
-    return s.replace("'", "")
+        return jax.typeof(v).str_short(short_dtypes=False,mesh_axis_types=True)
+    s = str(jax.tree.map(_dtype_shape, tree))
+    return s
 
 JAX_TREE = TypeVar("JAX_TREE")
 def broadcast_jaxtree(tree: JAX_TREE, sizes: Sequence[int]) -> JAX_TREE:
