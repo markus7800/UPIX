@@ -19,12 +19,17 @@ __all__ = [
 
 @jax.tree_util.register_dataclass
 @dataclass
-class ExactInferenceResult(InferenceResult,LogWeightEstimate):
+class ExactInferenceResult(InferenceResult):
     factor: Factor
     log_evidence: FloatArray
     def combine_results(self, other: InferenceResult) -> InferenceResult:
         print("Warning: Tried to combine exact results.")
         return self
+
+@jax.tree_util.register_dataclass
+@dataclass
+class ExactLogWeight(LogWeightEstimate):
+    log_weight: FloatArray
     def combine_estimates(self, other: LogWeightEstimate) -> LogWeightEstimate:
         print("Warning: Tried to combine exact estimates.")
         return self
@@ -70,7 +75,7 @@ class ExactDCC(AbstractDCC[ExactDCCResult]):
         if len(inference_results) > 0:
             result = inference_results[0]
             assert isinstance(result, ExactInferenceResult)
-            return EstimateLogWeightTask(lambda: result, ())
+            return EstimateLogWeightTask(lambda: ExactLogWeight(result.log_evidence), ())
         else:
             raise Exception("In SMCDCC we should perform one run of SMC before estimate_log_weight to reuse estimate")
     

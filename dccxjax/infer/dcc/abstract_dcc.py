@@ -244,15 +244,17 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     slp_weight_inference_keys.append(slp_inference_key)
                     slp_weight_estimate_keys.append(slp_weight_estimate_key)
                     
-                for slp_ix, slp in enumerate(self.active_slps):            
-                    slp_inference_key = slp_weight_inference_keys[slp_ix]
-                    inference_task = self.make_inference_task(slp, slp_inference_key)
-                    # make inference task (does not block)
-                    if self.pconfig.parallelisation == ParallelisationType.MultiProcessingCPU:
-                        task_queue.put((inference_task.export(), slp_ix))
-                    else:        
-                        task_queue.put((inference_task, slp_ix))
-                    del inference_task
+                def make_inference_tasks():
+                    for slp_ix, slp in enumerate(self.active_slps):            
+                        slp_inference_key = slp_weight_inference_keys[slp_ix]
+                        inference_task = self.make_inference_task(slp, slp_inference_key)
+                        # make inference task (does not block, but may take a long time)
+                        if self.pconfig.parallelisation == ParallelisationType.MultiProcessingCPU:
+                            task_queue.put((inference_task.export(), slp_ix))
+                        else:        
+                            task_queue.put((inference_task, slp_ix))
+                        del inference_task
+                threading.Thread(target=make_inference_tasks, daemon=True).start()
 
                 outer_bar.reset(total=len(self.active_slps))
                 outer_bar.set_description(f"Iteration {self.iteration_counter}")
