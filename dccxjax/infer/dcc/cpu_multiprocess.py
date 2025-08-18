@@ -120,7 +120,9 @@ def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, pcon
             if pconfig.verbose:
                 pre_info = exported_task.pre_info()
                 if pre_info: tqdm.write(f"Worker {worker_id}: " + pre_info)
-                
+            
+            t0 = time.monotonic()
+            
             flat_args, _in_tree = tree_flatten(exported_task.args)
             assert _in_tree == exported_task.in_tree
                     
@@ -132,11 +134,14 @@ def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, pcon
             # tqdm.write(f"Response device {response[0].device}")
             
             result = tree_unflatten(exported_task.out_tree, response)
+            
+            elapsed_time = time.monotonic() - t0
+        
             if pconfig.verbose:
                 post_info = exported_task.post_info(result)
-                if post_info: tqdm.write(f"Worker {worker_id}: " + post_info)
+                if post_info: tqdm.write(f"Worker {worker_id}: " + post_info + f"\n    finished in {elapsed_time:.3f}s")
 
-            out_queue.put((result, task_aux))
+            out_queue.put((result, task_aux, elapsed_time))
             in_queue.task_done()
             del task
             del exported_task
@@ -172,7 +177,7 @@ def start_worker_thread(in_queue: Queue, out_queue: Queue, worker_id: int, pconf
             post_info = task.post_info(results)
             if post_info: tqdm.write(f"Thread {worker_id}: " + post_info + f"\n    finished in {elapsed_time:.3f}s on device {thread_device}")
     
-        out_queue.put((results, task_aux))
+        out_queue.put((results, task_aux, elapsed_time))
         in_queue.task_done()
 
         del task

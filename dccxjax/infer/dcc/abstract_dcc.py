@@ -147,7 +147,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         result_queue = Queue()
         threads: List[threading.Thread] = []
 
-        tqdm.write(f"Start DCC:") 
+        tqdm.write(f"Start DCC:")
+        dcc_t0 = time.monotonic()
         
         devices_str = ",\n    ".join(map(str, jax.devices()))
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalVMAP:
@@ -189,6 +190,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         tqdm.write(f"Initialised SLPs in {init_slps_t1-init_slps_t0:.3f}s.")
 
         self.iteration_counter = 0
+        inference_time = 0.
+        logweight_estimate_time = 0.
         
         if is_sequential(self.pconfig) and self.share_progress_bar:
             # set bar_format to make bar completely invisible at beginning
@@ -218,8 +221,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     inference_task_t0 = time.monotonic()
                     inference_result = jax.device_get(inference_task.run()) # device_get puts pytree on host (cpu)
                     jax.block_until_ready(inference_result)
-                    inference_task_t1 = time.monotonic()
-                    self.maybe_write_info(append_info(inference_task.post_info(inference_result), f"Finished inference task for {slp.formatted()} in {inference_task_t1-inference_task_t0:.3f}s"))
+                    elapsed_time_inference = time.monotonic() - inference_task_t0
+                    inference_time += elapsed_time_inference
+                    self.maybe_write_info(append_info(inference_task.post_info(inference_result), f"Finished inference task for {slp.formatted()} in {elapsed_time_inference:.3f}s"))
                     del inference_task # tasks may close over device allocated arrays
                     self.add_to_inference_results(slp, inference_result)
                     outer_bar.update(0.5)
@@ -229,8 +233,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                     logweigth_task_t0 = time.monotonic()
                     log_weight_estimate = jax.device_get(log_weight_estimate_task.run())
                     jax.block_until_ready(log_weight_estimate)
-                    logweigth_task_t1 = time.monotonic()
-                    self.maybe_write_info(append_info((log_weight_estimate_task.post_info(log_weight_estimate)), f"Finished logweight estimation task for {slp.formatted()} in {logweigth_task_t1-logweigth_task_t0:.3f}s"))
+                    elapsed_time_logweith_estimate = time.monotonic() - logweigth_task_t0
+                    logweight_estimate_time += elapsed_time_logweith_estimate
+                    self.maybe_write_info(append_info((log_weight_estimate_task.post_info(log_weight_estimate)), f"Finished logweight estimation task for {slp.formatted()} in {elapsed_time_logweith_estimate:.3f}s"))
                     del log_weight_estimate_task
                     self.add_to_log_weight_estimates(slp, log_weight_estimate)
                     outer_bar.update(0.5)
@@ -260,11 +265,12 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 outer_bar.set_description(f"Iteration {self.iteration_counter}")
                 for _ in range(2*len(self.active_slps)):
 
-                    result, slp_ix = result_queue.get()
+                    result, slp_ix, elapsed_time = result_queue.get()
                     slp = self.active_slps[slp_ix]
                     
                     if isinstance(result, InferenceResult):
                         self.add_to_inference_results(slp, jax.device_get(result))
+                        inference_time += elapsed_time
                         # make logweight estimate task
                         slp_weight_estimate_key = slp_weight_estimate_keys[slp_ix]
                         log_weight_estimate_task = self.make_estimate_log_weight_task(slp, slp_weight_estimate_key)
@@ -275,6 +281,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                         del log_weight_estimate_task
 
                     if isinstance(result, LogWeightEstimate):
+                        logweight_estimate_time += elapsed_time
                         self.add_to_log_weight_estimates(slp, jax.device_get(result))
 
                     outer_bar.update(0.5)
@@ -290,7 +297,10 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 tqdm.write(f"Finished iteration {self.iteration_counter} in {t1-t0:.3f}s.")
 
 
-        tqdm.write("Finished DCC.")
+        elapsed_time_dcc = time.monotonic() - dcc_t0
+        tqdm.write(f"Finished DCC in {elapsed_time_dcc:.3f}s.")
+        if self.verbose >= 2:
+            tqdm.write(f"Inference time: {inference_time:.3f}s, logweight estimate time: {logweight_estimate_time:.3f}s")
         outer_bar.close()
         if self.shared_progress_bar is not None:
             self.shared_progress_bar.close()

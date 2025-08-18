@@ -104,3 +104,5 @@ print(title)
 plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
 plt.title(title)
 plt.show()
+
+# (venv) markus@Markuss-MBP-14 DCCxJAX % python3 evaluation/pedestrian/run_scale.py sequential smap_local 8 16384 1000 -host_device_count 8 --show_plots
