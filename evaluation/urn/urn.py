@@ -11,6 +11,7 @@ import jax
 import jax.numpy as jnp
 import time
 from tqdm.auto import tqdm
+import matplotlib.pyplot as plt
 
 
 @model
@@ -90,3 +91,21 @@ config = Config(m, verbose=2,
 
 result = timed(config.run)(jax.random.key(0))
 result.pprint(sortkey="slp")
+
+gt = jnp.load("evaluation/urn/gt_ps.npy")
+log_Zs = jnp.array([log_Z for (slp, log_Z) in result.get_log_weights_sorted(sortkey="slp")])
+
+
+assert (jnp.array([slp.decision_representative["N"] for (slp, log_Z) in result.get_log_weights_sorted(sortkey="slp")]) == jnp.arange(1,len(log_Zs)+1)).all()
+
+
+ps = jnp.exp(log_Zs - jax.scipy.special.logsumexp(log_Zs))
+# print(ps)
+# print("vs")
+# print(gt[:len(ps)])
+
+err = jnp.abs(ps - gt[:len(ps)])
+plt.plot(err)
+plt.show()
+
+print("Max err: ", jnp.max(err))

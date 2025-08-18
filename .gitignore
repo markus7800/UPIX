@@ -9,3 +9,4 @@ evaluation/pedestrian/nonparametric-hmc/samples_produced
 tmp.txt
 dccxjax.egg-info
 build
+*.out

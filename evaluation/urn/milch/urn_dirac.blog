@@ -1,0 +1,28 @@
+type Ball;
+type Draw;
+type Color;
+
+distinct Color Black, White;
+distinct Draw Draw[10];
+
+#Ball ~ Poisson(6);
+
+random Color TrueColor(Ball b) ~ Categorical({Black -> 0.5, White -> 0.5});
+
+random Ball BallDrawn(Draw d) ~ UniformChoice({b for Ball b});
+
+random Color ObsColor(Draw d) ~
+  if (BallDrawn(d) != null) then TrueColor(BallDrawn(d));
+
+obs ObsColor(Draw[0]) = Black;
+obs ObsColor(Draw[1]) = White;
+obs ObsColor(Draw[2]) = Black;
+obs ObsColor(Draw[3]) = White;
+obs ObsColor(Draw[4]) = Black;
+obs ObsColor(Draw[5]) = White;
+obs ObsColor(Draw[6]) = Black;
+obs ObsColor(Draw[7]) = White;
+obs ObsColor(Draw[8]) = Black;
+obs ObsColor(Draw[9]) = White;
+
+query size({b for Ball b});

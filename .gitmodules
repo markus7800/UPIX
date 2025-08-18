@@ -1,0 +1,3 @@
+[submodule "evaluation/urn/milch/swift"]
+	path = evaluation/urn/milch/swift
+	url = git@github.com:lileicc/swift.git
