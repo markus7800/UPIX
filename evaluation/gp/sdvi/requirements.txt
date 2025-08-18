@@ -1,0 +1,11 @@
+numpy==1.26.0
+torch==1.13.1
+
+pyro-ppl==1.8.0
+
+hydra-core==1.1.1
+hydra-joblib-launcher==1.1.5
+
+matplotlib>=3.4.1
+scipy>=1.6.3
+scikit-learn>=1.6.1
