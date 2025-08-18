@@ -319,36 +319,36 @@ def main(cfg):
 
     # Plot diagnostics
     logging.info(resource_allocation_metrics["bt2num_selected"])
-    for bt in sdvi.branching_traces:
-        slp_folder = os.path.join("exclusive_kl_plots", f"slp_{bt}")
-        os.makedirs(slp_folder, exist_ok=True)
-        plots_prefix = os.path.join(slp_folder, f"slp{bt}_")
-        make_metric_plots(
-            exclusive_kl_results[bt],
-            plots_prefix,
-            metric_names=[
-                "losses",
-                "smoothed_elbos",
-                "true_elbos",
-                "iwaes",
-                "weight_variances",
-                "loc_grad_norm",
-                "log_scale_grad_norm",
-            ],
-        )
+    # for bt in sdvi.branching_traces:
+    #     slp_folder = os.path.join("exclusive_kl_plots", f"slp_{bt}")
+    #     os.makedirs(slp_folder, exist_ok=True)
+    #     plots_prefix = os.path.join(slp_folder, f"slp{bt}_")
+    #     make_metric_plots(
+    #         exclusive_kl_results[bt],
+    #         plots_prefix,
+    #         metric_names=[
+    #             "losses",
+    #             "smoothed_elbos",
+    #             "true_elbos",
+    #             "iwaes",
+    #             "weight_variances",
+    #             "loc_grad_norm",
+    #             "log_scale_grad_norm",
+    #         ],
+    #     )
 
-        model.make_parameter_plots(
-            exclusive_kl_results[bt], sdvi.guides[bt], bt, plots_prefix
-        )
+    #     model.make_parameter_plots(
+    #         exclusive_kl_results[bt], sdvi.guides[bt], bt, plots_prefix
+    #     )
 
     # Make plots showing the evolution of the weights.
     branch_weights, global_elbos = sdvi.calculate_slp_weights()
     ground_truth_branch_weights, global_Z = model.calculate_ground_truth_weights(sdvi)
-    plot_slp_weights(
-        branch_weights,
-        "slp_weights.jpg",
-        ground_truth_slp_weights=ground_truth_branch_weights,
-    )
+    # plot_slp_weights(
+    #     branch_weights,
+    #     "slp_weights.jpg",
+    #     ground_truth_slp_weights=ground_truth_branch_weights,
+    # )
 
     top_5_slps = [
         (k, v[-1].item())
@@ -357,11 +357,14 @@ def main(cfg):
         )[:5]
     ]
     logging.info(f"Top 5 SLPs: {top_5_slps}")
+    
+    top_5_samples = sdvi.get_topk_samples(5)
+    logging.info(model.repr_samples(top_5_samples))
 
-    plot_all_local_elbos_and_iwaes(exclusive_kl_results, [x[0] for x in top_5_slps])
+    # plot_all_local_elbos_and_iwaes(exclusive_kl_results, [x[0] for x in top_5_slps])
     # Plot evolution of the utilities for each SLP
-    if "utilities" in resource_allocation_metrics:
-        plot_slp_weights(resource_allocation_metrics["utilities"], "utilities.jpg")
+    # if "utilities" in resource_allocation_metrics:
+    #     plot_slp_weights(resource_allocation_metrics["utilities"], "utilities.jpg")
 
     parameter_names = {
         bt: [n for n, _ in sdvi.guides[bt].named_parameters()]
@@ -380,7 +383,7 @@ def main(cfg):
             sdvi.bt2weight,
             cfg.posterior_predictive_num_samples,
         )
-        plot_lppd(lppds, "lppd.jpg")
+        # plot_lppd(lppds, "lppd.jpg")
         logging.info(f"Log posterior predictive density: {lppds[-1]:.2f}")
     else:
         num_iterations = len(list(sdvi.bt2weight.values())[0])
@@ -389,10 +392,10 @@ def main(cfg):
     posterior_samples = sdvi.sample_posterior_predictive(
         cfg.posterior_predictive_num_samples
     )
-    model.plot_posterior_samples(posterior_samples, "posterior_predictive.jpg")
+    # model.plot_posterior_samples(posterior_samples, "posterior_predictive.jpg")
 
     # Make plots showing the evolution of the global ELBO
-    make_elbo_plot(global_elbos, "global_elbos.jpg", marginal_likelihood=global_Z)
+    # make_elbo_plot(global_elbos, "global_elbos.jpg", marginal_likelihood=global_Z)
     logging.info(f"Global ELBO: {global_elbos[-1]}")
 
     # Create dict without parameters

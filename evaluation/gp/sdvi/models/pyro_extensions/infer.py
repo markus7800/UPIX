@@ -267,7 +267,7 @@ class SDVI:
             num_optimization_steps = (
                 self.utility_class.calculate_num_optimization_steps(len(active_slps))
             )
-            logging.info(f"Phase {i}. {num_optimization_steps=} {num_particles=} {len(active_slps)=}")
+            logging.info(f"Phase {i+1}. {num_optimization_steps=} {num_particles=} {len(active_slps)=}")
             # Run optimization on each SLP
             args = [
                 (
@@ -623,6 +623,41 @@ class SDVI:
 
         return self.bt2weight, normalization_constants
 
+    def get_topk_samples(self, k):
+        unconditioned_model = poutine.uncondition(self.model)
+
+        bt_and_weights = list(self.bt2weight.items())
+        branching_traces = [bt for bt, _ in bt_and_weights]
+        weight_tensor = torch.tensor([weight[-1] for _, weight in bt_and_weights])
+        
+        topk = torch.topk(weight_tensor, k, sorted=True)
+        topk_samples = []
+        for slp_ix in topk.indices:
+            bt = branching_traces[slp_ix]
+            slp_model = poutine.condition(
+                unconditioned_model, data=self.branching_sample_values[bt]
+            )
+            
+            slp_model = poutine.condition(
+                unconditioned_model, data=self.branching_sample_values[bt]
+            )
+            is_outside_slp = True
+            with torch.no_grad():
+                while is_outside_slp:
+                    guide_trace = poutine.trace(self.guides[bt]).get_trace()
+                    is_outside_slp = torch.isinf(
+                        LogJointBranchingTraceHandler(
+                            poutine.replay(slp_model, trace=guide_trace), bt
+                        ).log_prob()
+                    )
+                posterior_sample = poutine.trace(
+                    poutine.replay(slp_model, trace=guide_trace)
+                ).get_trace()
+                
+                topk_samples.append(posterior_sample)
+                
+        return topk_samples
+        
     def sample_posterior_predictive(self, num_samples):
         # Create an unconditioned model.
         unconditioned_model = poutine.uncondition(self.model)

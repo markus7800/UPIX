@@ -12,6 +12,22 @@ from .abstract_model import AbstractModel
 from .pyro_extensions.guides import AutoSLPNormalReparamGuide
 
 
+def repr_kernel(kernel):
+    if isinstance(kernel, gp.kernels.RationalQuadratic):
+        return f"RQ({kernel.lengthscale:.2f}, {kernel.scale_mixture.item():.2f})"
+    elif isinstance(kernel, gp.kernels.Polynomial):
+        return f"Linear({kernel.bias.item():.2f})"
+    elif isinstance(kernel, gp.kernels.RBF):
+        return f"SqExp({kernel.lengthscale.item():.2f})"
+    elif isinstance(kernel, gp.kernels.Periodic):
+        return f"Per({kernel.lengthscale.item():.2f}, {kernel.period.item():.2f})"
+    elif isinstance(kernel, gp.kernels.Sum):
+        return f"({repr_kernel(kernel.kern0)} + {repr_kernel(kernel.kern1)})"
+    elif isinstance(kernel, gp.kernels.Product):
+        return f"({repr_kernel(kernel.kern0)} * {repr_kernel(kernel.kern1)})"
+    else:
+        assert False
+
 class GPKernelLearning(AbstractModel):
     does_lppd_evaluation = True
     slps_identified_by_discrete_samples = True
@@ -28,7 +44,7 @@ class GPKernelLearning(AbstractModel):
         # support relative data path
         import os
         import pathlib
-        data_path = pathlib.Path(os.path.dirname(os.path.realpath(__file__)), "../../airline.csv") 
+        data_path = pathlib.Path(os.path.dirname(os.path.realpath(__file__)), "../../airline.csv")
         data = torch.tensor(np.loadtxt(data_path, delimiter=","))
         logging.info(f"{data_path=}")
         xs = data[:, 0]
@@ -253,6 +269,10 @@ class GPKernelLearning(AbstractModel):
                 else:
                     setattr(post_kernels[ix], name, s["value"])
         return post_kernels
+
+    @staticmethod
+    def repr_samples(posterior_samples):
+        return [repr_kernel(k) for k in GPKernelLearning.extract_posterior_kernels(posterior_samples)]
 
     @staticmethod
     def gp_analytic_posterior(
