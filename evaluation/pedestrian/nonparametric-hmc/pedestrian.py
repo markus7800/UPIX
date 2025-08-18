@@ -88,13 +88,6 @@ if __name__ == "__main__":
     assert len(sys.argv) > 1
     
     if sys.argv[1] == "NP-LA-DHMC":
-        # configs = [
-        #     (L, alpha, K, eps)
-        #     for L in [5]
-        #     for eps in [0.1]
-        #     for alpha in [1.0, 0.5, 0.1]
-        #     for K in [0, 1, 2]
-        # ]
         if len(sys.argv) > 2 and sys.argv[2] == "parallel":
             processes = []
             for rep in range(repetitions):

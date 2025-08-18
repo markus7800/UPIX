@@ -8,3 +8,4 @@ del samplecontext
 del slp_generation
 
 from dccxjax.types import *
+from dccxjax.utils import *
