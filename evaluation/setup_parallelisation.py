@@ -8,15 +8,13 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
     vectorisation: str = args.vectorisation
     num_workers: int = int(args.num_workers)
     assert parallelisation in ("sequential", "cpu_multiprocess", "jax_devices")
-    assert vectorisation in ("vmap", "vmap_local", "vmap_global", "pmap", "smap", "smap_global", "smap_local")
-    if parallelisation != "sequential" and vectorisation != "vmap":
+    assert vectorisation in ("vmap_local", "vmap_global", "pmap", "smap_global", "smap_local")
+    if parallelisation != "sequential" and not vectorisation.startswith("vmap"):
         print(f"Ignoring vectoristion '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
     if parallelisation == "sequential":
         if num_workers > 0:
             print(f"Ignoring num_workers '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
-        if vectorisation == "vmap":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalVMAP)
-        elif vectorisation == "vmap_local":
+        if vectorisation == "vmap_local":
             return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.LocalVMAP)
         elif vectorisation == "vmap_global":
             return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalVMAP)
@@ -25,14 +23,12 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
                 print(f"Warning: Vectorisation is set to'{vectorisation}' but only 1 jax devices is available.")
         if vectorisation == "pmap":
             return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.PMAP)
-        if vectorisation == "smap":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalSMAP)
         if vectorisation == "smap_local":
             return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.LocalSMAP)
         if vectorisation == "smap_global":
             return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalSMAP)
     else:
-        assert vectorisation in ("vmap", "vmap_local", "vmap_global")
+        assert vectorisation in ("vmap_local", "vmap_global")
         vectorisation_type = VectorisationType.LocalVMAP if vectorisation == "vmap_local" else VectorisationType.GlobalVMAP
         if parallelisation == "cpu_multiprocess":
             return ParallelisationConfig(

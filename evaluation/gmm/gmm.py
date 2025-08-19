@@ -1,37 +1,17 @@
-import sys
-sys.path.append("evaluation")
-from parse_args import parse_args_and_setup
-args = parse_args_and_setup()
-from setup_parallelisation import get_parallelisation_config
+from dccxjax.core import *
+import dccxjax.distributions as dist
 
 import jax
-from dccxjax.all import *
-
-# jax.config.update("jax_compilation_cache_dir", "./jax_cache")
-# jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
-# jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
-# jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
-# jax.config.update("jax_explain_cache_misses", True)
 
 import jax.numpy as jnp
-import dccxjax.distributions as dist
 from tqdm.auto import tqdm
-import matplotlib.pyplot as plt
 from typing import List
-from time import time
 from dccxjax.types import _unstack_sample_data
 from typing import Any, Dict
 from dataclasses import dataclass
 
 from gibbs_proposals import *
 from reversible_jumps import *
-
-import logging
-setup_logging(logging.WARNING)
-
-compilation_time_tracker = CompilationTimeTracker()
-jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
-
 
 lam = 3
 delta = 5.0
@@ -80,15 +60,12 @@ def gmm(ys: jax.Array):
     sample("ys", dist.Normal(mus[zs], jax.lax.sqrt(vars[zs])), observed=ys)
 
 
-m = gmm(ys)
 
 def find_K(slp: SLP) -> int:
     return int(slp.decision_representative["K"].item())
 def formatter(slp: SLP):
     K = find_K(slp) + 1
     return f"#clusters={K}"
-m.set_slp_formatter(formatter)
-m.set_slp_sort_key(find_K)
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -219,35 +196,3 @@ class DCCConfig(MCMCDCC[T]):
             result[slp] = k_to_log_weight[k]
 
         return result
-
-class StaticDCCConfig(DCCConfig):
-    def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
-        for i in range(10):
-            rng_key, generate_key = jax.random.split(rng_key)
-            trace, _ = self.model.generate(generate_key, {"K": jnp.array(i,int)})
-            slp = slp_from_decision_representative(self.model, trace)
-            active_slps.append(slp)
-            tqdm.write(f"Make SLP {slp.formatted()} active.")
-
-    def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
-        inactive_slps.extend(active_slps)
-        active_slps.clear()
-
-    # def compute_slp_log_weight(self, log_weight_estimates: Dict[SLP, LogWeightEstimate]) -> Dict[SLP, FloatArray]:
-    #     return {slp: jnp.array(0., float) for slp in log_weight_estimates.keys()}
-
-dcc_obj = StaticDCCConfig(m, verbose=2,
-              mcmc_n_chains=100,
-              mcmc_n_samples_per_chain=25_000,
-              mcmc_collect_for_all_traces=True,
-              estimate_weight_n_samples=1000,
-              parallelisation=get_parallelisation_config(args)
-            #   debug_memory=True,
-)
-
-# takes ~185s for 10 * 25_000 * 11 samples
-result = timed(dcc_obj.run)(jax.random.key(0))
-result.pprint(sortkey="slp")
-
-
-# jax.profiler.save_device_memory_profile("memory.prof")
