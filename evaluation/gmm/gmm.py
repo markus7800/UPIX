@@ -9,6 +9,7 @@ from typing import List
 from dccxjax.types import _unstack_sample_data
 from typing import Any, Dict
 from dataclasses import dataclass
+from dccxjax.parallelisation import smap_vmap, pmap_vmap, VectorisationType, parallel_run
 
 from gibbs_proposals import *
 from reversible_jumps import *
@@ -123,12 +124,24 @@ class DCCConfig(MCMCDCC[T]):
 
         K = find_K(slp)
 
-        def split(X: Trace, lp: FloatArray, rng_key: PRNGKey):
+        def _split(X: Trace, lp: FloatArray, rng_key: PRNGKey):
             return split_move(X, lp, rng_key, K, ys, self.model.log_prob)
         
-        def merge(X: Trace, lp: FloatArray, rng_key: PRNGKey):
+        def _merge(X: Trace, lp: FloatArray, rng_key: PRNGKey):
             return merge_move(X, lp, rng_key, K, ys, self.model.log_prob)
         
+        vectorisation = self.pconfig.vectorisation
+        if vectorisation == VectorisationType.LocalVMAP:
+            vectorisation = VectorisationType.GlobalVMAP
+        if vectorisation == VectorisationType.LocalSMAP:
+            vectorisation = VectorisationType.GlobalSMAP
+            
+        split = vectorise(_split, 0, 0, self.mcmc_n_chains * self.mcmc_n_samples_per_chain, vectorisation)
+        merge = vectorise(_merge, 0, 0, self.mcmc_n_chains * self.mcmc_n_samples_per_chain, vectorisation)
+            
+        # Finished DCC in 89.915s.                                                                                                                                                                                                                                                                                               
+        # Inference time: 43.511s, logweight estimate time: 35.406s
+
         def _task(rng_key: PRNGKey, last_inference_result: MCMCInferenceResult):
             assert last_inference_result.value_tree is not None
             traces: Trace = last_inference_result.value_tree[0]
@@ -138,16 +151,15 @@ class DCCConfig(MCMCDCC[T]):
 
             transition_log_probs: Dict[Any, FloatArray] = dict()
             n_samples = lps.size
+            assert n_samples == self.mcmc_n_chains * self.mcmc_n_samples_per_chain
             
             assert n_samples % self.mcmc_n_samples_per_chain == 0
-            _split_transition_log_prob = jax.lax.map(lambda xs: split(*xs), (traces, lps, jax.random.split(rng_key, lps.shape[0])), batch_size=self.mcmc_n_samples_per_chain)
-            # _split_transition_log_prob = jax.jit(jax.vmap(split))(traces, lps, jax.random.split(rng_key, lps.shape[0]))
+            _split_transition_log_prob = parallel_run(split, (traces, lps, jax.random.split(rng_key, lps.shape[0])), n_samples, vectorisation)
             split_transition_log_prob = jax.scipy.special.logsumexp(_split_transition_log_prob) - jnp.log(n_samples)
             if K == 0: 
                 transition_log_probs[(K, K+1)] = split_transition_log_prob
             else:
-                _merge_transition_log_prob = jax.lax.map(lambda xs: merge(*xs), (traces, lps, jax.random.split(rng_key, lps.shape[0])), batch_size=self.mcmc_n_samples_per_chain)
-                #_merge_transition_log_prob = jax.jit(jax.vmap(merge))(traces, lps, jax.random.split(rng_key, lps.shape[0]))
+                _merge_transition_log_prob = parallel_run(merge, (traces, lps, jax.random.split(rng_key, lps.shape[0])), n_samples, vectorisation)
                 merge_transition_log_prob = jax.scipy.special.logsumexp(_merge_transition_log_prob) - jnp.log(n_samples)
 
                 merge_transition_log_prob = merge_transition_log_prob - jnp.log(2)

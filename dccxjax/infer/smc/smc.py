@@ -331,11 +331,11 @@ class SMC:
             scan_fn = self.cached_smc_scan
         else:
             smc_state_axes = SMCState(iteration=None, particles=0, log_particle_weights=0, ta_log_likelihood=0, ta_log_prob=0, mcmc_infos=0) # type: ignore
-            scan_fn = vectorise_scan(self.smc_step, carry_axes=smc_state_axes, pmap_data_axes=1, batch_axis_size=self.n_particles, pconfig=self.pconfig,
+            scan_fn = vectorise_scan(self.smc_step, carry_axes=smc_state_axes, pmap_data_axes=1, batch_axis_size=self.n_particles, vectorisation=self.pconfig.vectorisation,
                                      progressbar_mngr=self.progressbar_mngr if self.show_progress else None, get_iternum_fn=lambda carry: carry.iteration)
             self.cached_smc_scan = scan_fn
         
-        last_state, ess = parallel_run(scan_fn, (init_state, smc_data), self.n_particles, self.pconfig)
+        last_state, ess = parallel_run(scan_fn, (init_state, smc_data), self.n_particles, self.pconfig.vectorisation)
 
         return last_state, ess 
     

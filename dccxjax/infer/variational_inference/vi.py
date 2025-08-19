@@ -327,11 +327,11 @@ class ADVI(Generic[OPTIMIZER_STATE]):
             scan_fn = self.cached_advi_scan
         else:
             advi_state_axes = ADVIState(iteration=None, optimizer_state=0) # type: ignore
-            scan_fn = vectorise_scan(self.advi_step, carry_axes=advi_state_axes, pmap_data_axes=1, batch_axis_size=self.L, pconfig=self.pconfig,
+            scan_fn = vectorise_scan(self.advi_step, carry_axes=advi_state_axes, pmap_data_axes=1, batch_axis_size=self.L, vectorisation=self.pconfig.vectorisation,
                                     progressbar_mngr=self.progressbar_mngr if self.show_progress else None, get_iternum_fn=lambda carry: carry.iteration)
             self.cached_advi_scan = scan_fn
         
-        last_state, elbo = parallel_run(scan_fn, (init_state, keys), batch_axis_size=self.L, pconfig=self.pconfig)
+        last_state, elbo = parallel_run(scan_fn, (init_state, keys), batch_axis_size=self.L, vectorisation=self.pconfig.vectorisation)
 
         return last_state, elbo
 
