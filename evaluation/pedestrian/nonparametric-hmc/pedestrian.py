@@ -8,6 +8,7 @@ from torch.distributions import Normal, Uniform
 
 from infer import run_inference, importance_resample, run_inference_icml2022
 from ppl import ProbCtx, run_prob_prog
+from time import monotonic
 
 distance_limit = 10
 
@@ -81,7 +82,7 @@ def target_NP_DHMC(rep, bar_pos=None):
     )
 
 import argparse
-
+from tqdm import tqdm
 
 if __name__ == "__main__":    
     parser = argparse.ArgumentParser()
@@ -93,7 +94,9 @@ if __name__ == "__main__":
     count = 1_000
     repetitions = args.repetitions
 
-    assert len(sys.argv) > 1
+    assert args.n_processes <= repetitions
+    
+    t0 = monotonic()
     
     if args.algorithm == "NP-LA-DHMC":
         if args.n_processes > 1:
@@ -116,3 +119,5 @@ if __name__ == "__main__":
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")
                 target_NP_DHMC(rep)
+                
+    tqdm.write(f"\nFinished in {monotonic() - t0:.3f}s.")
