@@ -1,4 +1,5 @@
 from dccxjax.core import *
+from dccxjax.core import Model
 import dccxjax.distributions as dist
 
 import jax
@@ -9,7 +10,7 @@ from typing import List
 from dccxjax.types import _unstack_sample_data
 from typing import Any, Dict
 from dataclasses import dataclass
-from dccxjax.parallelisation import smap_vmap, pmap_vmap, VectorisationType, parallel_run
+from dccxjax.parallelisation import VectorisationType, parallel_run
 
 from gibbs_proposals import *
 from reversible_jumps import *
@@ -88,6 +89,11 @@ class RJMCMCTransitionProbEstimate(LogWeightEstimate):
         return RJMCMCTransitionProbEstimate(new_transition_log_probs, n_combined_samples)
 
 class DCCConfig(MCMCDCC[T]):
+    def __init__(self, model: Model, return_map: Callable[[Trace], T] = lambda trace: trace, *ignore, verbose=0, **config_kwargs) -> None:
+        super().__init__(model, return_map, *ignore, verbose=verbose, **config_kwargs)
+        if self.pconfig.vectorisation in (VectorisationType.GlobalSMAP, VectorisationType.LocalSMAP):
+            tqdm.write(bcolors.FAIL+"smap does currently not work because of Dirichlet random number generation, use pmap instead"+bcolors.ENDC)
+        
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         return MCMCSteps(
             MCMCStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),
@@ -135,25 +141,27 @@ class DCCConfig(MCMCDCC[T]):
             vectorisation = VectorisationType.GlobalVMAP
         if vectorisation == VectorisationType.LocalSMAP:
             vectorisation = VectorisationType.GlobalSMAP
-            
-        split = vectorise(_split, 0, 0, self.mcmc_n_chains * self.mcmc_n_samples_per_chain, vectorisation)
-        merge = vectorise(_merge, 0, 0, self.mcmc_n_chains * self.mcmc_n_samples_per_chain, vectorisation)
-            
-        # Finished DCC in 89.915s.                                                                                                                                                                                                                                                                                               
-        # Inference time: 43.511s, logweight estimate time: 35.406s
+        
+        batch_axis_size = last_inference_result.value_tree[1].size if last_inference_result.value_tree is not None else last_inference_result.last_state.log_prob.size
+        split = vectorise(_split, 0, 0, batch_axis_size, vectorisation)
+        merge = vectorise(_merge, 0, 0, batch_axis_size, vectorisation)
 
         def _task(rng_key: PRNGKey, last_inference_result: MCMCInferenceResult):
-            assert last_inference_result.value_tree is not None
-            traces: Trace = last_inference_result.value_tree[0]
-            lps: FloatArray = last_inference_result.value_tree[1]
-            traces = jax.tree.map(_unstack_sample_data, traces)
-            lps = _unstack_sample_data(lps)
+            if last_inference_result.value_tree is not None:
+                traces: Trace = last_inference_result.value_tree[0]
+                lps: FloatArray = last_inference_result.value_tree[1]
+                traces = jax.tree.map(_unstack_sample_data, traces)
+                lps = _unstack_sample_data(lps)
+                assert batch_axis_size == self.mcmc_n_chains * self.mcmc_n_samples_per_chain
+            else:
+                traces: Trace = last_inference_result.last_state.position
+                lps = last_inference_result.last_state.log_prob
+                assert batch_axis_size == self.mcmc_n_chains
+            n_samples = lps.size
+            assert n_samples == batch_axis_size
 
             transition_log_probs: Dict[Any, FloatArray] = dict()
-            n_samples = lps.size
-            assert n_samples == self.mcmc_n_chains * self.mcmc_n_samples_per_chain
             
-            assert n_samples % self.mcmc_n_samples_per_chain == 0
             _split_transition_log_prob = parallel_run(split, (traces, lps, jax.random.split(rng_key, lps.shape[0])), n_samples, vectorisation)
             split_transition_log_prob = jax.scipy.special.logsumexp(_split_transition_log_prob) - jnp.log(n_samples)
             if K == 0: 

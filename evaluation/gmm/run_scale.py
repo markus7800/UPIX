@@ -36,7 +36,7 @@ m = gmm(ys)
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_K)
 
-dcc_obj = DCCConfig(m, verbose=2,
+dcc_obj = StaticDCCConfig(m, verbose=2,
     mcmc_n_chains=args.n_chains,
     mcmc_n_samples_per_chain=args.n_samples_per_chain,
     mcmc_collect_for_all_traces=False,
