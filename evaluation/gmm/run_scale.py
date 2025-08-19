@@ -32,17 +32,18 @@ class StaticDCCConfig(DCCConfig):
         active_slps.clear()
 
 
-m = gmm(ys)
-m.set_slp_formatter(formatter)
-m.set_slp_sort_key(find_K)
+if __name__ == "__main__":
+    m = gmm(ys)
+    m.set_slp_formatter(formatter)
+    m.set_slp_sort_key(find_K)
 
-dcc_obj = StaticDCCConfig(m, verbose=2,
-    mcmc_n_chains=args.n_chains,
-    mcmc_n_samples_per_chain=args.n_samples_per_chain,
-    mcmc_collect_for_all_traces=False,
-    parallelisation=get_parallelisation_config(args)
-)
+    dcc_obj = StaticDCCConfig(m, verbose=2,
+        mcmc_n_chains=args.n_chains,
+        mcmc_n_samples_per_chain=args.n_samples_per_chain,
+        mcmc_collect_for_all_traces=False,
+        parallelisation=get_parallelisation_config(args)
+    )
 
-# takes ~185s for 10 * 25_000 * 11 samples
-result = timed(dcc_obj.run)(jax.random.key(0))
-result.pprint(sortkey="slp")
+    # takes ~185s for 10 * 25_000 * 11 samples
+    result = timed(dcc_obj.run)(jax.random.key(0))
+    result.pprint(sortkey="slp")

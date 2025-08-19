@@ -110,7 +110,7 @@ def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, pcon
         stdout=subprocess.PIPE,
         env = pconfig.environ
     )
-    if pconfig.verbose >= 2:
+    if pconfig.verbose:
         tqdm.write(f"Starting worker {worker_id} with pid {p.pid}")
         
     assert p.stdin is not None

@@ -16,6 +16,8 @@ from pyro.infer.autoguide import initialization
 
 from pyro import param, poutine
 
+from time import monotonic
+
 
 def get_init_fn(fn_name: str):
     return getattr(initialization, fn_name)
@@ -313,9 +315,12 @@ def main(cfg):
         slps_identified_by_discrete_samples=model.slps_identified_by_discrete_samples,
     )
 
+    t0 = monotonic()
     _, exclusive_kl_results, resource_allocation_metrics = sdvi.run(
         forward_kl_callback
     )
+    elapsed = monotonic() - t0
+    print(f"Finished in {elapsed:.3f}s.") # ~ 1120s
 
     # Plot diagnostics
     logging.info(resource_allocation_metrics["bt2num_selected"])

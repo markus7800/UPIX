@@ -12,7 +12,7 @@ python3 run_exp_pyro_extension.py \
     posterior_predictive_num_samples=10 \
     sdvi.learning_rate=0.005 \
     sdvi.save_metrics_every_n=200 \
-    sdvi.num_parallel_processes=2 \
+    sdvi.num_parallel_processes=10 \
     resource_allocation=successive_halving \
     resource_allocation.num_total_iterations=1000000
 ```
