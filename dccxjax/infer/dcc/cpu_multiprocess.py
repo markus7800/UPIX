@@ -35,7 +35,7 @@ def write_error_transport_layer(writer: IO[bytes], obj):
     writer.flush()
 
 WORKER_ID = sys.argv[1]
-print(f"Starting worker ", WORKER_ID, "with pid", os.getpid(), file=sys.stderr)
+# print(f"Starting worker ", WORKER_ID, "with pid", os.getpid(), file=sys.stderr)
 while True:
     obj = read_transport_layer(sys.stdin.buffer)
     if obj is None:
@@ -110,6 +110,9 @@ def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, pcon
         stdout=subprocess.PIPE,
         env = pconfig.environ
     )
+    if pconfig.verbose >= 2:
+        tqdm.write(f"Starting worker {worker_id} with pid {p.pid}")
+        
     assert p.stdin is not None
     assert p.stdout is not None
     while True:

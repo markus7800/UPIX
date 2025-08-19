@@ -154,6 +154,9 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         
         return EstimateLogWeightTask(_task, (rng_key,), post_info=_post_info)
 
+    def get_initial_positions(self, slp: SLP, rng_key: PRNGKey) -> StackedTrace:
+        return StackedTrace(broadcast_jaxtree(slp.decision_representative, (self.mcmc_n_chains,)), self.mcmc_n_chains)
+
     def make_inference_task(self, slp: SLP, rng_key: PRNGKey) -> InferenceTask:
         mcmc = self.get_MCMC(slp)
         inference_results = self.inference_results.get(slp, [])
@@ -180,10 +183,10 @@ class MCMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             return InferenceTask(_task_continue, (rng_key, last_result.last_state), post_info=_post_info)
         else:
             def _task_run(rng_key: PRNGKey):
-                init_positions = StackedTrace(broadcast_jaxtree(slp.decision_representative, (mcmc.n_chains,)), mcmc.n_chains)
-                init_log_prob = broadcast_jaxtree(slp.log_prob(slp.decision_representative), (mcmc.n_chains,))
+                init_key, run_key = jax.random.split(rng_key)
+                init_positions = self.get_initial_positions(slp, init_key)
 
-                last_state, return_result = mcmc.run(rng_key, init_positions, init_log_prob, n_samples_per_chain=self.mcmc_n_samples_per_chain)
+                last_state, return_result = mcmc.run(run_key, init_positions, n_samples_per_chain=self.mcmc_n_samples_per_chain)
                 
                 # we do not apply return map here, because we want to be able to continue mcmc chain from last state
                 return MCMCInferenceResult(return_result, last_state, mcmc.n_chains, self.mcmc_n_samples_per_chain, self.mcmc_optimise_memory_with_early_return_map)
