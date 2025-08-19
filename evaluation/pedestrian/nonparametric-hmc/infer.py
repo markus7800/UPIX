@@ -218,7 +218,7 @@ def np_dhmc(
     is_cont = result.is_cont.clone().detach()
     count += burnin
     accept_count = 0
-    for _ in tqdm(range(count),position=bar_pos, desc="Rep "+str(bar_pos) if bar_pos else None):
+    for _ in tqdm(range(count),position=bar_pos, desc="Worker "+str(bar_pos) if bar_pos is not None else None, leave=False):
         N = len(q)
         dt = ((torch.rand(()) + 0.5) * eps).item()
         gaussian = Normal(0, 1).sample([N]) * is_cont
@@ -310,7 +310,7 @@ def np_lookahead_dhmc(
     p = gaussian + laplace
     count += burnin
     accept_count = 0
-    for _ in tqdm(range(count), position=bar_pos, desc="Rep "+str(bar_pos) if bar_pos else None):
+    for _ in tqdm(range(count), position=bar_pos, desc="Worker "+str(bar_pos) if bar_pos is not None else None):
         N = len(q)
         dt = ((torch.rand(()) + 0.5) * eps).item()
         p_cont = p * math.sqrt(1 - alpha * alpha) + Normal(0, alpha).sample([N])

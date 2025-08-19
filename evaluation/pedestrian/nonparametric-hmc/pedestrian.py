@@ -80,22 +80,26 @@ def target_NP_DHMC(rep, bar_pos=None):
         bar_pos=bar_pos
     )
 
+import argparse
 
-if __name__ == "__main__":
+
+if __name__ == "__main__":    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("algorithm", help="NP-LA-DHMC | NP-DHMC")
+    parser.add_argument("repetitions", default=10, type=int)
+    parser.add_argument("-n_processes", default=1, type=int)
+    args = parser.parse_args()
+
     count = 1_000
-    repetitions = 10
+    repetitions = args.repetitions
 
     assert len(sys.argv) > 1
     
-    if sys.argv[1] == "NP-LA-DHMC":
-        if len(sys.argv) > 2 and sys.argv[2] == "parallel":
+    if args.algorithm == "NP-LA-DHMC":
+        if args.n_processes > 1:
             processes = []
-            for rep in range(repetitions):
-                p = mp.Process(target=target_NP_LA_DHMC, args=(rep,rep))
-                p.start()
-                processes.append(p)
-            for p in processes:
-                p.join()
+            with mp.Pool(args.n_processes) as p:
+                p.starmap(target_NP_LA_DHMC, [(rep, rep) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
                 print(
@@ -103,16 +107,11 @@ if __name__ == "__main__":
                 )
                 target_NP_LA_DHMC(rep)
 
-    elif sys.argv[1] == "NP-DHMC":
-        if len(sys.argv) > 2 and sys.argv[2] == "parallel":
+    elif args.algorithm == "NP-DHMC":
+        if args.n_processes > 1:
             # takes ~ 2:30s for 10 * 1_000 samples
-            processes = []
-            for rep in range(repetitions):
-                p = mp.Process(target=target_NP_DHMC, args=(rep,rep))
-                p.start()
-                processes.append(p)
-            for p in processes:
-                p.join()
+            with mp.Pool(args.n_processes) as p:
+                p.starmap(target_NP_DHMC, [(rep, rep % args.n_processes) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")
