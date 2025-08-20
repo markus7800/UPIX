@@ -97,8 +97,9 @@ class DataAnnealingSchedule(NamedTuple):
         prior_data_annealing: AnnealingMask = dict()
         if len(self.data_annealing) > 0:
             prior_data_annealing = jax.tree.map(lambda v: jax.lax.zeros_like_array(v[0,...]), self.data_annealing)
-            masks, _ = ravel_pytree(prior_data_annealing)
-            assert not masks.any()
+            # comment out to be jittable
+            # masks, _ = ravel_pytree(prior_data_annealing)
+            # assert not masks.any()
         return prior_data_annealing
 
 def data_annealing_schedule_from_range(addr_to_range: Dict[str,range]) -> DataAnnealingSchedule:
@@ -148,7 +149,7 @@ class SMCStepData(NamedTuple):
     data_annealing: AnnealingMask
 
 from functools import partial
-def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None], rejuvination_attempts: int, vectorisation: str) -> Callable[[SMCState, SMCStepData],Tuple[SMCState,FloatArray]]:
+def get_smc_step(slp: SLP, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None], rejuvination_attempts: int, vectorisation: str) -> Callable[[SMCState, SMCStepData],Tuple[SMCState,FloatArray]]:
     assert vectorisation in ("vmap", "smap")
     if vectorisation == "vmap":
         _vmap = partial(jax.vmap, in_axes=(0,None), out_axes=0)
@@ -158,6 +159,7 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
     def do_resample_fn(particles: Trace, log_prob: FloatArray, log_particle_weights: FloatArray, rng_key: PRNGKey):
         log_particle_weigths_sum = jax.scipy.special.logsumexp(log_particle_weights)
         weights = jax.lax.exp(log_particle_weights - log_particle_weigths_sum)
+        n_particles = weights.size
         ixs = resampling.resample(rng_key, weights, n_particles)
         particles = jax.tree.map(lambda v: v[ixs,...], particles)
         log_prob = log_prob[ixs]
@@ -170,6 +172,7 @@ def get_smc_step(slp: SLP, n_particles: int, reweighting_type: ReweightingType, 
         if resampling.resample_type == ResampleType.Always:
             return do_resample_fn(particles, log_prob, log_particle_weights, rng_key)
         elif resampling.resample_type == ResampleType.Adaptive:
+            n_particles = log_particle_weights.size
             return jax.lax.cond(log_ess < jax.lax.log(n_particles / 2.0), do_resample_fn, no_resample_fn, particles, log_prob, log_particle_weights, rng_key)
         else:
             raise Exception
@@ -301,7 +304,7 @@ class SMC:
         self.reweighting_type = reweighting_type
         self.resampling = resampling
 
-        self.smc_step = get_smc_step(slp, n_particles, reweighting_type, resampling, rejuvination_kernel, self.rejuvination_attempts, self.vectorisation)
+        self.smc_step = get_smc_step(slp, reweighting_type, resampling, rejuvination_kernel, self.rejuvination_attempts, self.vectorisation)
 
         self.cached_smc_scan: Optional[Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]] = None
 

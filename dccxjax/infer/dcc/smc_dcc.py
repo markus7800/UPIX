@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model
-from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, _unstack_sample_data
+from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray, StackedTrace, StackedTraces, StackedSampleValues, StackedSampleValue, _unstack_sample_data
 from dccxjax.utils import broadcast_jaxtree
 from dataclasses import dataclass
 from dccxjax.infer.smc import SMC, DataAnnealingSchedule, TemperetureSchedule, ReweightingType, StratifiedResampling, ResampleType, ResampleTime
@@ -17,9 +17,12 @@ from dccxjax.infer.dcc.mc_dcc import MCDCC, DCC_COLLECT_TYPE, MCLogWeightEstimat
 from textwrap import indent
 
 __all__ = [
-    "SMCDCC"
+    "SMCDCC",
+    "SMCInferenceResult",
+    "LogWeightEstimateFromSMC"
 ]
 
+@jax.tree_util.register_dataclass
 @dataclass
 class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
     particles: Tuple[Trace,FloatArray] | DCC_COLLECT_TYPE
@@ -31,37 +34,33 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
         if not isinstance(other, SMCInferenceResult):
             raise TypeError
         
-        # we put iterations on leading axes, i.e. shape = (#repeats smc, n_particles, ...)
-        assert self.n_particles == other.n_particles
-        particles_1, log_particle_weight_1 = broadcast_jaxtree((self.particles, self.log_particle_weight), (1,)) if len(self.log_particle_weight.shape) == 1 else (self.particles, self.log_particle_weight)
-        particles_2, log_particle_weight_2 = broadcast_jaxtree((other.particles, other.log_particle_weight), (1,)) if len(other.log_particle_weight.shape) == 1 else (other.particles, other.log_particle_weight)
-
-        particles = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), particles_1, particles_2)
-        log_particle_weight = jax.lax.concatenate((log_particle_weight_1, log_particle_weight_2), 0)
+        assert self.n_particles == self.log_particle_weight.size
+        assert other.n_particles == other.log_particle_weight.size
+        
+        n_combined_particles = self.n_particles + other.n_particles
+        a = self.n_particles / n_combined_particles
+        
+        particles = jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), 0), self.particles, other.particles)
+        log_particle_weight = jax.lax.concatenate((self.log_particle_weight + jax.lax.log(a), other.log_particle_weight + jax.lax.log(1 - a)), 0)
 
         assert self.optimised_memory_with_early_return_map == other.optimised_memory_with_early_return_map
 
-        return SMCInferenceResult(particles, log_particle_weight, self.n_particles, self.optimised_memory_with_early_return_map, None)
+        return SMCInferenceResult(particles, log_particle_weight, n_combined_particles, self.optimised_memory_with_early_return_map, None)
     
     def get_weighted_sample(self, return_map: Callable[[Trace],DCC_COLLECT_TYPE]) -> LogWeightedSample[DCC_COLLECT_TYPE]:
-        # shape = (#repeats smc, n_particles, ...)
-        # we add axis when combining, if we have not combined anything, we have to add axis now
-        particles, log_particle_weight = broadcast_jaxtree((self.particles, self.log_particle_weight), (1,)) if len(self.log_particle_weight.shape) == 1 else (self.particles, self.log_particle_weight)
-        n_smc = log_particle_weight.shape[0]
+        particles, log_particle_weight = (self.particles, self.log_particle_weight)
 
         values: DCC_COLLECT_TYPE = cast(DCC_COLLECT_TYPE,particles) if self.optimised_memory_with_early_return_map else return_map(cast(Trace,particles))
         
-        # normalise log_particle_weights on second axis
-        # each smc run is treated independently
-        log_weights = log_particle_weight - jax.scipy.special.logsumexp(log_particle_weight, axis=1).reshape(-1,1)
+        log_weights = log_particle_weight - jax.scipy.special.logsumexp(log_particle_weight)
 
         weighted_samples = LogWeightedSample(
-            StackedSampleValues(values, n_smc, self.n_particles),
+            StackedSampleValues(values, 1, self.n_particles),
             log_weights
         )
         return weighted_samples
 
-
+@jax.tree_util.register_dataclass
 @dataclass
 class LogWeightEstimateFromSMC(MCLogWeightEstimate):
     log_Z: FloatArray
@@ -105,6 +104,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
             smc = self.inference_method_cache[slp]
             assert isinstance(smc, SMC)
             tqdm.write("Use cached SMC")
+            smc.n_particles = self.smc_n_particles
             return smc
             
         smc = SMC(
@@ -188,20 +188,25 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
 
     def make_estimate_log_weight_task(self, slp: SLP, rng_key: PRNGKey) -> EstimateLogWeightTask:
         inference_results = self.inference_results.get(slp, [])
+        path_log_prob = self.estimate_path_log_prob(slp, rng_key) # prevent from being traced in export
         if len(inference_results) > 0:
-            def _task(rng_key: PRNGKey):
-                path_log_prob = self.estimate_path_log_prob(slp, rng_key)
-
+            def _task(path_log_prob: jax.Array):
                 last_result = inference_results[-1]
                 assert isinstance(last_result, SMCInferenceResult)
                 assert len(last_result.log_particle_weight.shape) == 1, "Attempted to get log_weight from combined result"
                 log_Z = jax.scipy.special.logsumexp(last_result.log_particle_weight)
                 log_ess = log_Z * 2 - jax.scipy.special.logsumexp(last_result.log_particle_weight * 2)
                 ESS = jax.lax.exp(log_ess)
-                if self.verbose >= 2:
-                    tqdm.write(f"Estimated log weight for {slp.formatted()}: {log_Z.item()} (ESS={ESS.item():_.0f})")
                 return LogWeightEstimateFromSMC(log_Z + path_log_prob, ESS, last_result.n_particles)
-            return EstimateLogWeightTask(_task, (rng_key,))
+            def _post_info(result: LogWeightEstimate):
+                if self.verbose >= 2:
+                    assert isinstance(result, LogWeightEstimateFromSMC)
+                    log_Z = result.get_estimate().item()
+                    ESS = result.ESS.item()
+                    return f"Estimated log weight for {slp.formatted()}: {log_Z} (ESS={ESS:_.0f})"
+                return ""
+                
+            return EstimateLogWeightTask(_task, (path_log_prob,), post_info=_post_info)
         else:
             raise Exception("In SMCDCC we should perform one run of SMC before estimate_log_weight to reuse estimate")
     

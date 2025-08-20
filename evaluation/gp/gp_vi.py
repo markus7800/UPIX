@@ -9,15 +9,6 @@ from successive_halving import *
 
 
 class VIConfig(VIDCC):
-    # def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
-    #     for node_type in range(N_LEAF_NODE_TYPES):
-    #         if jax.lax.exp(dist.Categorical(NODE_TYPE_PROBS).log_prob(node_type)) > 0:
-    #             rng_key, generate_key = jax.random.split(rng_key)
-    #             trace, _ = self.model.generate(generate_key, {"1_node_type": jnp.array(node_type,int)})
-    #             slp = slp_from_decision_representative(self.model, trace)
-    #             active_slps.append(slp)
-    #             tqdm.write(f"Make SLP {slp.formatted()} active.")
-    
     def __init__(self, model: Model, *ignore, verbose=0, **config_kwargs) -> None:
         super().__init__(model, *ignore, verbose=verbose, **config_kwargs)
         self.successive_halving: SuccessiveHalving = self.config["successive_halving"]
