@@ -63,7 +63,8 @@ def factor(f: FloatArrayLike) -> None:
 class GenerateCtx(SampleContext):
     def __init__(self, rng_key: PRNGKey, Y: Trace = dict()) -> None:
         super().__init__()
-        self.X: Trace = dict() | Y
+        self.X: Trace = dict()
+        self.Y: Trace = Y
         self.rng_key = rng_key
         self.log_likelihood: FloatArray = jnp.array(0.,float)
         self.log_prior: FloatArray = jnp.array(0.,float)
@@ -72,11 +73,11 @@ class GenerateCtx(SampleContext):
             self.log_likelihood += distribution.log_prob(observed).sum()
             return cast(DIST_SUPPORT, observed)
         self.rng_key, key = jax.random.split(self.rng_key)
-        if address not in self.X:
+        if address not in self.Y:
             value = distribution.sample(key)
-            self.X[address] = value
         else:
-            value = cast(DIST_SUPPORT, self.X[address])
+            value = cast(DIST_SUPPORT, self.Y[address])
+        self.X[address] = value
         self.log_prior += distribution.log_prob(value).sum()
         return value
     def logfactor(self, lf: FloatArrayLike, address) -> None:
