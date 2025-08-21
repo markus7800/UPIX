@@ -56,34 +56,36 @@ if __name__ == "__main__":
         slp_weights.sort(key=lambda v: v[1])
 
         xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
-        slp, weight = slp_weights[-1]
-        print(slp.formatted(), weight)
-        g = result.slp_guides[slp]
-            
-        n_posterior_samples = 1_000
-            
-        key = jax.random.key(0)
-        posterior = Traces(g.sample(key, (n_posterior_samples,)), n_posterior_samples)
         
-        samples = []
-        for i in tqdm(range(n_posterior_samples), desc="Sample posterior of MAP SLP"):
-            key, sample_key = jax.random.split(key)
-            trace = posterior.get_ix(i)
-            k = get_gp_kernel(trace)
-            noise = transform_param("noise", trace["noise"]) + 1e-5
-            mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
-            samples.append(mvn.sample(sample_key))
+        for slp_ix in range(1,5+1):
+            slp, weight = slp_weights[-slp_ix]
+            print(slp.formatted(), weight)
+            g = result.slp_guides[slp]
+                
+            n_posterior_samples = 1_000
+                
+            key = jax.random.key(0)
+            posterior = Traces(g.sample(key, (n_posterior_samples,)), n_posterior_samples)
+            
+            samples = []
+            for i in tqdm(range(n_posterior_samples), desc="Sample posterior of MAP SLP"):
+                key, sample_key = jax.random.split(key)
+                trace = posterior.get_ix(i)
+                k = get_gp_kernel(trace)
+                noise = transform_param("noise", trace["noise"]) + 1e-5
+                mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
+                samples.append(mvn.sample(sample_key))
 
-        samples = jnp.vstack(samples)
-        m = jnp.mean(samples, axis=0)
-        q025 = jnp.quantile(samples, 0.025, axis=0)
-        q975 = jnp.quantile(samples, 0.975, axis=0)
+            samples = jnp.vstack(samples)
+            m = jnp.mean(samples, axis=0)
+            q025 = jnp.quantile(samples, 0.025, axis=0)
+            q975 = jnp.quantile(samples, 0.975, axis=0)
 
-        plt.figure()
-        plt.title(slp.formatted())
-        plt.scatter(xs, ys)
-        plt.scatter(xs_val, ys_val)
-        plt.plot(xs_pred, m, color="black")
-        plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
+            plt.figure()
+            plt.title(f"{slp_ix}. {slp.formatted()}")
+            plt.scatter(xs, ys)
+            plt.scatter(xs_val, ys_val)
+            plt.plot(xs_pred, m, color="black")
+            plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
         plt.show()
-    
+        
