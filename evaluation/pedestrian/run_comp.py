@@ -58,96 +58,101 @@ class DCCConfig(MCMCDCC[T]):
             assert not self.mcmc_optimise_memory_with_early_return_map
 
 
-return_keys = ["start"]
-if args.show_scatter:
-    return_keys += ["step_1", "step_2", "step_3"]
+if __name__ == "__main__":
+    return_keys = ["start"]
+    if args.show_scatter:
+        return_keys += ["step_1", "step_2", "step_3"]
 
-dcc_obj = DCCConfig(m, verbose=2,
-              parallelisation=get_parallelisation_config(args),
-              init_n_samples=250,
-              init_estimate_weight_n_samples=2**20, # ~10**6
-              mcmc_n_chains=16,
-              mcmc_n_samples_per_chain=25_000,
-              estimate_weight_n_samples=2**23, # ~10**7
-              max_iterations=1,
-              mcmc_collect_for_all_traces=True,
-              mcmc_optimise_memory_with_early_return_map=True,
-              return_map=lambda trace: {key: trace[key] for key in return_keys if key in trace}
-)
+    dcc_obj = DCCConfig(m, verbose=2,
+                parallelisation=get_parallelisation_config(args),
+                init_n_samples=250,
+                init_estimate_weight_n_samples=2**20, # ~10**6
+                mcmc_n_chains=16,
+                mcmc_n_samples_per_chain=25_000,
+                estimate_weight_n_samples=2**23, # ~10**7
+                max_iterations=1,
+                mcmc_collect_for_all_traces=True,
+                mcmc_optimise_memory_with_early_return_map=True,
+                return_map=lambda trace: {key: trace[key] for key in return_keys if key in trace}
+    )
 
-result = timed(dcc_obj.run)(jax.random.key(0))
-result.pprint(sortkey="slp")
-
-
-gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
-gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
-gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf.npy")
+    result = timed(dcc_obj.run)(jax.random.key(0))
+    result.pprint(sortkey="slp")
 
 
-if args.show_plots:
-    slp = result.get_slp(lambda slp: find_t_max(slp) == 2)
-    assert slp is not None
-    traces, _ = result.get_samples_for_slp(slp).unstack().get()
+    gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
+    gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
+    gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf.npy")
 
-    if "step_2" in traces:
-        plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
-        plt.xlabel("step_1")
-        plt.ylabel("step_2")
-        plt.title(slp.formatted())
 
-    slp = result.get_slp(lambda slp: find_t_max(slp) == 3)
-    assert slp is not None
-    traces, _ = result.get_samples_for_slp(slp).unstack().get()
+    if args.show_plots:
+        slp = result.get_slp(lambda slp: find_t_max(slp) == 2)
+        assert slp is not None
+        traces, _ = result.get_samples_for_slp(slp).unstack().get()
 
-    if "step_3" in traces:
-        plt.figure()
-        plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
-        plt.xlabel("step_1")
-        plt.ylabel("step_2")
-        plt.title(slp.formatted())
-        plt.figure()
-        plt.scatter(traces["step_2"], traces["step_3"], alpha=0.1, s=1)
-        plt.xlabel("step_2")
-        plt.ylabel("step_3")
-        plt.title(slp.formatted())
-        plt.figure()
-        plt.scatter(traces["step_1"], traces["step_3"], alpha=0.1, s=1)
-        plt.xlabel("step_1")
-        plt.ylabel("step_3")
-        plt.title(slp.formatted())
+        if "step_2" in traces:
+            plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
+            plt.xlabel("step_1")
+            plt.ylabel("step_2")
+            plt.title(slp.formatted())
+
+        slp = result.get_slp(lambda slp: find_t_max(slp) == 3)
+        assert slp is not None
+        traces, _ = result.get_samples_for_slp(slp).unstack().get()
+
+        if "step_3" in traces:
+            plt.figure()
+            plt.scatter(traces["step_1"], traces["step_2"], alpha=0.1, s=1)
+            plt.xlabel("step_1")
+            plt.ylabel("step_2")
+            plt.title(slp.formatted())
+            plt.figure()
+            plt.scatter(traces["step_2"], traces["step_3"], alpha=0.1, s=1)
+            plt.xlabel("step_2")
+            plt.ylabel("step_3")
+            plt.title(slp.formatted())
+            plt.figure()
+            plt.scatter(traces["step_1"], traces["step_3"], alpha=0.1, s=1)
+            plt.xlabel("step_1")
+            plt.ylabel("step_3")
+            plt.title(slp.formatted())
+            plt.show()
+
+
+        plot_histogram_by_slp(result, "start")
+        if "step_2" in traces:
+            plot_histogram_by_slp(result, "step_1")
+            plot_histogram_by_slp(result, "step_2")
+        plt.show()
+
+        plot_histogram(result, "start")
+        fig = plt.gcf()
+        ax = fig.axes[0]
+        ax.plot(gt_xs, gt_pdf)
+        plt.savefig("evaluation/pedestrian/result_dccxjax.pdf")
         plt.show()
 
 
-    plot_histogram_by_slp(result, "start")
-    if "step_2" in traces:
-        plot_histogram_by_slp(result, "step_1")
-        plot_histogram_by_slp(result, "step_2")
+    start_weighted_samples, _ = result.get_samples_for_address("start", sample_ixs=slice(1000,None)) # burn-in
+    assert start_weighted_samples is not None
+    start_samples, start_weights = start_weighted_samples.get()
+
+    @jax.jit
+    def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
+        def _cdf_estimate(q):
+            return jnp.where(sample_points < q, sample_weights, jax.lax.zeros_like_array(sample_weights)).sum()
+        return jax.lax.map(_cdf_estimate, qs)
+
+    cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)
+    W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf)) # wasserstein distance
+    infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
+    title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
+    print(title)
+
+    plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
+    plt.title(title)
     plt.show()
 
-    plot_histogram(result, "start")
-    fig = plt.gcf()
-    ax = fig.axes[0]
-    ax.plot(gt_xs, gt_pdf)
-    plt.savefig("evaluation/pedestrian/result_dccxjax.pdf")
-    plt.show()
-
-
-start_weighted_samples, _ = result.get_samples_for_address("start", sample_ixs=slice(1000,None)) # burn-in
-assert start_weighted_samples is not None
-start_samples, start_weights = start_weighted_samples.get()
-
-@jax.jit
-def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
-    def _cdf_estimate(q):
-        return jnp.where(sample_points < q, sample_weights, jax.lax.zeros_like_array(sample_weights)).sum()
-    return jax.lax.map(_cdf_estimate, qs)
-
-cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)
-W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf)) # wasserstein distance
-infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
-title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
-print(title)
-
-plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
-plt.title(title)
-plt.show()
+# W1 = 0.01187, L_inf = 0.0007193 vmap_global
+# W1 = 0.01811, L_inf = 0.0008289 vmap_local
+# W1 = 0.01811, L_inf = 0.0008289 smap_local

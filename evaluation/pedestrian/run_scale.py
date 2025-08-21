@@ -51,58 +51,125 @@ class DCCConfig(MCMCDCC[T]):
         else:
             assert not self.mcmc_optimise_memory_with_early_return_map
 
+    def get_initial_positions(self, slp: SLP, rng_key: PRNGKey) -> StackedTrace:
+        # return super().get_initial_positions(slp, rng_key)
+        
+        # make initial positions more diverse
+        
+        N_STEPS = find_t_max(slp)
+        
+        # returns random numbers us such that for cs = start + cumsum(us)
+        # we have (cs[:-1] > 0).all() and cs[-1] = stop
+        def rw(seed: PRNGKey, start: FloatArray, stop: FloatArray):
+            def step(carry, key):
+                s, i = carry
+                # force s to be > 1e-5 for all but last steps, for which we forst s > stop
+                minval = jax.lax.max(jnp.array(-1,float), jax.lax.select(i == 1, -s + stop, -s + 1e-5))
+                # force s small enough such that next steps can push final s to stop < 0
+                maxval = jax.lax.min(jnp.array(1,float), (i-1)*(1-1e-5) - s + stop)
+                u = jax.random.uniform(key, minval=minval, maxval=maxval)
+                return (s + u, i-1), u
+            _, us = jax.lax.scan(step, (start, N_STEPS), jax.random.split(seed, N_STEPS))
+            return us
+        
+        @jax.jit
+        @jax.vmap
+        def get_positions(key: PRNGKey):
+            key1, key2, key3 = jax.random.split(key,3)
+            # draw start positions
+            start = jax.random.uniform(key1, minval=0, maxval=jnp.minimum(N_STEPS,3))
+            steps = rw(key2, start, jnp.array(-0.1,float))
+            
+            # draw distance target
+            distance = 0.1 * jax.random.normal(key3) + 1.1
+            
+            # scale random walk to match distance
+            scale = jnp.minimum(distance / jnp.sum(jnp.abs(steps)), 1)
+            return start * scale, steps * scale
+            
+        start, steps = get_positions(jax.random.split(rng_key, self.mcmc_n_chains))
+        traces = {
+            "start": start
+        }
+        for t in range(N_STEPS):
+            traces[f"step_{t+1}"] = steps[:,t]
+            
+        return StackedTrace(traces, self.mcmc_n_chains)
+    
 
-dcc_obj = DCCConfig(m, verbose=2,
-              parallelisation=get_parallelisation_config(args),
-              init_n_samples=250,
-              init_estimate_weight_n_samples=2**20, # ~10**6
-              mcmc_n_chains=args.n_chains,
-              mcmc_n_samples_per_chain=args.n_samples_per_chain,
-              estimate_weight_n_samples=2**23, # ~10**7
-              max_iterations=1,
-              mcmc_collect_for_all_traces=False,
-              mcmc_optimise_memory_with_early_return_map=True,
-              return_map=lambda trace: {"start": trace["start"]}
-)
+if __name__ == "__main__":
+    dcc_obj = DCCConfig(m, verbose=2,
+                parallelisation=get_parallelisation_config(args),
+                init_n_samples=250,
+                init_estimate_weight_n_samples=2**20, # ~10**6
+                mcmc_n_chains=args.n_chains,
+                mcmc_n_samples_per_chain=args.n_samples_per_chain,
+                estimate_weight_n_samples=2**23, # ~10**7
+                max_iterations=1,
+                mcmc_collect_for_all_traces=False,
+                mcmc_optimise_memory_with_early_return_map=True,
+                return_map=lambda trace: {"start": trace["start"]}
+    )
 
-result = timed(dcc_obj.run)(jax.random.key(0))
-result.pprint(sortkey="slp")
-
-
-gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
-gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
-gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf.npy")
+    result = timed(dcc_obj.run)(jax.random.key(0))
+    result.pprint(sortkey="slp")
 
 
+    gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
+    gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
+    gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf.npy")
 
 
-if args.show_plots:
-    plot_histogram(result, "start")
-    fig = plt.gcf()
-    ax = fig.axes[0]
-    ax.plot(gt_xs, gt_pdf)
-    plt.savefig("evaluation/pedestrian/result_dccxjax.pdf")
+    if args.show_plots:
+        plot_histogram(result, "start")
+        fig = plt.gcf()
+        ax = fig.axes[0]
+        ax.plot(gt_xs, gt_pdf)
+        plt.savefig("evaluation/pedestrian/result_dccxjax.pdf")
+        plt.show()
+
+
+    start_weighted_samples, _ = result.get_samples_for_address("start") 
+    assert start_weighted_samples is not None
+    start_samples, start_weights = start_weighted_samples.get()
+
+    @jax.jit
+    def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
+        def _cdf_estimate(q):
+            return jnp.where(sample_points < q, sample_weights, jax.lax.zeros_like_array(sample_weights)).sum()
+        return jax.lax.map(_cdf_estimate, qs)
+
+    cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)
+    W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf)) # wasserstein distance
+    infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
+    title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
+    print(title)
+
+    plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
+    plt.title(title)
     plt.show()
 
 
-start_weighted_samples, _ = result.get_samples_for_address("start") 
-assert start_weighted_samples is not None
-start_samples, start_weights = start_weighted_samples.get()
+# python3 evaluation/pedestrian/run_scale.py sequential smap_local 8 32768 100 --show_plots -host_device_count 8
 
-@jax.jit
-def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
-    def _cdf_estimate(q):
-        return jnp.where(sample_points < q, sample_weights, jax.lax.zeros_like_array(sample_weights)).sum()
-    return jax.lax.map(_cdf_estimate, qs)
+# with get_initial_positions
+# W1 = 0.08711, L_inf = 0.004961
 
-cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)
-W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf)) # wasserstein distance
-infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
-title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
-print(title)
+# without get_initial_positions
+# W1 = 0.02183, L_inf = 0.001462
 
-plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
-plt.title(title)
-plt.show()
+# python3 evaluation/pedestrian/run_scale.py sequential smap_local 8 32768 1000 --show_plots -host_device_count 8
 
-# (venv) markus@Markuss-MBP-14 DCCxJAX % python3 evaluation/pedestrian/run_scale.py sequential smap_local 8 16384 1000 -host_device_count 8 --show_plots
+# with get_initial_positions
+# W1 = 0.03013, L_inf = 0.002532
+
+# without get_initial_positions
+# W1 = 0.09416, L_inf = 0.004867
+
+# python3 evaluation/pedestrian/run_scale.py sequential smap_local 6 32768 100 --show_plots -host_device_count 8
+
+# with get_initial_positions
+# W1 = 0.08763, L_inf = 0.00499
+
+# without get_initial_positions
+# W1 = 0.02208, L_inf = 0.001473
