@@ -5,8 +5,7 @@ sys.path.append("evaluation")
 from parse_args import *
 parser = get_arg_parser()
 parser.add_argument("n_slps", help="number of slps to evaluate", type=int)
-parser.add_argument("L", help="number of samples to take per ADVI iteration", type=int)
-parser.add_argument("n_iter", help="number of ADVI iterations", type=int)
+parser.add_argument("n_particles", help="number of smc particles", type=int)
 parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
@@ -14,18 +13,15 @@ setup_devices_from_args(args)
 from dccxjax.core import *
 from dccxjax.viz import *
 from setup_parallelisation import get_parallelisation_config
+from dccxjax.infer import InferenceResult, LogWeightEstimate
 
-from gp_vi import *
-from dccxjax.infer.variational_inference.optimizers import Adagrad, SGD, Adam
+from gp_smc import *
 
 from enumerate_slps import find_active_slps_through_enumeration
 
 AutoGPConfig()
 
-class VIConfig2(VIConfig):
-    def __init__(self, model: Model, *ignore, verbose=0, **config_kwargs) -> None:
-        VIDCC.__init__(self, model, *ignore, verbose=verbose, **config_kwargs)
-
+class SMCDCCConfig2(SMCDCCConfig[T]):
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
         find_active_slps_through_enumeration(NODE_CONFIG.N_LEAF_NODE_TYPES, active_slps, rng_key, args.n_slps, self.model)
     
@@ -40,15 +36,13 @@ if __name__ == "__main__":
     m.set_slp_sort_key(lambda slp: get_gp_kernel(slp.decision_representative).size())
     m.set_equivalence_map(equivalence_map)
     
-    vi_dcc_obj = VIConfig2(m, verbose=2,
-        advi_n_iter = args.n_iter,
-        advi_L=args.L,
-        advi_optimizer=Adam(0.005),
-        elbo_estimate_n_samples=100,
-        parallelisation = get_parallelisation_config(args)
+    smc_dcc_obj = SMCDCCConfig2(m, verbose=2,
+        smc_collect_inference_info=True,
+        parallelisation = get_parallelisation_config(args),
+        smc_n_partilces = args.n_particles,
     )
 
-    result = timed(vi_dcc_obj.run)(jax.random.key(0))
+    result = timed(smc_dcc_obj.run)(jax.random.key(0))
     result.pprint()
 
     if args.show_plots:
@@ -58,21 +52,27 @@ if __name__ == "__main__":
         xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
         slp, weight = slp_weights[-1]
         print(slp.formatted(), weight)
-        g = result.slp_guides[slp]
-            
-        n_posterior_samples = 1_000
-            
-        key = jax.random.key(0)
-        posterior = Traces(g.sample(key, (n_posterior_samples,)), n_posterior_samples)
         
+        weighted_samples = result.get_samples_for_slp(slp).unstack()
+        _, weights = weighted_samples.get()
+
+        xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
+
+        n_posterior_samples = 1_000
+
         samples = []
+        sample_key = jax.random.key(0)
         for i in tqdm(range(n_posterior_samples), desc="Sample posterior of MAP SLP"):
-            key, sample_key = jax.random.split(key)
-            trace = posterior.get_ix(i)
+            sample_key, key1, key2 = jax.random.split(sample_key, 3)
+
+            trace_ix = dist.Categorical(weights).sample(key1)
+            trace, weight = weighted_samples.get_selection(trace_ix)
+            
             k = get_gp_kernel(trace)
             noise = transform_param("noise", trace["noise"]) + 1e-5
             mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
-            samples.append(mvn.sample(sample_key))
+
+            samples.append(mvn.sample(key2))
 
         samples = jnp.vstack(samples)
         m = jnp.mean(samples, axis=0)
@@ -86,4 +86,3 @@ if __name__ == "__main__":
         plt.plot(xs_pred, m, color="black")
         plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
         plt.show()
-    

@@ -17,20 +17,35 @@ xs, xs_val, ys, ys_val = get_data_autogp()
 
 def normalise(a: jax.Array): return a / a.sum()
 
-# AutoGP
-# N_LEAF_NODE_TYPES = 5
-# NODE_TYPES: List[type[GPKernel]] = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
-# NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
+class NodeConfig:
+    N_LEAF_NODE_TYPES: int
+    NODE_TYPES: List[type[GPKernel]]
+    NODE_TYPE_PROBS: jax.Array
 
-# Reichelt
-N_LEAF_NODE_TYPES = 4
-NODE_TYPES: List[type[GPKernel]] = [UnitRationalQuadratic, UnitPolynomialDegreeOne, UnitSquaredExponential, UnitPeriodic, Plus, Times]
-NODE_TYPE_PROBS = normalise(jnp.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1],float))
+NODE_CONFIG = NodeConfig()
+
+# AutoGP
+def AutoGPConfig():
+    global NODE_CONFIG
+    # NODE_CONFIG.N_LEAF_NODE_TYPES = 5
+    # NODE_CONFIG.NODE_TYPES = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
+    # NODE_CONFIG.NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
+    NODE_CONFIG.N_LEAF_NODE_TYPES = 3
+    NODE_CONFIG.NODE_TYPES = [Linear, GammaExponential, Periodic, Plus, Times]
+    NODE_CONFIG.NODE_TYPE_PROBS = normalise(jnp.array([6, 6, 6, 5, 5],float))
+    
+def RecheiltConfig():
+    global NODE_CONFIG
+    NODE_CONFIG.N_LEAF_NODE_TYPES = 4
+    NODE_CONFIG.NODE_TYPES = [UnitRationalQuadratic, UnitPolynomialDegreeOne, UnitSquaredExponential, UnitPeriodic, Plus, Times]
+    NODE_CONFIG.NODE_TYPE_PROBS = normalise(jnp.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1],float))
+
+RecheiltConfig()
 
 def covariance_prior(idx: int) -> GPKernel:
-    node_type = sample(f"{idx}_node_type", dist.Categorical(NODE_TYPE_PROBS))
-    NodeType = NODE_TYPES[node_type]
-    if node_type < N_LEAF_NODE_TYPES:
+    node_type = sample(f"{idx}_node_type", dist.Categorical(NODE_CONFIG.NODE_TYPE_PROBS))
+    NodeType = NODE_CONFIG.NODE_TYPES[node_type]
+    if node_type < NODE_CONFIG.N_LEAF_NODE_TYPES:
         params = []
         for field in fields(NodeType):
             field_name = field.name
@@ -54,8 +69,8 @@ def gaussian_process(xs: jax.Array, ts: jax.Array):
 
 def _get_gp_kernel(trace: Trace, idx: int, ordered: bool) -> GPKernel:
     node_type = trace[f"{idx}_node_type"]
-    if node_type < N_LEAF_NODE_TYPES:
-        NodeType = NODE_TYPES[node_type]
+    if node_type < NODE_CONFIG.N_LEAF_NODE_TYPES:
+        NodeType = NODE_CONFIG.NODE_TYPES[node_type]
         params = []
         for field in fields(NodeType):
             field_name = field.name
@@ -64,7 +79,7 @@ def _get_gp_kernel(trace: Trace, idx: int, ordered: bool) -> GPKernel:
             params.append(param)
         return NodeType(*params)
     else:
-        NodeType = [Plus, Times][node_type - N_LEAF_NODE_TYPES]
+        NodeType = [Plus, Times][node_type - NODE_CONFIG.N_LEAF_NODE_TYPES]
         # de-duplicate
         left = _get_gp_kernel(trace, 2*idx, ordered)
         right = _get_gp_kernel(trace, 2*idx+1, ordered)
@@ -79,13 +94,13 @@ def get_gp_kernel(trace: Trace, ordered: bool = True) -> GPKernel:
 def _equivalence_trace(old_trace: Trace, old_idx: int, new_trace: Trace, new_idx: int):
     node_type = old_trace[f"{old_idx}_node_type"]
     new_trace[f"{new_idx}_node_type"] = node_type
-    if node_type < N_LEAF_NODE_TYPES:
-        for field in fields(NODE_TYPES[node_type]):
+    if node_type < NODE_CONFIG.N_LEAF_NODE_TYPES:
+        for field in fields(NODE_CONFIG.NODE_TYPES[node_type]):
             field_name = field.name
             new_trace[f"{new_idx}_{field_name}"] = old_trace[f"{old_idx}_{field_name}"]
     else:
-        old_left_cls = NODE_TYPES[old_trace[f"{2*old_idx}_node_type"]]
-        old_right_cls = NODE_TYPES[old_trace[f"{2*old_idx+1}_node_type"]]
+        old_left_cls = NODE_CONFIG.NODE_TYPES[old_trace[f"{2*old_idx}_node_type"]]
+        old_right_cls = NODE_CONFIG.NODE_TYPES[old_trace[f"{2*old_idx+1}_node_type"]]
         if old_left_cls.name() > old_right_cls.name():
             _equivalence_trace(old_trace, 2*old_idx+1, new_trace, 2*new_idx)
             _equivalence_trace(old_trace, 2*old_idx, new_trace, 2*new_idx+1)

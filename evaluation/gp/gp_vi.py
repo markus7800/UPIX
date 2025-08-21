@@ -47,4 +47,4 @@ class VIConfig(VIDCC):
         tqdm.write(f"update active slps {len(active_slps)=} {self.advi_n_iter=}")        
         
     
-
+    # TODO: estimate_path_log_prob as in SMC?

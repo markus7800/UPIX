@@ -22,7 +22,7 @@ class SMCDCCConfig2(SMCDCC[T]):
             self.smc_n_particles = (self.smc_n_particles // self.round_n_particles_to_multiple) * self.round_n_particles_to_multiple
         tqdm.write(f"{len(active_slps)=} {self.n_phases=} {self.smc_n_particles=}")    
 
-    def produce_samples_from_prior(self, slp: SLP, rng_key: PRNGKey) -> Tuple[StackedTrace, Optional[FloatArray]]:
+    def produce_samples_from_path_prior(self, slp: SLP, rng_key: PRNGKey) -> Tuple[StackedTrace, Optional[FloatArray]]:
         Y: Trace = {addr: value  for addr,value in slp.decision_representative.items() if SuffixSelector("node_type").contains(addr)}
         particles, _ = jax.vmap(slp.generate, in_axes=(0,None))(jax.random.split(rng_key, self.smc_n_particles), Y)
         return StackedTrace(particles, self.smc_n_particles), None
@@ -30,7 +30,7 @@ class SMCDCCConfig2(SMCDCC[T]):
     def estimate_path_log_prob(self, slp: SLP, rng_key: PRNGKey) -> FloatArray:
         log_prob_trace = self.model.log_prob_trace(slp.decision_representative)
         log_path_prob = sum((log_prob for addr, (log_prob, _) in log_prob_trace.items() if SuffixSelector("node_type").contains(addr)), start=jnp.array(0,float))
-        n_non_leaf_nodes = len([addr for addr, val in slp.decision_representative.items() if addr.endswith("node_type") and val >= len(NODE_TYPE_PROBS)-2])
+        n_non_leaf_nodes = len([addr for addr, val in slp.decision_representative.items() if addr.endswith("node_type") and val >= len(NODE_CONFIG.NODE_TYPE_PROBS)-2])
         return log_path_prob - n_non_leaf_nodes*jnp.log(2.) # account for equivalence classes (commutativity of bin-op kernels)
     
     def get_SMC_rejuvination_kernel(self, slp: SLP) -> MCMCRegime:        

@@ -85,6 +85,7 @@ class MCDCCResult(BaseDCCResult, Generic[DCC_COLLECT_TYPE]):
         weighted_sample = self.slp_weighted_samples[slp]
         weights = jax.lax.exp(weighted_sample.log_weights - jax.scipy.special.logsumexp(weighted_sample.log_weights) + log_Z - log_Z_normaliser)
 
+        print(f"{weights.shape=}, {(weighted_sample.values.N, weighted_sample.values.T)=}")
         assert weights.shape == (weighted_sample.values.N, weighted_sample.values.T)
 
         values = mapper(weighted_sample.values.data)

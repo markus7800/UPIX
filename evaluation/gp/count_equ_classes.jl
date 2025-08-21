@@ -87,6 +87,8 @@ res_total_ordered = enumerate_trees(N_LEAF,N_BINARY,0,N_MAX,true)
 # println(length(res_total_ordered))
 
 for N in 1:N_MAX
+    # N == number of leaf nodes
+
     res = [(tree,n) for (tree,n) in res_total if n == N]
     res2 = [(tree,n) for (tree,n) in res_total_ordered if n == N]
     # println(res)

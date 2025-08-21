@@ -55,8 +55,11 @@ class SMCInferenceResult(MCInferenceResult[DCC_COLLECT_TYPE]):
         log_weights = log_particle_weight - jax.scipy.special.logsumexp(log_particle_weight)
 
         weighted_samples = LogWeightedSample(
-            StackedSampleValues(values, 1, self.n_particles),
-            log_weights
+            StackedSampleValues(
+                broadcast_jaxtree(values, (1,)),
+                1, self.n_particles
+            ),
+            broadcast_jaxtree(log_weights, (1,))
         )
         return weighted_samples
 
@@ -125,7 +128,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         self.inference_method_cache[slp] = smc
         return smc
 
-    def produce_samples_from_prior(self, slp: SLP, rng_key: PRNGKey) -> Tuple[StackedTrace, Optional[FloatArray]]:
+    def produce_samples_from_path_prior(self, slp: SLP, rng_key: PRNGKey) -> Tuple[StackedTrace, Optional[FloatArray]]:
         # by default reuse rejuvination kernel
         smc = self.get_SMC(slp)
         smc.rejuvination_kernel
@@ -159,7 +162,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         def _task(rng_key: PRNGKey):
             prior_key, smc_key = jax.random.split(rng_key)
 
-            init_positions, init_log_prob = self.produce_samples_from_prior(slp, prior_key)
+            init_positions, init_log_prob = self.produce_samples_from_path_prior(slp, prior_key)
 
             last_state, ess = smc.run(smc_key, init_positions, init_log_prob)
                     
@@ -190,13 +193,14 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
         inference_results = self.inference_results.get(slp, [])
         path_log_prob = self.estimate_path_log_prob(slp, rng_key) # prevent from being traced in export
         if len(inference_results) > 0:
-            def _task(path_log_prob: jax.Array):
+            def _task(path_log_prob: FloatArray):
                 last_result = inference_results[-1]
                 assert isinstance(last_result, SMCInferenceResult)
                 assert len(last_result.log_particle_weight.shape) == 1, "Attempted to get log_weight from combined result"
                 log_Z = jax.scipy.special.logsumexp(last_result.log_particle_weight)
                 log_ess = log_Z * 2 - jax.scipy.special.logsumexp(last_result.log_particle_weight * 2)
                 ESS = jax.lax.exp(log_ess)
+                # path path_log_prob accounts for the fact that we log_Z is with respect from path prior not model prior
                 return LogWeightEstimateFromSMC(log_Z + path_log_prob, ESS, last_result.n_particles)
             def _post_info(result: LogWeightEstimate):
                 if self.verbose >= 2:
@@ -206,7 +210,7 @@ class SMCDCC(MCDCC[DCC_COLLECT_TYPE]):
                     return f"Estimated log weight for {slp.formatted()}: {log_Z} (ESS={ESS:_.0f})"
                 return ""
                 
-            return EstimateLogWeightTask(_task, (path_log_prob,), post_info=_post_info)
+            return EstimateLogWeightTask(_task, (path_log_prob, ), post_info=_post_info)
         else:
             raise Exception("In SMCDCC we should perform one run of SMC before estimate_log_weight to reuse estimate")
     

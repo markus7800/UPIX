@@ -13,16 +13,7 @@ from setup_parallelisation import get_parallelisation_config
 from gp_vi import *
 from dccxjax.infer.variational_inference.optimizers import Adagrad, SGD, Adam
 
-# AutoGP
-# N_LEAF_NODE_TYPES = 5
-# NODE_TYPES: List[type[GPKernel]] = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
-# NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
-
-# Reichelt
-N_LEAF_NODE_TYPES = 4
-NODE_TYPES: List[type[GPKernel]] = [UnitRationalQuadratic, UnitPolynomialDegreeOne, UnitSquaredExponential, UnitPeriodic, Plus, Times]
-NODE_TYPE_PROBS = normalise(jnp.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1],float))
-
+RecheiltConfig()
 
 if __name__ == "__main__":
     m = gaussian_process(xs, ys)
