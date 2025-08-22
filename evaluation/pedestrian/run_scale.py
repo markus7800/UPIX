@@ -136,7 +136,7 @@ if __name__ == "__main__":
     @jax.jit
     def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
         def _cdf_estimate(q):
-            return jnp.where(sample_points < q, sample_weights, jax.lax.zeros_like_array(sample_weights)).sum()
+            return jnp.where(sample_points < q, sample_weights, jax.numpy.zeros_like(sample_weights)).sum()
         return jax.lax.map(_cdf_estimate, qs)
 
     cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)

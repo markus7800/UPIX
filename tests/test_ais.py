@@ -219,7 +219,7 @@ def AIS(xn, log_fn, log_f0, betas, M, plot=False):
 
     @jax.jit
     def _ais(xn):
-        last_state, _ = jax.lax.scan(step, AISCarry(xn, jax.lax.zeros_like_array(xn), jax.random.key(0)), betas)
+        last_state, _ = jax.lax.scan(step, AISCarry(xn, jax.numpy.zeros_like(xn), jax.random.key(0)), betas)
         x0 = last_state.xs
         log_weights = last_state.log_weights + log_f0(x0) - log_fn(xn)
         return log_weights
@@ -279,12 +279,12 @@ def sigmoid(z):
 # a = 25
 # xn0 = sample_prior(jax.random.key(0), 1)
 # xn = jax.lax.broadcast_in_dim(xn0, (N,), (0,))
-# AIS(xn, lambda x: jax.lax.zeros_like_array(x), log_joint, sigmoid(jnp.linspace(-a,a,1000)), 1, True) # High ESS but Z order of magnitude off
+# AIS(xn, lambda x: jax.numpy.zeros_like(x), log_joint, sigmoid(jnp.linspace(-a,a,1000)), 1, True) # High ESS but Z order of magnitude off
 
 
 # xn0 = sample_prior(jax.random.key(0), 1)
 # xn = jax.lax.broadcast_in_dim(xn0, (N,), (0,))
-# AIS(xn, lambda x: jax.lax.zeros_like_array(x), log_joint, jnp.array([]), 1_000, True) # High ESS but does not work
+# AIS(xn, lambda x: jax.numpy.zeros_like(x), log_joint, jnp.array([]), 1_000, True) # High ESS but does not work
 
 # xn0 = sample_prior(jax.random.key(0), 1)
 # xn = dist.Normal(xn0, 1).sample(jax.random.key(0), (N,))

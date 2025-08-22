@@ -60,5 +60,5 @@ cov_matrix_masked = jax.lax.select(mask.reshape(1,-1) & mask.reshape(-1,1), cov_
 print(f"{cov_matrix_masked.shape}")
 
 lp3 = dist.MultivariateNormal(covariance_matrix=cov_matrix_masked).log_prob(ys)
-lp3 -= jax.lax.select(mask, jax.lax.zeros_like_array(ys), dist.Normal(0.,1.).log_prob(ys)).sum()
+lp3 -= jax.lax.select(mask, jax.numpy.zeros_like(ys), dist.Normal(0.,1.).log_prob(ys)).sum()
 print(lp3)

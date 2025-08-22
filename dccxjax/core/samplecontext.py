@@ -94,12 +94,12 @@ def maybe_annealed_log_prob(address:str, distribution: Distribution[DIST_SUPPORT
             cov_matrix_full: jax.Array = distribution.numpyro_base.covariance_matrix # type: ignore
             cov_matrix_masked = jax.lax.select(mask.reshape(1,-1) & mask.reshape(-1,1), cov_matrix_full, jnp.eye(value.size))
             lp = MultivariateNormal(covariance_matrix=cov_matrix_masked).log_prob(value)
-            lp -= jax.lax.select(mask, jax.lax.zeros_like_array(value), Normal(0.,1.).log_prob(value)).sum()
+            lp -= jax.lax.select(mask, jax.numpy.zeros_like(value), Normal(0.,1.).log_prob(value)).sum()
             return lp
         else:
             lp = distribution.log_prob(value)
             assert distribution.numpyro_base.event_dim == 0 and len(lp.shape) == 1, f"Data-annealing only supported for univariate distributions, got {lp.shape=}"
-            return jax.lax.select(mask, lp, jax.lax.zeros_like_array(lp)).sum()
+            return jax.lax.select(mask, lp, jax.numpy.zeros_like(lp)).sum()
     else:
         return distribution.log_prob(value).sum()
 

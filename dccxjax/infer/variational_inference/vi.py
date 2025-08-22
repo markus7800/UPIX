@@ -147,7 +147,7 @@ class MeanfieldNormalGuide(Guide):
         flat_X, unravel_fn = jax.flatten_util.ravel_pytree(X)
         assert len(flat_X.shape) == 1
         self.n_latents = flat_X.shape[0]
-        self.mu = jax.lax.zeros_like_array(flat_X)
+        self.mu = jax.numpy.zeros_like(flat_X)
         self.omega = jax.lax.full_like(flat_X, jnp.log(init_sigma))
         self.unravel_fn = unravel_fn
     def get_params(self) -> FloatArray:
@@ -189,7 +189,7 @@ class FullRankNormalGuide(Guide):
         flat_X, unravel_fn = jax.flatten_util.ravel_pytree(X)
         assert len(flat_X.shape) == 1
         self.n_latents = flat_X.shape[0]
-        self.mu = jax.lax.zeros_like_array(flat_X)
+        self.mu = jax.numpy.zeros_like(flat_X)
         self.transform_to_cholesky: transforms.Transform = transforms.biject_to(scaled_unit_lower_cholesky)
         self.L = self.transform_to_cholesky.inv(jnp.eye(self.n_latents)*init_sigma)
         self.unravel_fn = unravel_fn

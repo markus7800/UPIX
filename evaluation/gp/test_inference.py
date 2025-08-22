@@ -173,17 +173,17 @@ n_particles = 10
 # rejuvination_regime = MCMCSteps(MCMCStep(AllVariables(), RW(lambda _: dist.Normal(0.,1.), elementwise=True)), MCMCStep(AllVariables(), RW(gaussian_random_walk(0.05),elementwise=True)))
 # rejuvination_regime = MCMCStep(AllVariables(), HMC(10,0.02))
 rejuvination_regime = MCMCSteps(
-    MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.lax.zeros_like_array(x),1.), elementwise=True)),
+    MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.numpy.zeros_like(x),1.), elementwise=True)),
     MCMCStep(AllVariables(), HMC(10,0.02))
 )
 if NOISE_Z:
     rejuvination_regime = MCMCSteps(
-        MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.lax.zeros_like_array(x),1.), elementwise=True)),
+        MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.numpy.zeros_like(x),1.), elementwise=True)),
         MCMCStep(AllVariables(), HMC(10,0.02))
     )
 else:
     rejuvination_regime = MCMCSteps(
-        MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.lax.zeros_like_array(x),1.), elementwise=True)),
+        MCMCStep(AllVariables(), RW(lambda x: dist.Normal(jax.numpy.zeros_like(x),1.), elementwise=True)),
         MCMCStep(ComplementSelector(SingleVariable("noise")), HMC(10,0.02)),
         MCMCStep(SingleVariable("noise"), HMC(10,0.02))
     )

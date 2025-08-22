@@ -96,7 +96,7 @@ def est_q_mh_log_prob(xs: jax.Array, n: int, mh_kernel, rng_key: jax.Array, m: i
         xs0 = apply_mh_kernel_n(xs, rng_key, n, mh_kernel)
         return ps + jax.lax.exp(log_Q(xs0) + log_P(xs) - log_P(xs0)), None
 
-    ps, _ = jax.lax.scan(_est_q_mh_log_prob, jax.lax.zeros_like_array(xs), jax.random.split(rng_key,m))
+    ps, _ = jax.lax.scan(_est_q_mh_log_prob, jax.numpy.zeros_like(xs), jax.random.split(rng_key,m))
     return ps/ m
 
 qs_mh = est_q_mh_log_prob(xs, N, mh_kernel, jax.random.key(0), 1_000, Q_log, mixture_log_P)

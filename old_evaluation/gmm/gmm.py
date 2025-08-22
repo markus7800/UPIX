@@ -178,7 +178,7 @@ def try_estimate_Z_with_AIS():
             MCMCStep(SingleVariable("w"), RW(w_proposer)),
             MCMCStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
             MCMCStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
-            # MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
+            # MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.numpy.zeros_like(x), slp.decision_representative["K"].item()), elementwise=True)),
         )
 
         # mcmc_step = get_inference_regime_mcmc_step_for_slp(slp, regime, collect_inference_info=True, return_map=return_map)
@@ -269,7 +269,7 @@ for i, slp in enumerate(active_slps):
         MCMCStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
         MCMCStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
         # MCMCStep(SingleVariable("zs"), MH(ZsProposal(ys))),
-        MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), slp.decision_representative["K"].item()), elementwise=True)),
+        MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.numpy.zeros_like(x), slp.decision_representative["K"].item()), elementwise=True)),
     )
 
     init_info: InferenceInfos = [step.algo.init_info() for step in regime] if collect_infos else []

@@ -83,10 +83,10 @@ print(jax.vmap(g)(xs, ys, keys))
 
 # print(jax.pmap(g)(xs,ys,keys))
     
-# with jax.sharding.use_mesh(Mesh(create_device_mesh((jax.device_count(),)), axis_names=("i",))):
+# with jax.set_mesh(Mesh(create_device_mesh((jax.device_count(),)), axis_names=("i",))):
 #     print(smap(jax.vmap(g), in_axes=0, out_axes=0, axis_name="i")(xs,ys,keys))
 
-# with jax.sharding.use_mesh(Mesh(create_device_mesh((jax.device_count(),)), axis_names=("i",))):
+# with jax.set_mesh(Mesh(create_device_mesh((jax.device_count(),)), axis_names=("i",))):
 #     x = jax.random.normal(jax.random.key(0), (100,))
 #     y = jax.random.normal(jax.random.key(1), (100,))
 #     print(smap(g, in_axes=0, out_axes=0, axis_name="i")(x,y))

@@ -96,7 +96,7 @@ class DataAnnealingSchedule(NamedTuple):
     def prior_mask(self) -> AnnealingMask:
         prior_data_annealing: AnnealingMask = dict()
         if len(self.data_annealing) > 0:
-            prior_data_annealing = jax.tree.map(lambda v: jax.lax.zeros_like_array(v[0,...]), self.data_annealing)
+            prior_data_annealing = jax.tree.map(lambda v: jax.numpy.zeros_like(v[0,...]), self.data_annealing)
             # comment out to be jittable
             # masks, _ = ravel_pytree(prior_data_annealing)
             # assert not masks.any()
@@ -315,7 +315,7 @@ class SMC:
             log_prob = jax.vmap(self.slp.log_prob, in_axes=(0,None,None))(particles.data, jnp.array(0.,float), prior_data_annealing)
 
         # print(log_particle_weights)
-        log_particle_weights = jax.lax.zeros_like_array(log_prob)
+        log_particle_weights = jax.numpy.zeros_like(log_prob)
             
         n_particles = particles.n_samples()
 
@@ -323,7 +323,7 @@ class SMC:
 
         mcmc_infoss = init_inference_infos_for_chains(self.rejuvination_regime, n_particles) if self.collect_inference_info else None
 
-        ta_log_likelihood = jax.lax.zeros_like_array(log_prob) if self.reweighting_type == ReweightingType.Bootstrap else None
+        ta_log_likelihood = jax.numpy.zeros_like(log_prob) if self.reweighting_type == ReweightingType.Bootstrap else None
 
         init_state = SMCState(jnp.array(0,int), particles.data, log_particle_weights, ta_log_likelihood, log_prob, mcmc_infoss)
         smc_data = SMCStepData(smc_keys, self.tempereture_schedule.temperature, self.data_annealing_schedule.data_annealing)

@@ -61,7 +61,7 @@ plt.show()
 @jax.jit
 def cdf(x, qs, weights: jax.Array):
     def _cdf(q):
-        return jnp.where(x < q, weights, jax.lax.zeros_like_array(weights)).sum()
+        return jnp.where(x < q, weights, jax.numpy.zeros_like(weights)).sum()
     return jax.lax.map(_cdf, qs)
 
 def cdf_cruncher(qs, N, M):

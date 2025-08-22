@@ -256,7 +256,7 @@ from jax._src.shard_map import smap
 
 if "smap" in experiments:
     t0 = time.monotonic()
-    with jax.sharding.use_mesh(mesh):
+    with jax.set_mesh(mesh):
         # this does not work
         # last_state, res = smap(chain, in_axes=(_axes,CHAIN_AXIS), out_axes=(_axes,CHAIN_AXIS), axis_name="i")(initial_states, two_d_keys)
         # have to vmap to batch smap is just a shard_map wrapper
@@ -269,7 +269,7 @@ if "smap" in experiments:
 
 if "smap fkernel" in experiments:
     t0 = time.monotonic()
-    with jax.sharding.use_mesh(mesh):
+    with jax.set_mesh(mesh):
         last_state, res = jax.lax.scan(smap(fkernel, in_axes=(_axes,None), out_axes=(_axes,0), axis_name="i"), initial_states, keys)
     print(res["x"])
     print(res["x"].shape, last_state.position["x"].shape) # always puts chain at axis 1

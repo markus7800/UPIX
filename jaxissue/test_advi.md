@@ -132,7 +132,7 @@ def logdensity(x):
     lp = jax.scipy.stats.norm.logpdf(lengthscale) + jax.scipy.stats.norm.logpdf(amplitude) + jax.scipy.stats.norm.logpdf(noise)
     k = SquaredExponential(lengthscale, amplitude)
     cov_matrix = k.eval_cov_vec(xs) + noise * jnp.eye(xs.size)
-    return lp + jax.scipy.stats.multivariate_normal.logpdf(ys, jax.lax.zeros_like_array(xs), cov_matrix)
+    return lp + jax.scipy.stats.multivariate_normal.logpdf(ys, jax.numpy.zeros_like(xs), cov_matrix)
 
 
 OPTIMIZER_STATE = TypeVar("OPTIMIZER_STATE")
@@ -173,7 +173,7 @@ class Meanfield:
     def __init__(self, X, init_sigma: float = 1.) -> None:
         flat_X, unravel_fn = jax.flatten_util.ravel_pytree(X)
         self.n_latents = flat_X.shape[0]
-        self.mu = jax.lax.zeros_like_array(flat_X)
+        self.mu = jax.numpy.zeros_like(flat_X)
         self.omega = jax.lax.full_like(flat_X, jnp.log(init_sigma))
         self.unravel_fn = unravel_fn
     def get_params(self) -> jax.Array:

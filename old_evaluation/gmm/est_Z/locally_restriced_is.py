@@ -34,7 +34,7 @@ def lis(K: int, n_chains:int = 10, n_samples_per_chain: int = 10_000):
     #     MCMCStep(SingleVariable("w"), RW(w_proposer)),
     #     MCMCStep(SingleVariable("mus"), RW(lambda x: dist.Normal(x, 1.0), sparse_numvar=2)),
     #     MCMCStep(SingleVariable("vars"), RW(lambda x: dist.LeftTruncatedDistribution(dist.Normal(x, 1.0), low=0.), sparse_numvar=2)),
-    #     # MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.lax.zeros_like_array(x), K), elementwise=True)),
+    #     # MCMCStep(SingleVariable("zs"), RW(lambda x: dist.DiscreteUniform(jax.numpy.zeros_like(x), K), elementwise=True)),
     # )
 
 

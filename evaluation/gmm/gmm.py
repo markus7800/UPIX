@@ -91,9 +91,7 @@ class RJMCMCTransitionProbEstimate(LogWeightEstimate):
 class DCCConfig(MCMCDCC[T]):
     def __init__(self, model: Model, return_map: Callable[[Trace], T] = lambda trace: trace, *ignore, verbose=0, **config_kwargs) -> None:
         super().__init__(model, return_map, *ignore, verbose=verbose, **config_kwargs)
-        if self.pconfig.vectorisation in (VectorisationType.GlobalSMAP, VectorisationType.LocalSMAP):
-            tqdm.write(bcolors.FAIL+"smap does currently not work because of Dirichlet random number generation, use pmap instead"+bcolors.ENDC)
-        
+
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         return MCMCSteps(
             MCMCStep(SingleVariable("w"), MH(WProposal(delta, slp.decision_representative["K"].item()))),

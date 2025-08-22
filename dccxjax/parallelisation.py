@@ -97,7 +97,7 @@ def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, vector
         
 def parallel_run(fn: Callable[..., FUNCTION_RET_TYPE], args: Tuple, batch_axis_size: int, vectorisation: VectorisationType) -> FUNCTION_RET_TYPE:
     if vectorisation == VectorisationType.LocalSMAP or vectorisation == VectorisationType.GlobalSMAP:
-        with jax.sharding.use_mesh(create_default_device_mesh(batch_axis_size)):
+        with jax.set_mesh(create_default_device_mesh(batch_axis_size)):
             return jax.device_get(fn(*args)) # device_get to unshard output
     else:
         return fn(*args)
