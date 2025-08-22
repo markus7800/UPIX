@@ -145,9 +145,10 @@ if __name__ == "__main__":
     title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
     print(title)
 
-    plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
-    plt.title(title)
-    plt.show()
+    if args.show_plots:
+        plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
+        plt.title(title)
+        plt.show()
 
 
 # python3 evaluation/pedestrian/run_scale.py sequential smap_local 8 32768 100 --show_plots -host_device_count 8

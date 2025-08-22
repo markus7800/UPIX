@@ -7,7 +7,7 @@ from jax.sharding import Mesh
 from jax.experimental.mesh_utils import create_device_mesh
 from dccxjax.utils import bcolors, maybe_jit_warning, JitVariationTracker
 from typing import Callable, TypeVar, Tuple
-from dccxjax.jax_utils import smap_vmap, pmap_vmap, batch_func_args, unbatch_output
+from dccxjax.jax_utils import batched_vmap, smap_vmap, pmap_vmap, batch_func_args, unbatch_output
 from dccxjax.types import IntArray
 
 __all__ = [
@@ -30,6 +30,7 @@ class ParallelisationType(Enum):
 class VectorisationType(Enum):
     LocalVMAP = auto()
     GlobalVMAP = auto()
+    GlobalBatchedVMAP = auto()
     PMAP = auto()
     LocalSMAP = auto()
     GlobalSMAP = auto()
@@ -40,6 +41,7 @@ class ParallelisationConfig:
     vectorisation: VectorisationType = VectorisationType.GlobalVMAP
     num_workers: int = os.cpu_count() or 1
     cpu_affinity: bool = False
+    batch_size: int = 0
     environ: Dict[str, str] = field(default_factory= lambda: {
         "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
         "OMP_NUM_THREADS": "1",
@@ -76,11 +78,13 @@ def create_default_device_mesh(dim: int):
 
 FUNCTION_TYPE = TypeVar("FUNCTION_TYPE", bound=Callable)
 FUNCTION_RET_TYPE = TypeVar("FUNCTION_RET_TYPE")
-def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, vectorisation: VectorisationType) -> FUNCTION_TYPE:
+def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, vectorisation: VectorisationType, batch_size: int) -> FUNCTION_TYPE:
     if vectorisation == VectorisationType.LocalVMAP:
         return jax.jit(fn) # type: ignore
     elif vectorisation == VectorisationType.GlobalVMAP:
         return jax.jit(jax.vmap(fn, in_axes=in_axes, out_axes=out_axes)) # type: ignore
+    elif vectorisation == VectorisationType.GlobalBatchedVMAP:
+        return jax.jit(batched_vmap(fn, batch_size=batch_size, in_axes=in_axes, out_axes=out_axes)) # type: ignore
     elif vectorisation == VectorisationType.PMAP:
         device_count = jax.device_count()
         if batch_axis_size <= device_count:
@@ -114,7 +118,7 @@ from dccxjax.progress_bar import ProgressbarManager, _add_progress_bar
 import jax.experimental
 
 def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]],
-                   carry_axes, pmap_data_axes, batch_axis_size: int, vectorisation: VectorisationType,
+                   carry_axes, pmap_data_axes, batch_axis_size: int, batch_size: int, vectorisation: VectorisationType,
                    progressbar_mngr: ProgressbarManager | None = None, get_iternum_fn: Callable[[SCAN_CARRY_TYPE], IntArray] | None = None):
     
     # tracker = JitVariationTracker("_vectorise_scan")
@@ -130,6 +134,8 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
             _step = step
         elif vectorisation == VectorisationType.GlobalVMAP:
             _step = jax.vmap(step, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
+        elif vectorisation == VectorisationType.GlobalBatchedVMAP:
+            _step = batched_vmap(step, batch_size=batch_size, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
         elif vectorisation == VectorisationType.PMAP:
             if batch_axis_size <= device_count:
                 _step = step
@@ -162,7 +168,7 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
                 batched_out = pfun(*batched_args)
                 return unbatch_output(batched_out, (carry_axes,pmap_data_axes), batch_size, num_batches)
             return _batched_scan
-            
+        
     else:
         return _scan
         

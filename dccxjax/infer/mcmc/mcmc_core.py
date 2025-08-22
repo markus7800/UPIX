@@ -402,8 +402,14 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
             scan_fn = self.cached_mcmc_scan
         else:  
             mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
-            scan_fn = vectorise_scan(self.kernel, carry_axes=mcmc_state_axes, pmap_data_axes=1, batch_axis_size=self.n_chains, vectorisation=self.pconfig.vectorisation,
-                                        progressbar_mngr=self.progressbar_mngr if self.show_progress else None, get_iternum_fn=lambda carry: carry.iteration)
+            scan_fn = vectorise_scan(self.kernel,
+                                     carry_axes=mcmc_state_axes,
+                                     pmap_data_axes=1,
+                                     batch_axis_size=self.n_chains,
+                                     batch_size=self.pconfig.batch_size,
+                                     vectorisation=self.pconfig.vectorisation,
+                                     progressbar_mngr=self.progressbar_mngr if self.show_progress else None,
+                                     get_iternum_fn=lambda carry: carry.iteration)
             self.cached_mcmc_scan = scan_fn
         
         

@@ -8,19 +8,25 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
     vectorisation: str = args.vectorisation
     num_workers: int = int(args.num_workers)
     assert parallelisation in ("sequential", "cpu_multiprocess", "jax_devices")
-    assert vectorisation in ("vmap_local", "vmap_global", "pmap", "smap_global", "smap_local")
+    assert vectorisation in ("vmap_local", "vmap_global", "vmap_batched_global", "pmap", "smap_global", "smap_local")
     if parallelisation != "sequential" and not vectorisation.startswith("vmap"):
-        print(f"Ignoring vectoristion '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
+        print(f"Ignoring vectorisation '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
+    if vectorisation != "vmap_batched_global" and args.batch_size > 0:
+        print(f"Ignoring batch_size {args.batch_size} for vectorisation '{vectorisation}'")
     if parallelisation == "sequential":
         if num_workers > 0:
             print(f"Ignoring num_workers '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
         if vectorisation == "vmap_local":
             return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.LocalVMAP)
-        elif vectorisation == "vmap_global":
+        if vectorisation == "vmap_global":
             return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalVMAP)
-        else:
-            if jax.device_count() == 1:
-                print(f"Warning: Vectorisation is set to'{vectorisation}' but only 1 jax devices is available.")
+        if vectorisation == "vmap_batched_global":
+            batch_size = args.batch_size
+            assert batch_size > 0, "Batched vmap but batchsize = 0"
+            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalBatchedVMAP, batch_size=batch_size)
+        
+        if jax.device_count() == 1:
+            print(f"Warning: Vectorisation is set to'{vectorisation}' but only 1 jax devices is available.")
         if vectorisation == "pmap":
             return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.PMAP)
         if vectorisation == "smap_local":
