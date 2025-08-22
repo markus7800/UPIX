@@ -10,9 +10,14 @@ def get_arg_parser():
     parser.add_argument("-host_device_count", default=1, required=False)
     parser.add_argument("-num_workers", default=0, required=False)
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument("-omp", default=0, type=int, help="Number of OMP threads to use")
+
     return parser
 
 def setup_devices_from_args(args):
+    if args.omp > 0:
+         os.environ["OMP_NUM_THREADS"] = str(args.omp)
+
     if args.cpu:
         print("Force run on CPU.")
         set_platform("cpu")
