@@ -30,6 +30,21 @@ class StaticDCCConfig(DCCConfig):
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         inactive_slps.extend(active_slps)
         active_slps.clear()
+    
+    def get_initial_positions(self, slp: SLP, rng_key: PRNGKey) -> StackedTrace:
+        k = slp.decision_representative["K"].item()
+        @jax.jit
+        @jax.vmap
+        def get_positions(key: PRNGKey):
+            trace, _ = slp.generate(key, {"K": jnp.array(k,int)})
+            return trace
+        traces = get_positions(jax.random.split(rng_key, self.mcmc_n_chains))
+        
+        # check if all initial positions are in SLP support
+        # _, _, pcs = jax.vmap(slp._log_prior_likeli_pathcond, in_axes=(0,None))(traces, dict())
+        # tqdm.write(f"Mean pc {jnp.mean(pcs)}.")
+        
+        return StackedTrace(traces, self.mcmc_n_chains)
 
 
 if __name__ == "__main__":

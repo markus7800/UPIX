@@ -94,6 +94,10 @@ class DCCConfig(MCMCDCC[T]):
         for t in range(N_STEPS):
             traces[f"step_{t+1}"] = steps[:,t]
             
+        # check if all initial positions are in SLP support
+        # _, _, pcs = jax.vmap(slp._log_prior_likeli_pathcond, in_axes=(0,None))(traces, dict())
+        # tqdm.write(f"Mean pc {jnp.mean(pcs)}.")
+            
         return StackedTrace(traces, self.mcmc_n_chains)
     
 
