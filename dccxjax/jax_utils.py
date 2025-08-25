@@ -5,6 +5,7 @@ from typing import TypeVar, Callable, Sequence, Any, Tuple
 from jax._src.shard_map import smap
 from jax.tree_util import tree_flatten
 from jax._src.api_util import flatten_axes
+from dccxjax.utils import log_warn
 
 __all__ = [
     "batched_vmap",
@@ -34,7 +35,6 @@ def batch_func_args(args, in_axes, batch_size: int):
     batch_elems = int(num_batches * batch_size)
 
     # if remainder != 0 and num_batches > 0:
-    print(f"Warning: batching function with num_batches={num_batches} and remainder={remainder}")
     # assert remainder == 0
     # print(f"{batch_size=} {batch_axis_size=} {num_batches=}")
     
@@ -59,7 +59,7 @@ def batch_func_args(args, in_axes, batch_size: int):
     else:
         remainder_args = None
         
-    return batched_args, remainder_args, int(num_batches)
+    return batched_args, remainder_args, int(num_batches), int(remainder)
 
 def unbatch_output(batched_out, out_axes, batch_size: int, num_batches: int):
     out_leaves, out_tree = tree_flatten(batched_out)
@@ -75,6 +75,15 @@ def unbatch_output(batched_out, out_axes, batch_size: int, num_batches: int):
     out = out_tree.unflatten(unbatched_leaves)
     # print("out:", jax.tree.map(lambda v: v.shape, out))
     return out
+
+def concatentate_output(x, y, dimension: int, out_axes):
+    x_leaves, out_tree = tree_flatten(x)
+    y_leaves, out_tree_2 = tree_flatten(y)
+    assert out_tree == out_tree_2
+    out_axes_flat = flatten_axes("concatentate_output out_axes", out_tree, out_axes)
+    concatenated_leaves = [x if axis is None else jax.lax.concatenate((x, y), dimension) for x, y, axis in zip(x_leaves, y_leaves, out_axes_flat)]
+    return out_tree.unflatten(concatenated_leaves)
+    
 
 def swap_axis_perm(arr: jax.Array, axis1: int, axis2: int):
     all_axes = list(range(arr.ndim))
@@ -109,13 +118,15 @@ def put_batch_axis_back(args, batch_axes):
 def batched_vmap(fun: FUN_TYPE, batch_size: int, in_axes: int | None | Sequence[Any] = 0, out_axes: Any = 0) -> FUN_TYPE:
     vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
     def mapped_fun(*args):
-        batched_args, remainder_args, num_batches = batch_func_args(args, in_axes, batch_size)
+        batched_args, remainder_args, num_batches, remainder = batch_func_args(args, in_axes, batch_size)
+        if (num_batches > 0 and remainder > 0):
+            log_warn(f"Warning: batching vmap with num_batches={num_batches} and remainder={remainder}")
         # print(f"batched_args {jax.tree.map(lambda v: v.shape, batched_args)}", num_batches)
         # print(f"remainder_args {jax.tree.map(lambda v: v.shape, remainder_args)}")
         # TODO: replace in future if this gets implemented: https://github.com/jax-ml/jax/issues/30528
         if remainder_args is not None:
             remainder_out = vfun(*remainder_args)
-            # print(f"remainder_out {jax.tree.map(lambda v: v.shape, batched_out)}")
+            # print(f"remainder_out {jax.tree.map(lambda v: v.shape, remainder_out)}")
         else:
             remainder_out = None
             
@@ -127,11 +138,12 @@ def batched_vmap(fun: FUN_TYPE, batch_size: int, in_axes: int | None | Sequence[
             unbatched_out = unbatch_output(batched_out, out_axes, batch_size, num_batches)
             
             if remainder_out is not None:
-                return jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), dimension=0), unbatched_out, remainder_out)
+                return concatentate_output(unbatched_out, remainder_out, 0, out_axes)
             else:
                 return unbatched_out
             
         else:
+            assert remainder_out is not None
             return remainder_out
             
     return mapped_fun # type: ignore
@@ -153,7 +165,9 @@ def pmap_vmap(fun: FUN_TYPE,
     pvfun = jax.pmap(vfun, axis_name=axis_name, in_axes=in_axes, out_axes=out_axes)
     
     def mapped_fun(*args):
-        batched_args, remainder_args, num_batches = batch_func_args(args, in_axes, batch_size)
+        batched_args, remainder_args, num_batches, remainder = batch_func_args(args, in_axes, batch_size)
+        if (remainder > 0):
+            log_warn(f"Warning: pmap vmap with num_batches={num_batches} and remainder={remainder}")
         
         if remainder_args is not None:
             remainder_out = pfun(*remainder_args)
@@ -165,10 +179,11 @@ def pmap_vmap(fun: FUN_TYPE,
             unbatched_out = unbatch_output(batched_out, out_axes, batch_size, num_batches)
             
             if remainder_out is not None:
-                return jax.tree.map(lambda x, y: jax.lax.concatenate((x, y), dimension=0), unbatched_out, remainder_out)
+                return concatentate_output(unbatched_out, remainder_out, 0, out_axes)
             else:
                 return unbatched_out
         else:
+            assert remainder_out is not None
             return remainder_out
         
     return mapped_fun # type:ignore

@@ -16,7 +16,12 @@ __all__ = [
     "track_compilation_time",
     "CompilationTimeTracker",
     "broadcast_jaxtree",
-    "timed"
+    "timed",
+    "log_debug",
+    "log_info",
+    "log_warn",
+    "log_error",
+    "log_critical",
 ]
 
 class bcolors:
@@ -49,6 +54,20 @@ def setup_logging(level: int | str):
     handler.setFormatter(logging.Formatter('%(name)s - %(levelname)s: %(message)s'))
     logger.addHandler(handler)
 
+def log(level: int, msg: str):
+    with logging_redirect_tqdm(loggers=[logger]):
+        logger.log(level, msg)
+def log_debug(msg: str):
+    log(logging.DEBUG, msg)
+def log_info(msg: str):
+    log(logging.INFO, msg)
+def log_warn(msg: str):
+    log(logging.WARN, msg)
+def log_error(msg: str):
+    log(logging.ERROR, msg)
+def log_critical(msg: str):
+    log(logging.CRITICAL, msg)
+
 class JitVariationTracker:
     def __init__(self, name: str) -> None:
         self.name = name
@@ -72,14 +91,13 @@ def maybe_jit_warning(tracker: JitVariationTracker, input: Any):
     input_str = get_dtype_shape_str_of_tree(input)
     msg = f"Compile {tracker.name} with input: {input_str} and axis-env: {axis_env_str}"
     # msg += "\n context:"+repr(trace_context())
-    with logging_redirect_tqdm(loggers=[logger]):
-        if tracker.has_variation(axis_env_str):
-            if logger.level <= logging.DEBUG:
-                tabs = " " * (len("dccxjax - WARNING: ") + len(f"Compile {tracker.name} with input:") - 8)
-                msg += "".join([f"\n{tabs}prev-input: {prev_input}" for prev_input in tracker.get_variations(axis_env_str)])
-            logger.warning("Re-" + msg)
-        else:
-            logger.info(msg)
+    if tracker.has_variation(axis_env_str):
+        if logger.level <= logging.DEBUG:
+            tabs = " " * (len("dccxjax - WARNING: ") + len(f"Compile {tracker.name} with input:") - 8)
+            msg += "".join([f"\n{tabs}prev-input: {prev_input}" for prev_input in tracker.get_variations(axis_env_str)])
+        log_warn("Re-" + msg)
+    else:
+        log_info(msg)
     tracker.add_variation(axis_env_str, input_str)
 
 def get_dtype_shape_str_of_tree(tree):

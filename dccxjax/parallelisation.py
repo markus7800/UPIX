@@ -5,10 +5,11 @@ from enum import Enum, auto
 import jax
 from jax.sharding import Mesh
 from jax.experimental.mesh_utils import create_device_mesh
-from dccxjax.utils import bcolors, maybe_jit_warning, JitVariationTracker
+from dccxjax.utils import bcolors, maybe_jit_warning, JitVariationTracker, log_warn
 from typing import Callable, TypeVar, Tuple
-from dccxjax.jax_utils import batched_vmap, smap_vmap, pmap_vmap, batch_func_args, unbatch_output
+from dccxjax.jax_utils import batched_vmap, smap_vmap, pmap_vmap, batch_func_args, unbatch_output, concatentate_output
 from dccxjax.types import IntArray
+from functools import partial
 
 __all__ = [
     "ParallelisationType",
@@ -90,7 +91,7 @@ def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, vector
         if batch_axis_size <= device_count:
             return jax.pmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes)
         else:
-            assert batch_axis_size % device_count == 0
+            # assert batch_axis_size % device_count == 0
             batch_size = batch_axis_size // device_count
             return pmap_vmap(fn, axis_name=SHARDING_AXIS, batch_size=batch_size, in_axes=in_axes, out_axes=out_axes)
     elif vectorisation == VectorisationType.LocalSMAP:
@@ -121,8 +122,8 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
                    carry_axes, pmap_data_axes, batch_axis_size: int, vmap_batch_size: int, vectorisation: VectorisationType,
                    progressbar_mngr: ProgressbarManager | None = None, get_iternum_fn: Callable[[SCAN_CARRY_TYPE], IntArray] | None = None):
     
-    # tracker = JitVariationTracker("_vectorise_scan")
-    device_count = jax.device_count()
+    if vectorisation == VectorisationType.PMAP:
+        return vectorise_scan_pmap(step, carry_axes, pmap_data_axes, batch_axis_size, vmap_batch_size, vectorisation, progressbar_mngr, get_iternum_fn)
     
     @jax.jit
     def _scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
@@ -154,23 +155,68 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
             jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, get_iternum_fn(init))
  
         return jax.lax.scan(_step, init, data)
-        
-        
-    if vectorisation == VectorisationType.PMAP:
-        if batch_axis_size <= device_count:
-            return jax.pmap(_scan, axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
+    
+    return _scan
+   
+
+def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]],
+                   carry_axes, pmap_data_axes, batch_axis_size: int, vmap_batch_size: int, vectorisation: VectorisationType,
+                   progressbar_mngr: ProgressbarManager | None = None, get_iternum_fn: Callable[[SCAN_CARRY_TYPE], IntArray] | None = None):
+         
+    assert vectorisation == VectorisationType.PMAP
+    
+    def _scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE, vmap_step: bool) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
+        if progressbar_mngr is not None:
+            progressbar_mngr.start_progress()
+            
+        if vmap_step:
+            _step = jax.vmap(step, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
         else:
-            assert batch_axis_size % device_count == 0
-            batch_size = batch_axis_size // device_count
-            def _batched_scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
-                args = (init, data)
-                batched_args, remainder_args, num_batches = batch_func_args(args, (carry_axes,pmap_data_axes), batch_size)
-                assert batched_args is not None and remainder_args is None
-                pfun = jax.pmap(_scan, axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
-                batched_out = pfun(*batched_args)
-                return unbatch_output(batched_out, (carry_axes,pmap_data_axes), batch_size, num_batches)
-            return _batched_scan
-        
+            _step = step
+            
+        if progressbar_mngr is not None:
+            assert get_iternum_fn is not None
+            _step = _add_progress_bar(_step, get_iternum_fn, progressbar_mngr, progressbar_mngr.num_samples)
+            jax.experimental.io_callback(progressbar_mngr._init_tqdm, None, get_iternum_fn(init))
+ 
+        return jax.lax.scan(_step, init, data)
+    
+    device_count = jax.device_count()
+    # special case, because we want to keep pmap at top level and do not want to put it into scan
+    # we cannot use pmap_vmap at top level, because to use progressbar we cannot vmap scan 
+    if batch_axis_size <= device_count:
+        return jax.pmap(jax.jit(partial(_scan, vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
     else:
-        return _scan
-        
+        # assert batch_axis_size % device_count == 0
+        batch_size = device_count
+        def _batched_scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
+            args = (init, data)
+            batched_args, remainder_args, num_batches, remainder = batch_func_args(args, (carry_axes,pmap_data_axes), batch_size)
+            if (remainder > 0):
+                log_warn(
+                    f"Warning: vectorise scan with pmap and positive remainder={remainder}. "
+                    "Causes scan to be compiled and run twice. "
+                    f"This can be avoided by having {batch_axis_size=} % device_count == 0."
+                )
+            
+            assert batched_args is not None
+            if remainder_args is not None:
+                remainder_pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
+                # remainder_pfun = jax.jit(partial(_scan,vmap_step=True))
+                # removing jax.block_until_ready messes up progressbar. pmap can be dispatched asyncronously?
+                remainder_out = jax.block_until_ready(remainder_pfun(*remainder_args))
+            else:
+                remainder_out = None
+            
+            pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=True)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
+            batched_out = pfun(*batched_args)
+            out_axes = (carry_axes,pmap_data_axes)
+            unbatched_out = unbatch_output(batched_out, out_axes, batch_size, num_batches)
+            
+            if remainder_out is not None:
+                return concatentate_output(unbatched_out, remainder_out, 0, out_axes)
+            else:
+                return unbatched_out
+            
+        return _batched_scan
+            
