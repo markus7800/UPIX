@@ -16,7 +16,7 @@ from dccxjax.infer.variable_selector import AllVariables
 from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
 from tqdm.auto import tqdm
 from dccxjax.jax_utils import smap_vmap, pmap_vmap
-from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, SHARDING_AXIS, VectorisationType, vectorise, parallel_run, vectorise_scan
+from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, SHARDING_AXIS, VectorisationType, vectorise, parallel_run, vectorise_scan, batched_vmap
 
 __all__ = [
     "MCMCRegime",
@@ -227,7 +227,7 @@ from jax.sharding import Mesh, PartitionSpec as P
 from jax._src.shard_map import smap
 
 def get_mcmc_kernel(
-        slp: SLP, regime: MCMCRegime, vectorisation: str, *,
+        slp: SLP, regime: MCMCRegime, vectorisation: str, vmap_batch_size: int, *,
         collect_inference_info: bool = False,
         return_map: Callable[[MCMCState], MCMC_COLLECT_TYPE] = lambda _: None) -> Tuple[MCMCKernel[MCMC_COLLECT_TYPE], Set[str]]:
     assert vectorisation in ("none", "vmap", "smap")
@@ -277,7 +277,10 @@ def get_mcmc_kernel(
                 else:
                     kernel_keys = jax.random.split(kernel_key, t)
                 if vectorisation == "vmap":
-                    new_kernel_state = jax.vmap(kernel, in_axes=(0,None,None,0), out_axes=0)(kernel_keys, state.temperature, state.data_annealing, kernel_state) # (1)
+                    if vmap_batch_size > 0:
+                        new_kernel_state = batched_vmap(kernel, batch_size=vmap_batch_size, in_axes=(0,None,None,0), out_axes=0)(kernel_keys, state.temperature, state.data_annealing, kernel_state) # (1)
+                    else:
+                        new_kernel_state = jax.vmap(kernel, in_axes=(0,None,None,0), out_axes=0)(kernel_keys, state.temperature, state.data_annealing, kernel_state) # (1)
                 else:
                     new_kernel_state = smap_vmap(kernel, axis_name=SHARDING_AXIS, in_axes=(0,None,None,0), out_axes=0)(kernel_keys, state.temperature, state.data_annealing, kernel_state)
             else:
@@ -307,17 +310,19 @@ def get_mcmc_kernel(
     return _one_step, mcmc_carry_stat_names
 
 
-# this with (2) seems to be a lot slower than (1)
-# kernel had to be created with vectorised=False
-def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE]) -> MCMCKernel[MCMC_COLLECT_TYPE]:
+# kernel had to be created with vectorised="none"
+def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE], vmap_batch_size: int) -> MCMCKernel[MCMC_COLLECT_TYPE]:
     jit_tracker = JitVariationTracker(f"vectorise <Kernel {hex(id(kernel))}>")
     @jax.jit
     def _vectorised_kernel(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
         n_chains = state.log_prob.shape[0]
-        maybe_jit_warning(jit_tracker, n_chains)
+        maybe_jit_warning(jit_tracker, (state, rng_key))
         chain_keys = jax.random.split(rng_key, n_chains)
         mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
-        return jax.vmap(kernel, in_axes=(mcmc_state_axes,0), out_axes=(mcmc_state_axes,0))(state, chain_keys)
+        if vmap_batch_size > 0:
+            return batched_vmap(kernel, batch_size=vmap_batch_size, in_axes=(mcmc_state_axes,0), out_axes=(mcmc_state_axes,0))(state, chain_keys)
+        else:
+            return jax.vmap(kernel, in_axes=(mcmc_state_axes,0), out_axes=(mcmc_state_axes,0))(state, chain_keys)
     return _vectorised_kernel
 
 class MCMC(Generic[MCMC_COLLECT_TYPE]):
@@ -362,7 +367,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
                 self.vectorisation = "smap"
             else:
                 self.vectorisation = "none"
-            kernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, collect_inference_info=collect_inference_info, vectorisation=self.vectorisation, return_map=return_map)
+            kernel, init_carry_stat_names = get_mcmc_kernel(slp, regime, collect_inference_info=collect_inference_info, vectorisation=self.vectorisation, vmap_batch_size=self.pconfig.vmap_batch_size, return_map=return_map)
 
         self.kernel: MCMCKernel[MCMC_COLLECT_TYPE] = kernel
         self.init_carry_stat_names: Set[str] = init_carry_stat_names
@@ -406,7 +411,7 @@ class MCMC(Generic[MCMC_COLLECT_TYPE]):
                                      carry_axes=mcmc_state_axes,
                                      pmap_data_axes=1,
                                      batch_axis_size=self.n_chains,
-                                     batch_size=self.pconfig.batch_size,
+                                     vmap_batch_size=self.pconfig.vmap_batch_size,
                                      vectorisation=self.pconfig.vectorisation,
                                      progressbar_mngr=self.progressbar_mngr if self.show_progress else None,
                                      get_iternum_fn=lambda carry: carry.iteration)

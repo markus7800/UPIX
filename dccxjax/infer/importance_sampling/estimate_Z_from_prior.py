@@ -20,7 +20,7 @@ def estimate_log_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey, pconfi
         _gen_likelihood_weight = smap_vmap(slp._gen_likelihood_weight, axis_name=SHARDING_AXIS)
     else:
         _gen_likelihood_weight = slp._gen_likelihood_weight
-    vectorised_fn = vectorise(_gen_likelihood_weight, 0, 0, N, pconfig.vectorisation, batch_size=pconfig.batch_size)    
+    vectorised_fn = vectorise(_gen_likelihood_weight, 0, 0, N, pconfig.vectorisation, vmap_batch_size=pconfig.vmap_batch_size)    
     log_weights, in_support = parallel_run(vectorised_fn, (rng_keys,), N, pconfig.vectorisation)
     
     # log_weights, in_support = jax.vmap(slp._gen_likelihood_weight)(rng_keys)

@@ -18,7 +18,7 @@ import jax.experimental
 from dccxjax.infer.variable_selector import VariableSelector, PredicateSelector
 from dccxjax.utils import broadcast_jaxtree
 from dccxjax.jax_utils import smap_vmap
-from dccxjax.parallelisation import ParallelisationConfig, SHARDING_AXIS, VectorisationType, vectorise_scan, parallel_run
+from dccxjax.parallelisation import ParallelisationConfig, SHARDING_AXIS, VectorisationType, vectorise_scan, parallel_run, batched_vmap
 from tqdm.auto import tqdm
 
 __all__ = [
@@ -226,7 +226,7 @@ class ADVIState(NamedTuple, Generic[OPTIMIZER_STATE]):
     iteration: IntArray
     optimizer_state: OPTIMIZER_STATE
 
-def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE], L: int, vectorisation: str):
+def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE], L: int, vectorisation: str, vmap_batch_size: int):
     assert vectorisation in ("vmap", "smap", "psum")
     # log_prob_fn = gibbs_model.tempered_log_prob(jnp.array(1.,float), {})
     log_prob_fn = slp.log_prob
@@ -238,7 +238,10 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
             elbo = lp - lq
         else:
             if vectorisation in "vmap":
-                X, lq = jax.vmap(guide.sample_and_log_prob)(jax.random.split(rng_key, L))
+                if vmap_batch_size > 0:
+                    X, lq = batched_vmap(guide.sample_and_log_prob, batch_size=vmap_batch_size)(jax.random.split(rng_key, L))
+                else:
+                    X, lq = jax.vmap(guide.sample_and_log_prob)(jax.random.split(rng_key, L))
                 lp = jax.vmap(log_prob_fn)(X)
                 elbo = (lp - lq).sum() / L
             elif vectorisation in "smap":
@@ -305,10 +308,10 @@ class ADVI(Generic[OPTIMIZER_STATE]):
         elif pconfig.vectorisation == VectorisationType.LocalSMAP:
             self.vectorisation = "smap"
         else:
-            assert pconfig.vectorisation == VectorisationType.GlobalVMAP or pconfig.vectorisation == VectorisationType.GlobalBatchedVMAP
+            assert pconfig.vectorisation == VectorisationType.GlobalVMAP
             raise Exception(f"Vectoristiation: Global vmap not supported")
 
-        self.advi_step = make_advi_step(slp, guide, optimizer, L, self.vectorisation)
+        self.advi_step = make_advi_step(slp, guide, optimizer, L, self.vectorisation, self.pconfig.vmap_batch_size)
 
         self.cached_advi_scan: Optional[Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]] = None
 
@@ -331,7 +334,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
                                      carry_axes=advi_state_axes,
                                      pmap_data_axes=1,
                                      batch_axis_size=self.L,
-                                     batch_size=self.pconfig.batch_size,
+                                     vmap_batch_size=self.pconfig.vmap_batch_size,
                                      vectorisation=self.pconfig.vectorisation,
                                      progressbar_mngr=self.progressbar_mngr if self.show_progress else None,
                                      get_iternum_fn=lambda carry: carry.iteration)

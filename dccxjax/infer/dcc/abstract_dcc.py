@@ -151,10 +151,11 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         dcc_t0 = time.monotonic()
         
         devices_str = ",\n    ".join(map(str, jax.devices()))
+        batch_str = ', batched='+str(self.pconfig.vmap_batch_size) if self.pconfig.vmap_batch_size > 0 else ""
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalVMAP:
-            tqdm.write(f"parallelisation=Sequential(local vmap, device={get_default_device()})")
+            tqdm.write(f"parallelisation=Sequential(local vmap{batch_str}, device={get_default_device()})")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.GlobalVMAP:
-            tqdm.write(f"parallelisation=Sequential(global vmap, device={get_default_device()})")
+            tqdm.write(f"parallelisation=Sequential(global vmap{batch_str}, device={get_default_device()})")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.PMAP:
             tqdm.write(f"parallelisation=Sequential(pmap, \ndevices=\n    {devices_str}\n)")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalSMAP:

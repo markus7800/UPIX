@@ -2,7 +2,7 @@ import jax
 from typing import NamedTuple, Tuple, Set, Dict, Callable, Optional
 from dccxjax.types import PRNGKey, Trace, FloatArray, IntArray, StackedTrace, BoolArray
 from dccxjax.core.model_slp import SLP, AnnealingMask
-from dccxjax.infer.mcmc.mcmc_core import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains
+from dccxjax.infer.mcmc.mcmc_core import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains, vectorise_kernel_over_chains
 from dccxjax.utils import broadcast_jaxtree
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
@@ -10,7 +10,7 @@ from jax.flatten_util import ravel_pytree
 import jax.experimental
 from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
 from tqdm.auto import tqdm
-from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType, vectorise_scan, parallel_run, smap_vmap, SHARDING_AXIS
+from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType, vectorise_scan, parallel_run, smap_vmap, SHARDING_AXIS, batched_vmap
 
 __all__ = [
     "ResampleType",
@@ -149,10 +149,13 @@ class SMCStepData(NamedTuple):
     data_annealing: AnnealingMask
 
 from functools import partial
-def get_smc_step(slp: SLP, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None], rejuvination_attempts: int, vectorisation: str) -> Callable[[SMCState, SMCStepData],Tuple[SMCState,FloatArray]]:
+def get_smc_step(slp: SLP, reweighting_type: ReweightingType, resampling: SMCResampling, rejuvinate_kernel: MCMCKernel[None], rejuvination_attempts: int, vectorisation: str, vmap_batch_size: int) -> Callable[[SMCState, SMCStepData],Tuple[SMCState,FloatArray]]:
     assert vectorisation in ("vmap", "smap")
     if vectorisation == "vmap":
-        _vmap = partial(jax.vmap, in_axes=(0,None), out_axes=0)
+        if vmap_batch_size > 0:
+            _vmap = partial(batched_vmap, batch_size=vmap_batch_size, in_axes=(0,None), out_axes=0)
+        else:
+            _vmap = partial(jax.vmap, in_axes=(0,None), out_axes=0)
     else:
         _vmap = partial(smap_vmap, axis_name=SHARDING_AXIS, in_axes=(0,None), out_axes=0)
         
@@ -272,14 +275,22 @@ class SMC:
         )
         self.pconfig = pconfig
         
-        assert pconfig.vectorisation in (VectorisationType.LocalVMAP, VectorisationType.LocalSMAP)
+        assert pconfig.vectorisation in (VectorisationType.LocalVMAP, VectorisationType.LocalSMAP, VectorisationType.GlobalVMAP)
         if pconfig.vectorisation == VectorisationType.LocalSMAP:
-            self.vectorisation = "smap"
+            mcmc_vectorisation = "smap"
+            smc_vectorisation = "smap"
+        elif pconfig.vectorisation == VectorisationType.LocalVMAP:
+            mcmc_vectorisation = "none" # can also use "vmap" here
+            smc_vectorisation = "vmap"
         else:
-            self.vectorisation = "vmap"
+            assert pconfig.vectorisation == VectorisationType.GlobalVMAP
+            raise Exception("Global VMAP not supported for SMC")
+            
         
-        rejuvination_kernel, rejuv_init_carry_stat_names = get_mcmc_kernel(slp, rejuvination_regime, collect_inference_info=collect_inference_info, vectorisation=self.vectorisation, return_map=lambda _: None)
+        rejuvination_kernel, rejuv_init_carry_stat_names = get_mcmc_kernel(slp, rejuvination_regime, collect_inference_info=collect_inference_info, vectorisation=mcmc_vectorisation, vmap_batch_size=self.pconfig.vmap_batch_size, return_map=lambda _: None)
         assert len(rejuv_init_carry_stat_names) == 0, "CarryStats in MCMC currently not supported."
+        if mcmc_vectorisation == "none":
+            rejuvination_kernel = vectorise_kernel_over_chains(rejuvination_kernel, self.pconfig.vmap_batch_size)
 
         self.rejuvination_regime = rejuvination_regime
         self.rejuvination_kernel: MCMCKernel[None] = rejuvination_kernel
@@ -304,7 +315,7 @@ class SMC:
         self.reweighting_type = reweighting_type
         self.resampling = resampling
 
-        self.smc_step = get_smc_step(slp, reweighting_type, resampling, rejuvination_kernel, self.rejuvination_attempts, self.vectorisation)
+        self.smc_step = get_smc_step(slp, reweighting_type, resampling, rejuvination_kernel, self.rejuvination_attempts, smc_vectorisation, self.pconfig.vmap_batch_size)
 
         self.cached_smc_scan: Optional[Callable[[SMCState,SMCStepData],Tuple[SMCState,FloatArray]]] = None
 
@@ -338,7 +349,7 @@ class SMC:
                                      carry_axes=smc_state_axes,
                                      pmap_data_axes=1,
                                      batch_axis_size=self.n_particles,
-                                     batch_size=self.pconfig.batch_size,
+                                     vmap_batch_size=self.pconfig.vmap_batch_size,
                                      vectorisation=self.pconfig.vectorisation,
                                      progressbar_mngr=self.progressbar_mngr if self.show_progress else None, 
                                      get_iternum_fn=lambda carry: carry.iteration)

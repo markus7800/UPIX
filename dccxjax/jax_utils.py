@@ -62,9 +62,9 @@ def swap_axis_perm(arr: jax.Array, axis1: int, axis2: int):
     all_axes[axis1], all_axes[axis2] = all_axes[axis2], all_axes[axis1]
     return all_axes
 
-def make_batch_axis_and_leading(args, batch_axes, num_batches: int):
+def make_batch_axis_leading(args, batch_axes, num_batches: int):
     leaves, tree = tree_flatten(args)
-    batch_axes_flat = flatten_axes("make_batch_axis_and_leading in_axes", tree, batch_axes)
+    batch_axes_flat = flatten_axes("make_batch_axis_leading in_axes", tree, batch_axes)
     
     transposed_args = tuple(
         jax.lax.broadcast(leaf, (num_batches,)) if axis is None else
@@ -91,10 +91,12 @@ def batched_vmap(fun: FUN_TYPE, batch_size: int, in_axes: int | None | Sequence[
     vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
     def mapped_fun(*args):
         batched_args, num_batches = batch_func_args(args, in_axes, batch_size)
-        # TODO: remove in future if this gets implemented: https://github.com/jax-ml/jax/issues/30528
-        batched_args = make_batch_axis_and_leading(batched_args, in_axes, num_batches)
+        # print(f"{jax.tree.map(lambda v: v.shape, batched_args)}", num_batches)
+        # TODO: replace in future if this gets implemented: https://github.com/jax-ml/jax/issues/30528
+        batched_args = make_batch_axis_leading(batched_args, in_axes, num_batches)
         _, batched_out = jax.lax.scan(lambda _, x: ((), vfun(*x)), (), batched_args)
-        batched_out =  put_batch_axis_back(batched_out, out_axes)
+        # print(f"{jax.tree.map(lambda v: v.shape, batched_out)}")
+        batched_out = put_batch_axis_back(batched_out, out_axes)
         return unbatch_output(batched_out, out_axes, batch_size, num_batches)
     return mapped_fun # type: ignore
 

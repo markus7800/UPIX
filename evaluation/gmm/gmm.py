@@ -141,8 +141,8 @@ class DCCConfig(MCMCDCC[T]):
             vectorisation = VectorisationType.GlobalSMAP
         
         batch_axis_size = last_inference_result.value_tree[1].size if last_inference_result.value_tree is not None else last_inference_result.last_state.log_prob.size
-        split = vectorise(_split, 0, 0, batch_axis_size, vectorisation)
-        merge = vectorise(_merge, 0, 0, batch_axis_size, vectorisation)
+        split = vectorise(_split, 0, 0, batch_axis_size, vectorisation, self.pconfig.vmap_batch_size)
+        merge = vectorise(_merge, 0, 0, batch_axis_size, vectorisation, self.pconfig.vmap_batch_size)
 
         def _task(rng_key: PRNGKey, last_inference_result: MCMCInferenceResult):
             if last_inference_result.value_tree is not None:

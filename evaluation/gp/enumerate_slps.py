@@ -57,5 +57,5 @@ def find_active_slps_through_enumeration(
         if len(active_slps) == n_slps:
             break
         
-    print(len(active_slps))
+    print(f"{len(active_slps)=}")
     # exit(0)
