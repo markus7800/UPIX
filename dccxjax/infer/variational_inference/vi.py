@@ -7,7 +7,7 @@ from abc import abstractmethod, ABC
 from enum import Enum
 import jax
 import jax.numpy as jnp
-from dccxjax.distributions.constraints import Constraint, real, scaled_unit_lower_cholesky
+from dccxjax.distributions.constraints import ConstraintT, real, scaled_unit_lower_cholesky
 import numpyro.distributions.transforms as transforms
 from dccxjax.core.model_slp import Model, SLP
 from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
@@ -42,9 +42,9 @@ class GuideInitCtx(GuideContext):
         value = distribution.sample(sample_key)
         self.X[address] = value
         return value
-    def param(self, address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:
+    def param(self, address: str, init_value: FloatArrayLike, constraint: ConstraintT = real) -> FloatArrayLike:
         transform: transforms.Transform = transforms.biject_to(constraint)
-        self.params[address] = transform.inv(init_value)
+        self.params[address] = cast(FloatArray, transform.inv(init_value))
         return init_value
 
 
@@ -62,9 +62,9 @@ class GuideGenerateCtx(GuideContext):
         self.X[address] = value
         self.log_prob += distribution.log_prob(value)
         return value
-    def param(self, address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:
+    def param(self, address: str, init_value: FloatArrayLike, constraint: ConstraintT = real) -> FloatArrayLike:
         transform: transforms.Transform = transforms.biject_to(constraint)
-        return transform(self.params[address])
+        return cast(FloatArrayLike,transform(self.params[address]))
 
 class GuideLogprobCtx(GuideContext):
     def __init__(self, X: Trace, params: Dict[str,FloatArray]) -> None:
@@ -77,9 +77,9 @@ class GuideLogprobCtx(GuideContext):
         value = cast(DIST_SUPPORT, self.X[address])
         self.log_prob += distribution.log_prob(value)
         return value
-    def param(self, address: str, init_value: FloatArrayLike, constraint: Constraint = real) -> FloatArrayLike:
+    def param(self, address: str, init_value: FloatArrayLike, constraint: ConstraintT = real) -> FloatArrayLike:
         transform: transforms.Transform = transforms.biject_to(constraint)
-        return transform(self.params[address])
+        return cast(FloatArrayLike,transform(self.params[address]))
 
 class Guide(ABC):
     @abstractmethod
@@ -199,7 +199,7 @@ class FullRankNormalGuide(Guide):
        self.mu = params[:self.n_latents]
        self.L = params[self.n_latents:]
     def sample_and_log_prob(self, rng_key: PRNGKey, shape = ()) -> Tuple[Trace, FloatArray]:
-        scale_tril = self.transform_to_cholesky(self.L)
+        scale_tril = cast(FloatArrayLike,self.transform_to_cholesky(self.L))
         d = MultivariateNormal(self.mu, scale_tril=scale_tril)
         x = d.rsample(rng_key, shape)
         lp = d.log_prob(x)
@@ -213,7 +213,7 @@ class FullRankNormalGuide(Guide):
     def sample(self, rng_key: PRNGKey, shape = ()) -> Trace: 
         return self.sample_and_log_prob(rng_key, shape)[0] 
     def log_prob(self, X: Trace) -> FloatArray:
-        scale_tril = self.transform_to_cholesky(self.L)
+        scale_tril = cast(FloatArrayLike,self.transform_to_cholesky(self.L))
         d = MultivariateNormal(self.mu, scale_tril=scale_tril)
         x, _ = jax.flatten_util.ravel_pytree(X)
         lp = d.log_prob(x)

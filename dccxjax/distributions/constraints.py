@@ -32,6 +32,7 @@ from numpyro.distributions.constraints import (
     unit_interval,
     zero_sum,
     Constraint,
+    ConstraintT,
 )
 
 __all__ = [
@@ -68,4 +69,5 @@ __all__ = [
     "unit_interval",
     "zero_sum",
     "Constraint",
+    "ConstraintT"
 ]

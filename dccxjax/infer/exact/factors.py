@@ -101,7 +101,7 @@ class SupportCtx(SampleContext):
             _observed = cast(DIST_SUPPORT, observed)
             return _observed
         if distribution.numpyro_base.has_enumerate_support:
-            self.supports[address] = distribution.numpyro_base.enumerate_support()
+            self.supports[address] = cast(IntArray,distribution.numpyro_base.enumerate_support())
         else:
             self.supports[address] = None    
         value = cast(DIST_SUPPORT, self.X[address])
