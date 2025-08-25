@@ -11,6 +11,7 @@ def get_arg_parser():
     parser.add_argument("-num_workers", default=0, type=int, required=False)
     parser.add_argument("-vmap_batch_size", default=0, type=int, required=False)
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument("--cpu_affinity", action="store_true")
     parser.add_argument("-omp", default=0, type=int, help="Number of OMP threads to use")
 
     return parser

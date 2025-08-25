@@ -35,7 +35,8 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
             return ParallelisationConfig(
                 parallelisation=ParallelisationType.MultiProcessingCPU,
                 vectorisation=vectorisation_type,
-                num_workers=num_workers or os.cpu_count() or 1
+                num_workers=num_workers or os.cpu_count() or 1,
+                cpu_affinity=args.cpu_affinity
             )
         else:
             assert parallelisation == "jax_devices"
