@@ -164,7 +164,8 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
             batch_size = batch_axis_size // device_count
             def _batched_scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
                 args = (init, data)
-                batched_args, num_batches = batch_func_args(args, (carry_axes,pmap_data_axes), batch_size)
+                batched_args, remainder_args, num_batches = batch_func_args(args, (carry_axes,pmap_data_axes), batch_size)
+                assert batched_args is not None and remainder_args is None
                 pfun = jax.pmap(_scan, axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
                 batched_out = pfun(*batched_args)
                 return unbatch_output(batched_out, (carry_axes,pmap_data_axes), batch_size, num_batches)
