@@ -15,7 +15,7 @@ from jax.flatten_util import ravel_pytree
 from dccxjax.infer.variable_selector import AllVariables
 from dccxjax.progress_bar import _add_progress_bar, ProgressbarManager
 from tqdm.auto import tqdm
-from dccxjax.jax_utils import smap_vmap, pmap_vmap
+from dccxjax.jax_utils import smap_vmap
 from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, SHARDING_AXIS, VectorisationType, vectorise, parallel_run, vectorise_scan, batched_vmap
 
 __all__ = [

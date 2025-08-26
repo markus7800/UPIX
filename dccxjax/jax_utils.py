@@ -20,7 +20,7 @@ FUN_TYPE = TypeVar("FUN_TYPE", bound=Callable)
 #         return jax.lax.map(fun, args, batch_size=batchsize)
 #     return mapped_fun # type: ignore
     
-def batch_func_args(args, in_axes, batch_size: int):
+def batch_func_args(args, in_axes, *, batch_size: int | None = None, num_batches: int | None = None):
     in_leaves, in_tree = tree_flatten(args)
     in_axes_flat = flatten_axes("pmap_vmap in_axes", in_tree, in_axes)
     # print("in_axes_flat:", in_axes_flat)
@@ -30,8 +30,16 @@ def batch_func_args(args, in_axes, batch_size: int):
     batch_axis_size = leaf_batch_axis_sizes[0]
     assert all(size == batch_axis_size for size in leaf_batch_axis_sizes)
     
-    # compute number of batches
-    num_batches, remainder = divmod(batch_axis_size, batch_size)
+    # compute batches
+    if batch_size is not None:
+        _num_batches, remainder = divmod(batch_axis_size, batch_size)
+        if num_batches is not None: assert num_batches == _num_batches
+        num_batches = _num_batches
+    else:
+        assert num_batches is not None
+        batch_size, remainder = divmod(batch_axis_size, num_batches)
+        
+    assert batch_size is not None and num_batches is not None
     batch_elems = int(num_batches * batch_size)
 
     # if remainder != 0 and num_batches > 0:
@@ -59,7 +67,7 @@ def batch_func_args(args, in_axes, batch_size: int):
     else:
         remainder_args = None
         
-    return batched_args, remainder_args, int(num_batches), int(remainder)
+    return batched_args, remainder_args, int(num_batches), int(batch_size), int(remainder)
 
 def unbatch_output(batched_out, out_axes, batch_size: int, num_batches: int):
     out_leaves, out_tree = tree_flatten(batched_out)
@@ -118,7 +126,7 @@ def put_batch_axis_back(args, batch_axes):
 def batched_vmap(fun: FUN_TYPE, batch_size: int, in_axes: int | None | Sequence[Any] = 0, out_axes: Any = 0) -> FUN_TYPE:
     vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
     def mapped_fun(*args):
-        batched_args, remainder_args, num_batches, remainder = batch_func_args(args, in_axes, batch_size)
+        batched_args, remainder_args, num_batches, _, remainder = batch_func_args(args, in_axes, batch_size=batch_size)
         if (num_batches > 0 and remainder > 0):
             log_warn(f"Warning: batching vmap with num_batches={num_batches} and remainder={remainder}")
         # print(f"batched_args {jax.tree.map(lambda v: v.shape, batched_args)}", num_batches)
@@ -154,7 +162,7 @@ def batched_vmap(fun: FUN_TYPE, batch_size: int, in_axes: int | None | Sequence[
 # pmap is performed over the first of the two axes
 def pmap_vmap(fun: FUN_TYPE, 
     axis_name: AxisName,
-    batch_size: int,
+    num_batches: int,
     *,
     in_axes: int | None | Sequence[Any] = 0,
     out_axes: Any = 0) -> FUN_TYPE:
@@ -165,7 +173,7 @@ def pmap_vmap(fun: FUN_TYPE,
     pvfun = jax.pmap(vfun, axis_name=axis_name, in_axes=in_axes, out_axes=out_axes)
     
     def mapped_fun(*args):
-        batched_args, remainder_args, num_batches, remainder = batch_func_args(args, in_axes, batch_size)
+        batched_args, remainder_args, _, batch_size, remainder = batch_func_args(args, in_axes, num_batches=num_batches)
         if (remainder > 0):
             log_warn(f"Warning: pmap vmap with num_batches={num_batches} and remainder={remainder}")
         
