@@ -76,12 +76,12 @@ def unbatch_output(batched_out, out_axes, batch_size: int, num_batches: int):
     # print("out:", jax.tree.map(lambda v: v.shape, out))
     return out
 
-def concatentate_output(x, y, dimension: int, out_axes):
+def concatentate_output(x, y, out_axes):
     x_leaves, out_tree = tree_flatten(x)
     y_leaves, out_tree_2 = tree_flatten(y)
     assert out_tree == out_tree_2
     out_axes_flat = flatten_axes("concatentate_output out_axes", out_tree, out_axes)
-    concatenated_leaves = [x if axis is None else jax.lax.concatenate((x, y), dimension) for x, y, axis in zip(x_leaves, y_leaves, out_axes_flat)]
+    concatenated_leaves = [x if axis is None else jax.lax.concatenate((x, y), axis) for x, y, axis in zip(x_leaves, y_leaves, out_axes_flat)]
     return out_tree.unflatten(concatenated_leaves)
     
 
@@ -138,7 +138,7 @@ def batched_vmap(fun: FUN_TYPE, batch_size: int, in_axes: int | None | Sequence[
             unbatched_out = unbatch_output(batched_out, out_axes, batch_size, num_batches)
             
             if remainder_out is not None:
-                return concatentate_output(unbatched_out, remainder_out, 0, out_axes)
+                return concatentate_output(unbatched_out, remainder_out, out_axes)
             else:
                 return unbatched_out
             
@@ -179,7 +179,7 @@ def pmap_vmap(fun: FUN_TYPE,
             unbatched_out = unbatch_output(batched_out, out_axes, batch_size, num_batches)
             
             if remainder_out is not None:
-                return concatentate_output(unbatched_out, remainder_out, 0, out_axes)
+                return concatentate_output(unbatched_out, remainder_out, out_axes)
             else:
                 return unbatched_out
         else:

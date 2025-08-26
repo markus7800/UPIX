@@ -194,7 +194,7 @@ def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SC
             batched_args, remainder_args, num_batches, remainder = batch_func_args(args, (carry_axes,pmap_data_axes), batch_size)
             if (remainder > 0):
                 log_warn(
-                    f"Warning: vectorise scan with pmap and positive remainder={remainder}. "
+                    f"Vectorise scan with pmap and positive remainder={remainder}. "
                     "Causes scan to be compiled and run twice. "
                     f"This can be avoided by having {batch_axis_size=} % device_count == 0."
                 )
@@ -214,7 +214,7 @@ def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SC
             unbatched_out = unbatch_output(batched_out, out_axes, batch_size, num_batches)
             
             if remainder_out is not None:
-                return concatentate_output(unbatched_out, remainder_out, 0, out_axes)
+                return concatentate_output(unbatched_out, remainder_out, out_axes)
             else:
                 return unbatched_out
             
