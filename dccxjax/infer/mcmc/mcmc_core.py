@@ -312,11 +312,9 @@ def get_mcmc_kernel(
 
 # kernel had to be created with vectorised="none"
 def vectorise_kernel_over_chains(kernel: MCMCKernel[MCMC_COLLECT_TYPE], vmap_batch_size: int) -> MCMCKernel[MCMC_COLLECT_TYPE]:
-    jit_tracker = JitVariationTracker(f"vectorise <Kernel {hex(id(kernel))}>")
     @jax.jit
     def _vectorised_kernel(state: MCMCState, rng_key: PRNGKey) -> Tuple[MCMCState,MCMC_COLLECT_TYPE]:
         n_chains = state.log_prob.shape[0]
-        maybe_jit_warning(jit_tracker, (state, rng_key))
         chain_keys = jax.random.split(rng_key, n_chains)
         mcmc_state_axes = MCMCState(iteration=None, temperature=None, data_annealing=None, position=0, log_prob=0, carry_stats=0, infos=0) # type: ignore
         if vmap_batch_size > 0:
