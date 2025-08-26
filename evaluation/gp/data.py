@@ -1,4 +1,3 @@
-#%%
 import matplotlib.pyplot as plt
 import pandas as pd
 import jax.numpy as jnp
