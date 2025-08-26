@@ -68,7 +68,7 @@ def create_default_device_mesh(dim: int):
     n_devices = jax.device_count()
     if n_devices == 1:
         log_critical(bcolors.FAIL + "Creating device mesh for sharding, but only have one device." + bcolors.ENDC)
-        assert n_devices > 0
+        assert n_devices > 1
     if dim < n_devices:
         log_critical(bcolors.FAIL + f"Configured {n_devices} devices, but sharding dim is smaller {dim}.\n"
               "Consider using pmap vectorisation instead." + bcolors.ENDC)
