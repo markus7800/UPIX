@@ -157,11 +157,11 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.GlobalVMAP:
             tqdm.write(f"parallelisation=Sequential(global vmap{batch_str}, device={get_default_device()})")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.PMAP:
-            tqdm.write(f"parallelisation=Sequential(pmap, \ndevices={devices_str}\n#workers={self.pconfig.num_workers}\n)")
+            tqdm.write(f"parallelisation=Sequential(pmap, \ndevices={devices_str}\n#workers={jax.device_count()}\n)")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalSMAP:
-            tqdm.write(f"parallelisation=Sequential(local smap,\ndevices={devices_str}\n#workers={self.pconfig.num_workers}\n)")
+            tqdm.write(f"parallelisation=Sequential(local smap,\ndevices={devices_str}\n#workers={jax.device_count()}\n)")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.GlobalSMAP:
-            tqdm.write(f"parallelisation=Sequential(global smap,\ndevices={devices_str}\n#workers={self.pconfig.num_workers}\n)")
+            tqdm.write(f"parallelisation=Sequential(global smap,\ndevices={devices_str}\n#workers={jax.device_count()}\n)")
         if self.pconfig.parallelisation == ParallelisationType.MultiProcessingCPU:
             batch_str = ', vmap_batched='+str(self.pconfig.vmap_batch_size) if self.pconfig.vmap_batch_size > 0 else ""
             tqdm.write(f"parallelisation=MultiProcessingCPU(#workers={self.pconfig.num_workers}{batch_str})")
