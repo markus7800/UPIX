@@ -37,7 +37,8 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
                 vectorisation=vectorisation_type,
                 num_workers=num_workers or os.cpu_count() or 1,
                 cpu_affinity=args.cpu_affinity,
-                force_task_order = args.force_task_order
+                force_task_order = args.force_task_order,
+                vmap_batch_size=args.vmap_batch_size
             )
         else:
             assert parallelisation == "jax_devices"
@@ -46,5 +47,6 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
                 parallelisation=ParallelisationType.MultiThreadingJAXDevices,
                 vectorisation=vectorisation_type,
                 num_workers=num_workers or jax.device_count(),
-                force_task_order = True
+                force_task_order = True,
+                vmap_batch_size=args.vmap_batch_size
             )
