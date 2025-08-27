@@ -43,6 +43,7 @@ class ParallelisationConfig:
     num_workers: int = os.cpu_count() or 1
     cpu_affinity: bool = False
     vmap_batch_size: int = 0
+    force_task_order : bool = False
     environ: Dict[str, str] = field(default_factory= lambda: {
         "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
         "OMP_NUM_THREADS": "1",

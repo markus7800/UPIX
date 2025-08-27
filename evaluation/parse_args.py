@@ -13,6 +13,7 @@ def get_arg_parser():
     parser.add_argument("--cpu", action="store_true")
     parser.add_argument("--cpu_affinity", action="store_true")
     parser.add_argument("-omp", default=0, type=int, help="Number of OMP threads to use")
+    parser.add_argument("--force_task_order", action="store_true")
 
     return parser
 

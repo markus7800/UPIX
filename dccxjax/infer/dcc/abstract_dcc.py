@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import Dict, Optional, List, Callable, Any, NamedTuple, Generic, TypeVar, Tuple, cast
 from dccxjax.core import SLP, Model, sample_from_prior, slp_from_decision_representative
 from dccxjax.types import Trace, PRNGKey, FloatArray, IntArray
-from dccxjax.utils import get_backend, get_default_device, bcolors
+from dccxjax.utils import get_backend, get_default_device, log_warn
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -260,7 +260,15 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                         else:        
                             task_queue.put((inference_task, slp_ix))
                         del inference_task
-                threading.Thread(target=make_inference_tasks, daemon=True).start()
+                inference_task_generator = threading.Thread(target=make_inference_tasks, daemon=True)
+                inference_task_generator.start()
+                if self.pconfig.force_task_order:
+                    if self.pconfig.parallelisation == ParallelisationType.MultiProcessingCPU:
+                        log_warn(
+                            "MultiProcessingCPU parallelisation, but all inference tasks are generated and exported before starting work.\n"
+                            "Set force_task_order to False for exporting inference tasks in background."
+                        )
+                    inference_task_generator.join()
 
                 outer_bar.reset(total=len(self.active_slps))
                 outer_bar.set_description(f"Iteration {self.iteration_counter}")
