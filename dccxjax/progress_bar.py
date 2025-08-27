@@ -16,11 +16,16 @@ class ProgressbarManager:
         self.share_bar: bool = shared_tqdm_bar is not None
         self.num_samples = 0
         self.thread_locked = thread_locked
+        self.msg_counter = 0
+        self.msgs_per_update = 1 # pmap sends msg for each thread of pmap
         if self.thread_locked:
             self._lock = threading.Lock()
 
     def set_num_samples(self, num_samples: int):
         self.num_samples = num_samples # affects only tqdm bar length, not print rate
+
+    def set_msgs_per_update(self, msgs_per_update: int):
+        self.msgs_per_update = msgs_per_update
 
     def start_progress(self):
         if self.tqdm_bar is None:
@@ -39,18 +44,26 @@ class ProgressbarManager:
     def _update_bar(self, iternum, n):
         def _update_fn():
             if self.tqdm_bar is not None:
+                # tqdm.write(f"{self.tqdm_bar.n=} {iternum=} {n=}")
                 if self.tqdm_bar.n < iternum:
-                    self.tqdm_bar.update(n)
+                    self.msg_counter += 1
+                    if self.msg_counter == self.msgs_per_update:
+                        self.msg_counter = 0
+                        self.tqdm_bar.update(n)
         self._maybe_with_lock(_update_fn)
     
     def _close_bar(self):
         def _close_fn():
-            if self.tqdm_bar is not None:
-                if not self.share_bar:
-                    self.tqdm_bar.close()
-                    self.tqdm_bar = None
-                else:
-                    pass
+            self.msg_counter += 1
+            # tqdm.write(f"_close_fn {self.msg_counter}/{self.msgs_per_update}")
+            if self.msg_counter == self.msgs_per_update:
+                self.msg_counter = 0
+                if self.tqdm_bar is not None:
+                    if not self.share_bar:
+                        self.tqdm_bar.close()
+                        self.tqdm_bar = None
+                    else:
+                        pass
         self._maybe_with_lock(_close_fn)
             
 

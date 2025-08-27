@@ -196,13 +196,15 @@ def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SC
             
             assert batched_args is not None
             if remainder_args is not None:
+                if progressbar_mngr is not None: progressbar_mngr.set_msgs_per_update(remainder)
                 remainder_pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
                 # remainder_pfun = jax.jit(partial(_scan,vmap_step=True))
                 # removing jax.block_until_ready messes up progressbar. pmap can be dispatched asyncronously?
                 remainder_out = jax.block_until_ready(remainder_pfun(*remainder_args))
             else:
                 remainder_out = None
-                        
+                
+            if progressbar_mngr is not None: progressbar_mngr.set_msgs_per_update(device_count)
             pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=True)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
             batched_out = pfun(*batched_args)
             out_axes = (carry_axes,pmap_data_axes)
