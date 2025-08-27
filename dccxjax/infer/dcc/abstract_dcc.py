@@ -150,19 +150,20 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         tqdm.write(f"Start DCC:")
         dcc_t0 = time.monotonic()
         
-        devices_str = ",\n    ".join(map(str, jax.devices()))
+        devices_str = "\n    " + ",\n    ".join(map(str, jax.devices()))
         batch_str = ', batched='+str(self.pconfig.vmap_batch_size) if self.pconfig.vmap_batch_size > 0 else ""
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalVMAP:
             tqdm.write(f"parallelisation=Sequential(local vmap{batch_str}, device={get_default_device()})")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.GlobalVMAP:
             tqdm.write(f"parallelisation=Sequential(global vmap{batch_str}, device={get_default_device()})")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.PMAP:
-            tqdm.write(f"parallelisation=Sequential(pmap, \ndevices=\n    {devices_str}\n    #workers={self.pconfig.num_workers}\n)")
+            tqdm.write(f"parallelisation=Sequential(pmap, \ndevices={devices_str}\n#workers={self.pconfig.num_workers}\n)")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalSMAP:
-            tqdm.write(f"parallelisation=Sequential(local smap,\ndevices=\n    {devices_str}\n    #workers={self.pconfig.num_workers}\n)")
+            tqdm.write(f"parallelisation=Sequential(local smap,\ndevices={devices_str}\n#workers={self.pconfig.num_workers}\n)")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.GlobalSMAP:
-            tqdm.write(f"parallelisation=Sequential(global smap,\ndevices=\n    {devices_str}\n    #workers={self.pconfig.num_workers}\n)")
+            tqdm.write(f"parallelisation=Sequential(global smap,\ndevices={devices_str}\n#workers={self.pconfig.num_workers}\n)")
         if self.pconfig.parallelisation == ParallelisationType.MultiProcessingCPU:
+            batch_str = ', vmap_batched='+str(self.pconfig.vmap_batch_size) if self.pconfig.vmap_batch_size > 0 else ""
             tqdm.write(f"parallelisation=MultiProcessingCPU(#workers={self.pconfig.num_workers}{batch_str})")
             backend_platform = get_backend().devices()[0].platform
             if backend_platform != "cpu":
@@ -171,9 +172,9 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
                 t = threading.Thread(target=start_worker_process, args=(task_queue, result_queue, i, self.pconfig), daemon=True)
                 t.start()
                 threads.append(t)
-        batch_str = '\n   batched='+str(self.pconfig.vmap_batch_size) if self.pconfig.vmap_batch_size > 0 else ""
         if self.pconfig.parallelisation == ParallelisationType.MultiThreadingJAXDevices:
-            tqdm.write(f"parallelisation=MultiThreadingJAXDevices(\ndevices=\n    {devices_str}{batch_str}\n)")
+            batch_str = '\nvmap_batched='+str(self.pconfig.vmap_batch_size) if self.pconfig.vmap_batch_size > 0 else ""
+            tqdm.write(f"parallelisation=MultiThreadingJAXDevices(\ndevices={devices_str}{batch_str}\n)")
             assert self.pconfig.num_workers <= len(jax.devices())
             for i in range(self.pconfig.num_workers):
                 t = threading.Thread(target=start_worker_thread, args=(task_queue, result_queue, i, self.pconfig), daemon=True)
