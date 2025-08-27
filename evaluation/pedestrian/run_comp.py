@@ -82,7 +82,7 @@ if __name__ == "__main__":
 
     gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
     gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
-    gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf.npy")
+    gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf_est.npy")
 
 
     if args.show_plots:
