@@ -7,6 +7,7 @@ parser.add_argument("batch_size", type=int)
 parser.add_argument("num_batches", type=int)
 parser.add_argument("n_iter", type=int)
 parser.add_argument("--show_plots", action="store_true")
+parser.add_argument("--old", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
 from setup_parallelisation import get_parallelisation_config
@@ -54,6 +55,23 @@ from dccxjax.parallelisation import *
 from dccxjax.progress_bar import ProgressbarManager
 from dccxjax.parallelisation import VectorisationType
 
+@jax.jit
+def cdf(x, qs, weights: jax.Array):
+    def _cdf(q):
+        return jnp.where(x < q, weights, jax.numpy.zeros_like(weights)).sum()
+    return jax.lax.map(_cdf, qs)
+
+def cdf_cruncher_old(qs, n_iter, batch_size):
+    rng_keys = jax.random.split(jax.random.key(0), n_iter)
+    c = jnp.zeros_like(qs)
+    for (i,key) in tqdm(enumerate(rng_keys),total=n_iter):
+        result = jax.vmap(pedestrian)(jax.random.split(key,batch_size))
+        x = result["start"]
+        lp = result["lp"]
+        weights = jax.lax.exp(lp - jax.scipy.special.logsumexp(lp))
+        c += cdf(x, qs, weights) * 1/n_iter
+    return c
+
 def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation):
 
     bar = tqdm(position=0)
@@ -89,7 +107,7 @@ def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation):
         del ixs
         del lps
     
-        return c, s
+        return jax.lax.exp(c - s), s
     
     cs = []
     ss = []
@@ -100,24 +118,29 @@ def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation):
         ss.append(s)
 
     cs = jnp.vstack(cs)
-    res_c = jax.scipy.special.logsumexp(cs, axis=0)
+    return jnp.mean(cs, axis=0)
+    # res_c = jax.scipy.special.logsumexp(cs, axis=0)
 
-    ss = jnp.hstack(ss)
-    res_s = jax.scipy.special.logsumexp(ss)
-    return jax.lax.exp(res_c - res_s)
+    # ss = jnp.hstack(ss)
+    # res_s = jax.scipy.special.logsumexp(ss)
+    # return jax.lax.exp(res_c - res_s)
     
 
 # n_sq batch_size num_batches n_iter
 
 # GTX 1070
-# uv run --python python3 --extra cuda --locked --with PyQt6 evaluation/pedestrian/ground_truth.py sequential vmap_global 100 10_000 1_000 1_000 --show_plots
+# uv run --python python3 --extra cuda --locked --with PyQt6 evaluation/pedestrian/ground_truth.py sequential vmap_global 100 1_000_000 10 1_000 --show_plots
 
 start_linspace = jnp.linspace(0., 3., args.n_qs)
 N_SAMPLES = args.num_batches * args.batch_size * args.n_iter
 print(f"N_QS = {args.n_qs:_} N_SAMPLES = {N_SAMPLES:_}")
 
-pconfig = get_parallelisation_config(args)
-gt_cdf = cdf_cruncher(start_linspace, batch_size=args.batch_size, num_batches=args.num_batches, n_iter=args.n_iter, vectorisation=pconfig.vectorisation)
+if not args.old:
+    pconfig = get_parallelisation_config(args)
+    gt_cdf = cdf_cruncher(start_linspace, batch_size=args.batch_size, num_batches=args.num_batches, n_iter=args.n_iter, vectorisation=pconfig.vectorisation)
+else:
+    assert args.num_batches == 1
+    gt_cdf = cdf_cruncher_old(start_linspace, batch_size=args.batch_size, n_iter=args.n_iter)
 
 gt_pdf = jnp.hstack([jnp.array(0.),jnp.diff(gt_cdf)]) / (start_linspace[1] - start_linspace[0])
 
@@ -136,14 +159,14 @@ if args.show_plots:
     print(f"Finished in {t1-t0:.3f}s")
     
     plt.plot(start_linspace, gt_cdf)
-    plt.show()
+    # plt.show()
     
     weights = jax.lax.exp(lp - jax.scipy.special.logsumexp(lp))
     print(weights.sum())
     plt.hist(x, weights=weights, density=True, bins=100)
     plt.grid(True)
     plt.yticks(jnp.arange(0.,1.2,0.05))
-    plt.show()
+    # plt.show()
 
     x = x[weights > 1e-9]
     weights = weights[weights > 1e-9]
