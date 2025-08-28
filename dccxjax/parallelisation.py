@@ -65,22 +65,23 @@ def is_parallel(pconfig: ParallelisationConfig):
     
 SHARDING_AXIS = "s_axis"
     
-def create_default_device_mesh(dim: int):
-    n_devices = jax.device_count()
-    if n_devices == 1:
+def create_default_device_mesh(dim: int, n_devices: int):
+    devices = jax.devices()[:n_devices]
+    device_count = len(devices)
+    if device_count == 1:
         log_warn(bcolors.FAIL + "Creating device mesh for sharding, but only have one device." + bcolors.ENDC)
-    if dim < n_devices:
-        log_critical(bcolors.FAIL + f"Configured {n_devices} devices, but sharding dim is smaller {dim}.\n"
+    if dim < device_count:
+        log_critical(bcolors.FAIL + f"Configured {device_count} devices, but sharding dim is smaller {dim}.\n"
               "Consider using pmap vectorisation instead." + bcolors.ENDC)
-        assert n_devices > dim
-    if dim % n_devices != 0:
-        log_critical(bcolors.FAIL + f"Sharding dim={dim} is not multiple of number of devices={n_devices}." + bcolors.ENDC)
-        assert dim % n_devices == 0
-    return Mesh(create_device_mesh((n_devices,)), axis_names=(SHARDING_AXIS,))
+        assert device_count > dim
+    if dim % device_count != 0:
+        log_critical(bcolors.FAIL + f"Sharding dim={dim} is not multiple of number of devices={device_count}." + bcolors.ENDC)
+        assert dim % device_count == 0
+    return Mesh(create_device_mesh((device_count,), devices=devices), axis_names=(SHARDING_AXIS,))
 
 FUNCTION_TYPE = TypeVar("FUNCTION_TYPE", bound=Callable)
 FUNCTION_RET_TYPE = TypeVar("FUNCTION_RET_TYPE")
-def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, vectorisation: VectorisationType, vmap_batch_size: int) -> FUNCTION_TYPE:
+def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, vectorisation: VectorisationType, n_devices: int, vmap_batch_size: int) -> FUNCTION_TYPE:
     if vectorisation == VectorisationType.LocalVMAP:
         return jax.jit(fn) # type: ignore
     elif vectorisation == VectorisationType.GlobalVMAP:
@@ -89,21 +90,22 @@ def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, vector
         else:
             return jax.jit(jax.vmap(fn, in_axes=in_axes, out_axes=out_axes)) # type: ignore
     elif vectorisation == VectorisationType.PMAP:
-        device_count = jax.device_count()
+        devices = jax.devices()[:n_devices]
+        device_count = len(devices)
         if batch_axis_size <= device_count:
-            return jax.pmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes)
+            return jax.pmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes, devices=devices)
         else:
             # assert batch_axis_size % device_count == 0
-            return pmap_vmap(fn, axis_name=SHARDING_AXIS, num_batches=device_count, in_axes=in_axes, out_axes=out_axes)
+            return pmap_vmap(fn, axis_name=SHARDING_AXIS, num_batches=device_count, in_axes=in_axes, out_axes=out_axes, devices=devices)
     elif vectorisation == VectorisationType.LocalSMAP:
         return jax.jit(fn) # type: ignore
     else:
         assert vectorisation == VectorisationType.GlobalSMAP
         return jax.jit(smap_vmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes)) # type: ignore
         
-def parallel_run(fn: Callable[..., FUNCTION_RET_TYPE], args: Tuple, batch_axis_size: int, vectorisation: VectorisationType) -> FUNCTION_RET_TYPE:
+def parallel_run(fn: Callable[..., FUNCTION_RET_TYPE], args: Tuple, batch_axis_size: int, vectorisation: VectorisationType, n_devices: int) -> FUNCTION_RET_TYPE:
     if vectorisation == VectorisationType.LocalSMAP or vectorisation == VectorisationType.GlobalSMAP:
-        with jax.set_mesh(create_default_device_mesh(batch_axis_size)):
+        with jax.set_mesh(create_default_device_mesh(batch_axis_size, n_devices)):
             return jax.device_get(fn(*args)) # device_get to unshard output
     else:
         return fn(*args)
@@ -120,11 +122,11 @@ from dccxjax.progress_bar import ProgressbarManager, _add_progress_bar
 import jax.experimental
 
 def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]],
-                   carry_axes, pmap_data_axes, batch_axis_size: int, vmap_batch_size: int, vectorisation: VectorisationType,
+                   carry_axes, pmap_data_axes, batch_axis_size: int, vmap_batch_size: int, vectorisation: VectorisationType, n_devices: int,
                    progressbar_mngr: ProgressbarManager | None = None, get_iternum_fn: Callable[[SCAN_CARRY_TYPE], IntArray] | None = None):
     
     if vectorisation == VectorisationType.PMAP:
-        return vectorise_scan_pmap(step, carry_axes, pmap_data_axes, batch_axis_size, vmap_batch_size, vectorisation, progressbar_mngr, get_iternum_fn)
+        return vectorise_scan_pmap(step, carry_axes, pmap_data_axes, batch_axis_size, vmap_batch_size, vectorisation, n_devices, progressbar_mngr, get_iternum_fn)
     
     @jax.jit
     def _scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
@@ -156,7 +158,7 @@ def vectorise_scan(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CA
    
 
 def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]],
-                   carry_axes, pmap_data_axes, batch_axis_size: int, vmap_batch_size: int, vectorisation: VectorisationType,
+                   carry_axes, pmap_data_axes, batch_axis_size: int, vmap_batch_size: int, vectorisation: VectorisationType, n_devices: int,
                    progressbar_mngr: ProgressbarManager | None = None, get_iternum_fn: Callable[[SCAN_CARRY_TYPE], IntArray] | None = None):
          
     assert vectorisation == VectorisationType.PMAP
@@ -177,11 +179,12 @@ def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SC
  
         return jax.lax.scan(_step, init, data)
     
-    device_count = jax.device_count()
+    devices = jax.devices()[:n_devices]
+    device_count = len(devices)
     # special case, because we want to keep pmap at top level and do not want to put it into scan
     # we cannot use pmap_vmap at top level, because to use progressbar we cannot vmap scan 
     if batch_axis_size <= device_count:
-        return jax.pmap(jax.jit(partial(_scan, vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
+        return jax.pmap(jax.jit(partial(_scan, vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes), devices=devices)
     else:
         num_batches = device_count
         def _batched_scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
@@ -197,7 +200,7 @@ def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SC
             assert batched_args is not None
             if remainder_args is not None:
                 if progressbar_mngr is not None: progressbar_mngr.set_msgs_per_update(remainder)
-                remainder_pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
+                remainder_pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes), devices=devices)
                 # remainder_pfun = jax.jit(partial(_scan,vmap_step=True))
                 # removing jax.block_until_ready messes up progressbar. pmap can be dispatched asyncronously?
                 remainder_out = jax.block_until_ready(remainder_pfun(*remainder_args))
@@ -205,7 +208,7 @@ def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SC
                 remainder_out = None
                 
             if progressbar_mngr is not None: progressbar_mngr.set_msgs_per_update(device_count)
-            pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=True)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes))
+            pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=True)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes), devices=devices)
             batched_out = pfun(*batched_args)
             out_axes = (carry_axes,pmap_data_axes)
             unbatched_out = unbatch_output(batched_out, out_axes, batch_size, num_batches)

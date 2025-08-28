@@ -150,18 +150,19 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         tqdm.write(f"Start DCC:")
         dcc_t0 = time.monotonic()
         
-        devices_str = "\n    " + ",\n    ".join(map(str, jax.devices()))
+        _dstr = lambda i, d: str(d) + (" (unused)" if i >= self.pconfig.num_workers else "")
+        devices_str = "\n    " + "\n    ".join(map(lambda t: _dstr(*t), enumerate(jax.devices())))
         batch_str = ', batched='+str(self.pconfig.vmap_batch_size) if self.pconfig.vmap_batch_size > 0 else ""
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalVMAP:
             tqdm.write(f"parallelisation=Sequential(local vmap{batch_str}, device={get_default_device()})")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.GlobalVMAP:
             tqdm.write(f"parallelisation=Sequential(global vmap{batch_str}, device={get_default_device()})")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.PMAP:
-            tqdm.write(f"parallelisation=Sequential(pmap, \ndevices={devices_str}\n#workers={jax.device_count()}\n)")
+            tqdm.write(f"parallelisation=Sequential(pmap, \n  devices={devices_str}\n  #workers={self.pconfig.num_workers}\n)")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.LocalSMAP:
-            tqdm.write(f"parallelisation=Sequential(local smap,\ndevices={devices_str}\n#workers={jax.device_count()}\n)")
+            tqdm.write(f"parallelisation=Sequential(local smap,\n  devices={devices_str}\n #workers={self.pconfig.num_workers}\n)")
         if is_sequential(self.pconfig) and self.pconfig.vectorisation == VectorisationType.GlobalSMAP:
-            tqdm.write(f"parallelisation=Sequential(global smap,\ndevices={devices_str}\n#workers={jax.device_count()}\n)")
+            tqdm.write(f"parallelisation=Sequential(global smap,\n  devices={devices_str}\n  #workers={self.pconfig.num_workers}\n)")
         if self.pconfig.parallelisation == ParallelisationType.MultiProcessingCPU:
             batch_str = ', vmap_batched='+str(self.pconfig.vmap_batch_size) if self.pconfig.vmap_batch_size > 0 else ""
             tqdm.write(f"parallelisation=MultiProcessingCPU(#workers={self.pconfig.num_workers}{batch_str})")

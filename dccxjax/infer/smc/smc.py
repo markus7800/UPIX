@@ -351,11 +351,16 @@ class SMC:
                                      batch_axis_size=self.n_particles,
                                      vmap_batch_size=self.pconfig.vmap_batch_size,
                                      vectorisation=self.pconfig.vectorisation,
+                                     n_devices=self.pconfig.num_workers,
                                      progressbar_mngr=self.progressbar_mngr if self.show_progress else None, 
                                      get_iternum_fn=lambda carry: carry.iteration)
             self.cached_smc_scan = scan_fn
         
-        last_state, ess = parallel_run(scan_fn, (init_state, smc_data), self.n_particles, self.pconfig.vectorisation)
+        last_state, ess = parallel_run(scan_fn, (init_state, smc_data),
+            batch_axis_size=self.n_particles,
+            vectorisation=self.pconfig.vectorisation,
+            n_devices=self.pconfig.num_workers
+        )
 
         return last_state, ess 
     

@@ -6,6 +6,8 @@ from jax._src.shard_map import smap
 from jax.tree_util import tree_flatten
 from jax._src.api_util import flatten_axes
 from dccxjax.utils import log_warn
+from jax._src.lib import Device
+
 
 __all__ = [
     "batched_vmap",
@@ -165,12 +167,14 @@ def pmap_vmap(fun: FUN_TYPE,
     num_batches: int,
     *,
     in_axes: int | None | Sequence[Any] = 0,
-    out_axes: Any = 0) -> FUN_TYPE:
+    out_axes: Any = 0,
+    devices: Sequence[Device] | None = None,  # noqa: F811
+    ) -> FUN_TYPE:
         
     
     vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
-    pfun = jax.pmap(fun, in_axes=in_axes, out_axes=out_axes)
-    pvfun = jax.pmap(vfun, axis_name=axis_name, in_axes=in_axes, out_axes=out_axes)
+    pfun = jax.pmap(fun, in_axes=in_axes, out_axes=out_axes, devices=devices)
+    pvfun = jax.pmap(vfun, axis_name=axis_name, in_axes=in_axes, out_axes=out_axes, devices=devices)
     
     def mapped_fun(*args):
         batched_args, remainder_args, _, batch_size, remainder = batch_func_args(args, in_axes, num_batches=num_batches)

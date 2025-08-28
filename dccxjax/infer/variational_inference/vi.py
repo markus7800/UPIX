@@ -336,11 +336,16 @@ class ADVI(Generic[OPTIMIZER_STATE]):
                                      batch_axis_size=self.L,
                                      vmap_batch_size=self.pconfig.vmap_batch_size,
                                      vectorisation=self.pconfig.vectorisation,
+                                     n_devices=self.pconfig.num_workers,
                                      progressbar_mngr=self.progressbar_mngr if self.show_progress else None,
                                      get_iternum_fn=lambda carry: carry.iteration)
             self.cached_advi_scan = scan_fn
         
-        last_state, elbo = parallel_run(scan_fn, (init_state, keys), batch_axis_size=self.L, vectorisation=self.pconfig.vectorisation)
+        last_state, elbo = parallel_run(scan_fn, (init_state, keys),
+            batch_axis_size=self.L,
+            vectorisation=self.pconfig.vectorisation,
+            n_devices=self.pconfig.num_workers
+        )
 
         return last_state, elbo
 

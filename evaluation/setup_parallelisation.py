@@ -17,17 +17,39 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
         if num_workers > 0:
             print(f"Ignoring num_workers '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
         if vectorisation == "vmap_local":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.LocalVMAP, vmap_batch_size=args.vmap_batch_size)
+            return ParallelisationConfig(
+                parallelisation=ParallelisationType.Sequential, 
+                vectorisation=VectorisationType.LocalVMAP,
+                vmap_batch_size=args.vmap_batch_size,
+                num_workers=1
+            )
         if vectorisation == "vmap_global":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalVMAP, vmap_batch_size=args.vmap_batch_size)
+            return ParallelisationConfig(
+                parallelisation=ParallelisationType.Sequential,
+                vectorisation=VectorisationType.GlobalVMAP,
+                vmap_batch_size=args.vmap_batch_size,
+                num_workers=1
+        )
         if jax.device_count() == 1:
             print(f"Warning: Vectorisation is set to'{vectorisation}' but only 1 jax devices is available.")
         if vectorisation == "pmap":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.PMAP)
+            return ParallelisationConfig(
+                parallelisation=ParallelisationType.Sequential,
+                vectorisation=VectorisationType.PMAP,
+                num_workers=num_workers or jax.device_count(),
+            )
         if vectorisation == "smap_local":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.LocalSMAP)
+            return ParallelisationConfig(
+                parallelisation=ParallelisationType.Sequential,
+                vectorisation=VectorisationType.LocalSMAP,
+                num_workers=num_workers or jax.device_count(),
+            )
         if vectorisation == "smap_global":
-            return ParallelisationConfig(parallelisation=ParallelisationType.Sequential, vectorisation=VectorisationType.GlobalSMAP)
+            return ParallelisationConfig(
+                parallelisation=ParallelisationType.Sequential,
+                vectorisation=VectorisationType.GlobalSMAP,
+                num_workers=num_workers or jax.device_count(),
+            )
     else:
         assert vectorisation in ("vmap_local", "vmap_global")
         vectorisation_type = VectorisationType.LocalVMAP if vectorisation == "vmap_local" else VectorisationType.GlobalVMAP
