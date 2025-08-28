@@ -16,8 +16,9 @@ class ProgressbarManager:
         self.share_bar: bool = shared_tqdm_bar is not None
         self.num_samples = 0
         self.thread_locked = thread_locked
-        self.msg_counter = 0
+        self.close_msg_counter = 0
         self.msgs_per_update = 1 # pmap sends msg for each thread of pmap
+        self.iternums = [0]
         if self.thread_locked:
             self._lock = threading.Lock()
 
@@ -26,11 +27,12 @@ class ProgressbarManager:
 
     def set_msgs_per_update(self, msgs_per_update: int):
         self.msgs_per_update = msgs_per_update
+        self.close_msg_counter = 0
+        self.iternums = [0] * self.msgs_per_update
 
     def start_progress(self):
         if self.tqdm_bar is None:
             self.tqdm_bar = tqdm(total=self.num_samples, position=0)
-        # tqdm.write(f"start_progress {self} {time_ns()/10**9}")
         self.tqdm_bar.set_description(f"Compiling {self.desc}", refresh=False)
         self.tqdm_bar.reset(total=self.num_samples)
         
@@ -41,23 +43,29 @@ class ProgressbarManager:
         else:
             func()
         
-    def _update_bar(self, iternum, n):
+    def _update_bar(self, iternum):
         def _update_fn():
             if self.tqdm_bar is not None:
-                # tqdm.write(f"{self.tqdm_bar.n=} {iternum=} {n=}")
-                if self.tqdm_bar.n < iternum:
-                    self.msg_counter += 1
-                    if self.msg_counter == self.msgs_per_update:
-                        self.msg_counter = 0
-                        self.tqdm_bar.update(n)
+                # keep track of minimum iternum (slowest thread of pmap)
+                min_iter_num = float("inf")
+                did_update = False
+                for i in range(len(self.iternums)):
+                    if not did_update and self.iternums[i] < iternum:
+                        did_update = True
+                        self.iternums[i] = iternum
+                    if self.iternums[i] < min_iter_num:
+                        min_iter_num = self.iternums[i]                    
+                if self.tqdm_bar.n < min_iter_num:
+                    self.tqdm_bar.update(min_iter_num - self.tqdm_bar.n)
         self._maybe_with_lock(_update_fn)
     
     def _close_bar(self):
         def _close_fn():
-            self.msg_counter += 1
+            self.close_msg_counter += 1
             # tqdm.write(f"_close_fn {self.msg_counter}/{self.msgs_per_update}")
-            if self.msg_counter == self.msgs_per_update:
-                self.msg_counter = 0
+            if self.close_msg_counter == self.msgs_per_update:
+                self.close_msg_counter = 0
+                self.iternums = [0] * self.msgs_per_update
                 if self.tqdm_bar is not None:
                     if not self.share_bar:
                         self.tqdm_bar.close()
@@ -66,32 +74,26 @@ class ProgressbarManager:
                         pass
         self._maybe_with_lock(_close_fn)
             
-
     def _init_tqdm(self, iternum):
-        if self.tqdm_bar is None: 
-            self.tqdm_bar = tqdm(total=self.num_samples, position=0)
-        else:
-            self.tqdm_bar.reset(total=self.num_samples)
-        # tqdm.write(f"init_tqdm {self}")
         iternum = int(iternum)
-        self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
-        self._update_bar(iternum, 0)
+        def _init_fn():
+            if self.tqdm_bar is None: 
+                self.tqdm_bar = tqdm(total=self.num_samples, position=0)
+            else:
+                self.tqdm_bar.reset(total=self.num_samples)
+            self.tqdm_bar.set_description(f"  Running {self.desc}", refresh=True)
+        self._maybe_with_lock(_init_fn)
+        # self._update_bar(iternum, 0)
 
-    def _update_tqdm(self, iternum, increment, remainder):
+    def _update_tqdm(self, iternum):
         if self.tqdm_bar is not None:
             iternum = int(iternum)
-            increment = int(increment)
-            remainder = int(remainder)
             if iternum == self.num_samples:
-                if remainder == 0:
-                    # update and close event happen at same time
-                    self._update_bar(iternum, increment)
-                else:
-                    self._update_bar(iternum, remainder)
+                self._update_bar(iternum)
                 # tqdm.write(f"Close pbar {self} {hex(id(self.tqdm_bar))}")
                 self._close_bar()
             else:
-                self._update_bar(iternum, increment)
+                self._update_bar(iternum)
 
 
 # adapted form numpyro/util.py
@@ -108,13 +110,13 @@ def _add_progress_bar(
     
     print_rate = max(int(num_samples / 100), 1)
 
-    remainder = num_samples % print_rate
+    # remainder = num_samples % print_rate
 
     def _update_progress_bar(iter_num: jax.Array):
         iter_num = iter_num + 1 # all chains are at the same iteration, init iteration=0
         _ = jax.lax.cond(
             (iter_num % print_rate == 0) | (iter_num == num_samples),
-            lambda _: jax.experimental.io_callback(progressbar_mngr._update_tqdm, None, iter_num, print_rate, remainder),
+            lambda _: jax.experimental.io_callback(progressbar_mngr._update_tqdm, None, iter_num),
             lambda _: None,
             operand=None,
         )

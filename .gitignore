@@ -11,3 +11,4 @@ tmp.txt
 dccxjax.egg-info
 build
 *.out
+tmp*

@@ -2,8 +2,8 @@ import sys
 sys.path.append("evaluation")
 from parse_args import *
 parser = get_arg_parser()
-parser.add_argument("M", type=int)
-parser.add_argument("N", type=int)
+parser.add_argument("batch_size", type=int)
+parser.add_argument("num_batches", type=int)
 parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
@@ -57,7 +57,7 @@ from dccxjax.parallelisation import *
 from dccxjax.progress_bar import ProgressbarManager
 from dccxjax.parallelisation import VectorisationType
 
-def cdf_cruncher(qs, N, M, vectorisation):
+def cdf_cruncher(qs, num_batches, batch_size, vectorisation):
     def _get_ixs_lps():
         def step(carry, key):
             i = carry
@@ -67,14 +67,14 @@ def cdf_cruncher(qs, N, M, vectorisation):
             return i+1, (jnp.searchsorted(qs, x), lp)
         
         pmngr = ProgressbarManager("", None, vectorisation==VectorisationType.PMAP)
-        pmngr.set_num_samples(N)
-        scan_f = vectorise_scan(step, None, 1, M, 0, vectorisation, pmngr, lambda x: x)
-        rng_keys = jax.random.split(jax.random.key(0), (N,M))
+        pmngr.set_num_samples(num_batches)
+        scan_f = vectorise_scan(step, None, 1, batch_size, 0, vectorisation, pmngr, lambda x: x)
+        rng_keys = jax.random.split(jax.random.key(0), (num_batches,batch_size))
         _, (ixs, lps) = scan_f(jnp.array(0,int), rng_keys)
     
         return (ixs, lps)
     
-    ixs, lps = parallel_run(_get_ixs_lps, (), args.M, pconfig.vectorisation)
+    ixs, lps = parallel_run(_get_ixs_lps, (), batch_size, pconfig.vectorisation)
     # print(f"{N=} {M=} {ixs.shape=}") # (N,M)
     
     def _get_cdf(ixs, lps):
@@ -85,8 +85,8 @@ def cdf_cruncher(qs, N, M, vectorisation):
                 return jnp.logaddexp(s, jax.lax.select(ix <= i, lp, -jnp.inf)), None
             return jax.lax.scan(step, jnp.array(-jnp.inf,float), (_ix, _lps))[0]
         count = jax.vmap(_count, in_axes=(0,None,None), out_axes=0)
-        count_fn = vectorise(count, in_axes=(None,1,1), out_axes=0,batch_axis_size=M, vectorisation=vectorisation, vmap_batch_size=0)
-        c = parallel_run(count_fn, (jnp.arange(0,qs.size), ixs, lps), M, vectorisation)
+        count_fn = vectorise(count, in_axes=(None,1,1), out_axes=0,batch_axis_size=batch_size, vectorisation=vectorisation, vmap_batch_size=0)
+        c = parallel_run(count_fn, (jnp.arange(0,qs.size), ixs, lps), batch_size, vectorisation)
         c = jax.scipy.special.logsumexp(c, axis=0)
         c = jax.lax.exp(c - jax.scipy.special.logsumexp(lps))
         return c
@@ -97,13 +97,13 @@ def cdf_cruncher(qs, N, M, vectorisation):
 start_linspace = jnp.linspace(0., 3., 100)
 
 pconfig = get_parallelisation_config(args)
-gt_cdf = parallel_run(cdf_cruncher, (start_linspace, args.N, args.M, pconfig.vectorisation), args.M, pconfig.vectorisation)
+gt_cdf = parallel_run(cdf_cruncher, (start_linspace, args.num_batches, args.batch_size, pconfig.vectorisation), args.batch_size, pconfig.vectorisation)
 
 gt_pdf = jnp.hstack([jnp.array(0.),jnp.diff(gt_cdf)]) / (start_linspace[1] - start_linspace[0])
 
 jnp.save("evaluation/pedestrian/gt_xs.npy", start_linspace)
-jnp.save(f"evaluation/pedestrian/gt_pdf_est_{args.N*args.M}.npy", gt_pdf)
-jnp.save(f"evaluation/pedestrian/gt_cdf_{args.N*args.M}.npy", gt_cdf)
+jnp.save(f"evaluation/pedestrian/gt_pdf_est_{args.num_batches*args.batch_size:_}.npy", gt_pdf)
+jnp.save(f"evaluation/pedestrian/gt_cdf_{args.num_batches*args.batch_size:_}.npy", gt_cdf)
 
 if args.show_plots:
     t0 = time()
