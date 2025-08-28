@@ -199,7 +199,7 @@ requires-dist = [
     { name = "numpyro", specifier = ">=0.19.0,<0.20" },
     { name = "tqdm", specifier = ">=4.67.1" },
 ]
-provides-extras = ["cuda", "tpu"]
+provides-extras = ["cpu", "cuda", "tpu"]
 
 [[package]]
 name = "flatbuffers"
