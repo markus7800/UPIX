@@ -93,7 +93,7 @@ def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, vector
         devices = jax.devices()[:n_devices]
         device_count = len(devices)
         if batch_axis_size <= device_count:
-            return jax.pmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes, devices=devices)
+            return jax.pmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes, devices=devices[:batch_axis_size])
         else:
             # assert batch_axis_size % device_count == 0
             return pmap_vmap(fn, axis_name=SHARDING_AXIS, num_batches=device_count, in_axes=in_axes, out_axes=out_axes, devices=devices)
@@ -184,7 +184,7 @@ def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SC
     # special case, because we want to keep pmap at top level and do not want to put it into scan
     # we cannot use pmap_vmap at top level, because to use progressbar we cannot vmap scan 
     if batch_axis_size <= device_count:
-        return jax.pmap(jax.jit(partial(_scan, vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes), devices=devices)
+        return jax.pmap(jax.jit(partial(_scan, vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes), devices=devices[:batch_axis_size])
     else:
         num_batches = device_count
         def _batched_scan(init: SCAN_CARRY_TYPE, data: SCAN_DATA_TYPE) -> Tuple[SCAN_CARRY_TYPE,SCAN_RETURN_TYPE]:
@@ -200,7 +200,7 @@ def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SC
             assert batched_args is not None
             if remainder_args is not None:
                 if progressbar_mngr is not None: progressbar_mngr.set_msgs_per_update(remainder)
-                remainder_pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes), devices=devices)
+                remainder_pfun = jax.pmap(jax.jit(partial(_scan,vmap_step=False)), axis_name=SHARDING_AXIS, in_axes=(carry_axes,pmap_data_axes), out_axes=(carry_axes,pmap_data_axes), devices=devices[:remainder])
                 # remainder_pfun = jax.jit(partial(_scan,vmap_step=True))
                 # removing jax.block_until_ready messes up progressbar. pmap can be dispatched asyncronously?
                 remainder_out = jax.block_until_ready(remainder_pfun(*remainder_args))

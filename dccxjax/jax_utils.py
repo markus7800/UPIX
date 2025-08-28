@@ -173,7 +173,6 @@ def pmap_vmap(fun: FUN_TYPE,
         
     
     vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
-    pfun = jax.pmap(fun, in_axes=in_axes, out_axes=out_axes, devices=devices)
     pvfun = jax.pmap(vfun, axis_name=axis_name, in_axes=in_axes, out_axes=out_axes, devices=devices)
     
     def mapped_fun(*args):
@@ -182,6 +181,7 @@ def pmap_vmap(fun: FUN_TYPE,
             log_warn(f"Warning: pmap vmap with num_batches={num_batches} and remainder={remainder}")
         
         if remainder_args is not None:
+            pfun = jax.pmap(fun, in_axes=in_axes, out_axes=out_axes, devices=devices[:remainder] if devices is not None else None)
             remainder_out = pfun(*remainder_args)
         else:
             remainder_out = None
