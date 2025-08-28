@@ -111,7 +111,7 @@ def start_worker_process(in_queue: Queue, out_queue: Queue, worker_id: int, pcon
         env = pconfig.environ
     )
     if pconfig.verbose:
-        tqdm.write(f"Starting worker {worker_id} with pid {p.pid}")
+        tqdm.write(f"Starting worker {worker_id} with pid {p.pid}" + (" (pinned)" if pconfig.cpu_affinity else ""))
         
     assert p.stdin is not None
     assert p.stdout is not None
