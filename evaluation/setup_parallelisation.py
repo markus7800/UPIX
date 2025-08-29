@@ -2,6 +2,7 @@
 from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType
 import jax
 import os
+import psutil
 
 def get_parallelisation_config(args) -> ParallelisationConfig:
     parallelisation: str = args.parallelisation
@@ -32,6 +33,8 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
         )
         if jax.device_count() == 1:
             print(f"Warning: Vectorisation is set to'{vectorisation}' but only 1 jax devices is available.")
+        if num_workers == 0:
+            print(f"Warning: num_workers for '{vectorisation}' is defaulted to '{jax.device_count()=}'")
         if vectorisation == "pmap":
             return ParallelisationConfig(
                 parallelisation=ParallelisationType.Sequential,
@@ -53,16 +56,20 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
     else:
         assert vectorisation in ("vmap_local", "vmap_global")
         vectorisation_type = VectorisationType.LocalVMAP if vectorisation == "vmap_local" else VectorisationType.GlobalVMAP
+        if num_workers == 0:
+            print(f"Warning: num_workers for '{vectorisation}' is defaulted to '{psutil.cpu_count() or 1=}'")
         if parallelisation == "cpu_multiprocess":
             return ParallelisationConfig(
                 parallelisation=ParallelisationType.MultiProcessingCPU,
                 vectorisation=vectorisation_type,
-                num_workers=num_workers or os.cpu_count() or 1,
+                num_workers=num_workers or psutil.cpu_count() or 1,
                 cpu_affinity=args.cpu_affinity,
                 force_task_order = args.force_task_order,
                 vmap_batch_size=args.vmap_batch_size
             )
         else:
+            if num_workers == 0:
+                print(f"Warning: num_workers for '{vectorisation}' is defaulted to '{jax.device_count()=}'")
             assert parallelisation == "jax_devices"
             assert num_workers <= jax.device_count()
             return ParallelisationConfig(

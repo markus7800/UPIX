@@ -1,7 +1,7 @@
 from typing import Dict
 import os
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum, auto, StrEnum
 import jax
 from jax.sharding import Mesh
 from jax.experimental.mesh_utils import create_device_mesh
@@ -24,12 +24,12 @@ __all__ = [
     "parallel_run",
 ]
 
-class ParallelisationType(Enum):
+class ParallelisationType(StrEnum):
     Sequential = auto()
     MultiProcessingCPU = auto()
     MultiThreadingJAXDevices = auto()
     
-class VectorisationType(Enum):
+class VectorisationType(StrEnum):
     LocalVMAP = auto()
     GlobalVMAP = auto()
     PMAP = auto()
@@ -40,7 +40,7 @@ class VectorisationType(Enum):
 class ParallelisationConfig:
     parallelisation: ParallelisationType = ParallelisationType.Sequential
     vectorisation: VectorisationType = VectorisationType.GlobalVMAP
-    num_workers: int = os.cpu_count() or 1
+    num_workers: int = None # type: ignore makes sure this is set properly
     cpu_affinity: bool = False
     vmap_batch_size: int = 0
     force_task_order : bool = False

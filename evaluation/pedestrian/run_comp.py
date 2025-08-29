@@ -76,13 +76,13 @@ if __name__ == "__main__":
                 return_map=lambda trace: {key: trace[key] for key in return_keys if key in trace}
     )
 
-    result = timed(dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(dcc_obj.run)(jax.random.key(0))
     result.pprint(sortkey="slp")
 
 
-    gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
-    gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
-    gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf_est.npy")
+    gt_xs = jnp.load("evaluation/pedestrian/gt_xs-100.npy")
+    gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf-100-1_000_000_000_000.npy")
+    gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf_est-100-1_000_000_000_000.npy")
 
 
     if args.show_plots:
@@ -152,7 +152,21 @@ if __name__ == "__main__":
     plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
     plt.title(title)
     plt.show()
-
-# W1 = 0.01187, L_inf = 0.0007193 vmap_global
-# W1 = 0.01811, L_inf = 0.0008289 vmap_local
-# W1 = 0.01811, L_inf = 0.0008289 smap_local
+    
+    
+    result_metrics = {
+        "W1": W1_distance.item(),
+        "L_inf": infty_distance.item()
+    }
+        
+    json_result = {
+        "timings": timings,
+        "dcc_timings": dcc_obj.get_timings(),
+        "result_metrics": result_metrics,
+        "args": args.__dict__,
+        "pconfig": dcc_obj.pconfig.__dict__,
+        "environment_info":  get_environment_info()
+    }
+    
+    if not args.no_save:
+        write_json_result(json_result, "experiments", "pedestrian", "comp", prefix=f"nchains_{dcc_obj.mcmc_n_chains}_")

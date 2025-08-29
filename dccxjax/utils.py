@@ -1,12 +1,16 @@
 
 import logging
 import jax
+import jax.numpy as jnp
 import contextlib
-from typing import Sequence, TypeVar, List, Optional, Callable, Dict, Any
+from typing import Sequence, TypeVar, List, Optional, Callable, Dict, Any, Tuple
 from tqdm.contrib.logging import logging_redirect_tqdm
 from tqdm.auto import tqdm
 import os
+import sys
 from jax._src.config import trace_context
+import subprocess
+import psutil
 
 __all__ = [
     "bcolors",
@@ -22,6 +26,8 @@ __all__ = [
     "log_warn",
     "log_error",
     "log_critical",
+    "get_environment_info",
+    "write_json_result"
 ]
 
 class bcolors:
@@ -166,14 +172,16 @@ def track_compilation_time():
         _unregister_event_duration_listener_by_callback(tracker)
 
 import time
+from datetime import datetime
 RETURN_VAL = TypeVar("RETURN_VAL")
-def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...,RETURN_VAL]:
-    def wrapped(*args, **kwargs) -> RETURN_VAL:
+def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...,Tuple[RETURN_VAL,Dict]]:
+    def wrapped(*args, **kwargs) -> Tuple[RETURN_VAL,Dict]:
         compilation_time_tracker = CompilationTimeTracker()
         if compilation:
             jax.monitoring.register_event_duration_secs_listener(compilation_time_tracker)
         start_wall = time.perf_counter()
         start_cpu = time.process_time()
+        start_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         out = f(*args, **kwargs)
         repr(out) # block until ready
         end_wall = time.perf_counter()
@@ -181,12 +189,56 @@ def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...
         # computing the metric and displaying it
         wall_time = end_wall - start_wall
         cpu_time = end_cpu - start_cpu
-        cpu_count = os.cpu_count()
+        cpu_count = psutil.cpu_count()
+        end_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
+        timings = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "wall_time": wall_time,
+            "cpu_usage": cpu_time/wall_time,
+            "cpu_count": cpu_count
+        }
+
         if compilation:
-            comp_time = compilation_time_tracker.get_total_time_secs()
-            print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (wall_time) * 100:.2f}%)", end="")
-            print(f"    (trace={compilation_time_tracker.get_trace_time_secs():.3f}s, lower={compilation_time_tracker.get_lower_time_secs():.3f}s, compile={compilation_time_tracker.get_compile_time_secs():.3f}s)")
+            jax_total_jit_time = compilation_time_tracker.get_total_time_secs()
+            print(f"Total jit time: {jax_total_jit_time:.3f}s ({jax_total_jit_time / (wall_time) * 100:.2f}%)", end="")
+            trace_time = compilation_time_tracker.get_trace_time_secs()
+            lower_time = compilation_time_tracker.get_lower_time_secs()
+            comp_time = compilation_time_tracker.get_compile_time_secs()
+            print(f"    (trace={trace_time:.3f}s, lower={lower_time:.3f}s, compile={comp_time:.3f}s)")
             _unregister_event_duration_listener_by_callback(compilation_time_tracker)
-        return out
+            timings["jax_total_jit_time"] = jax_total_jit_time
+            timings["jax_trace_time"] = trace_time
+            timings["jax_lower_time"] = trace_time
+            timings["jax_comp_time"] = trace_time
+            
+        return out, timings
+    
     return wrapped
+
+def _get_last_git_commit() -> str:
+    try:
+        return subprocess.check_output(['git', 'log',  '--format=%H', '-n', '1']).decode().rstrip()
+    except:
+        return ""
+
+def get_environment_info() -> Dict:
+    return {
+        "platform": jnp.array([]).device.platform, # type: ignore # there has to be a better way,
+        "jax_environment": jax.print_environment_info(True),
+        "cpu_count": psutil.cpu_count(),
+        "git_commit": _get_last_git_commit(),
+        "command": sys.argv[0]
+    }
+    
+def write_json_result(json_result: Dict, *folders: str, prefix: str = ""):
+    import pathlib, json, uuid
+    from datetime import datetime
+    platform = json_result["environment_info"]["platform"]
+    num_workers = json_result["pconfig"]["num_workers"]
+    now = datetime.today().strftime('%Y-%m-%d_%H-%M')
+    fpath = pathlib.Path(*folders, f"{prefix}{platform}_{num_workers}_{now}_{str(uuid.uuid4())[:8]}.json")
+    fpath.parent.mkdir(exist_ok=True, parents=True)
+    with open(fpath, "w") as f:
+        json.dump(json_result, f, indent=2)

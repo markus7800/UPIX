@@ -102,6 +102,7 @@ class DCCConfig(MCMCDCC[T]):
     
 
 if __name__ == "__main__":
+    
     dcc_obj = DCCConfig(m, verbose=2,
                 parallelisation=get_parallelisation_config(args),
                 init_n_samples=250,
@@ -115,14 +116,12 @@ if __name__ == "__main__":
                 return_map=lambda trace: {"start": trace["start"]}
     )
 
-    result = timed(dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(dcc_obj.run)(jax.random.key(0))
     result.pprint(sortkey="slp")
 
-
-    gt_xs = jnp.load("evaluation/pedestrian/gt_xs.npy")
-    gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf.npy")
-    gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf_est.npy")
-
+    gt_xs = jnp.load("evaluation/pedestrian/gt_xs-100.npy")
+    gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf-100-1_000_000_000_000.npy")
+    gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf_est-100-1_000_000_000_000.npy")
 
     if args.show_plots:
         plot_histogram(result, "start")
@@ -148,33 +147,26 @@ if __name__ == "__main__":
     infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
     title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
     print(title)
-
+    
     if args.show_plots:
         plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
         plt.title(title)
         plt.show()
 
+    result_metrics = {
+        "W1": W1_distance.item(),
+        "L_inf": infty_distance.item()
+    }
+        
+    json_result = {
+        "timings": timings,
+        "dcc_timings": dcc_obj.get_timings(),
+        "result_metrics": result_metrics,
+        "args": args.__dict__,
+        "pconfig": dcc_obj.pconfig.__dict__,
+        "environment_info":  get_environment_info()
+    }
+    
+    if not args.no_save:
+        write_json_result(json_result, "experiments", "pedestrian", "scale", prefix=f"nchains_{dcc_obj.mcmc_n_chains}_")
 
-# python3 evaluation/pedestrian/run_scale.py sequential smap_local 8 32768 100 --show_plots -host_device_count 8
-
-# with get_initial_positions
-# W1 = 0.08711, L_inf = 0.004961
-
-# without get_initial_positions
-# W1 = 0.02183, L_inf = 0.001462
-
-# python3 evaluation/pedestrian/run_scale.py sequential smap_local 8 32768 1000 --show_plots -host_device_count 8
-
-# with get_initial_positions
-# W1 = 0.03013, L_inf = 0.002532
-
-# without get_initial_positions
-# W1 = 0.09416, L_inf = 0.004867
-
-# python3 evaluation/pedestrian/run_scale.py sequential smap_local 6 32768 100 --show_plots -host_device_count 8
-
-# with get_initial_positions
-# W1 = 0.08763, L_inf = 0.00499
-
-# without get_initial_positions
-# W1 = 0.02208, L_inf = 0.001473
