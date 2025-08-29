@@ -1,0 +1,67 @@
+{
+  "workload": {
+    "n_chains": 1048576
+  },
+  "timings": {
+    "start_date": "2025-08-29 19:47:18",
+    "end_date": "2025-08-29 20:56:53",
+    "wall_time": 4174.619298298843,
+    "cpu_usage": 15.724297230075203,
+    "cpu_count": 16,
+    "jax_total_jit_time": 15.425837516784668,
+    "jax_trace_time": 5.562912702560425,
+    "jax_lower_time": 5.562912702560425,
+    "jax_comp_time": 5.562912702560425
+  },
+  "dcc_timings": {
+    "inference_time": 4167.3272727886215,
+    "logweight_estimate_time": 4.321255536749959,
+    "total_time": 4174.567909461446
+  },
+  "result_metrics": {
+    "W1": 0.007502445951104164,
+    "L_inf": 0.00047463178634643555
+  },
+  "args": {
+    "parallelisation": "sequential",
+    "vectorisation": "pmap",
+    "host_device_count": 16,
+    "num_workers": 16,
+    "vmap_batch_size": 0,
+    "cpu": false,
+    "cpu_affinity": false,
+    "omp": 0,
+    "force_task_order": false,
+    "no_save": false,
+    "n_slps": 8,
+    "n_chains": 1048576,
+    "n_samples_per_chain": 256,
+    "show_plots": false
+  },
+  "pconfig": {
+    "parallelisation": "sequential",
+    "vectorisation": "pmap",
+    "num_workers": 16,
+    "cpu_affinity": false,
+    "vmap_batch_size": 0,
+    "force_task_order": false,
+    "environ": {
+      "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "JAX_PLATFORMS": "cpu"
+    },
+    "verbose": true
+  },
+  "environment_info": {
+    "platform": "cpu",
+    "cpu-brand": "AMD EPYC 9355 32-Core Processor",
+    "jax_environment": "jax:    0.7.1\njaxlib: 0.7.1\nnumpy:  2.3.2\npython: 3.13.7 (main, Aug 18 2025, 19:20:03) [Clang 20.1.4 ]\ndevice info: cpu-16, 16 local devices\"\nprocess_count: 1\nplatform: uname_result(system='Linux', node='a-l40s-o-2', release='5.14.0-503.40.1.el9_5.x86_64', version='#1 SMP PREEMPT_DYNAMIC Wed Apr 30 17:38:54 UTC 2025', machine='x86_64')\nXLA_FLAGS=--xla_force_host_platform_device_count=16",
+    "cpu_count": 16,
+    "git_commit": "e97fb1c3f582c152f07381cfa7008213f5c2a9a4",
+    "command": "evaluation/pedestrian/run_scale.py"
+  },
+  "id": "d11925b3-5876-46e4-a218-03b154a963e4"
+}
