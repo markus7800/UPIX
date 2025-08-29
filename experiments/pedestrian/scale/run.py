@@ -33,7 +33,9 @@ if args.platform == "cuda":
     if (parallelisation, vectorisaton) == ("sequential", "vmap_global"):
         assert ndevices == 1 
     for nchains in NCHAINS:
-        subprocess.run(
-            f"uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/run_scale.py {parallelisation} {vectorisaton} 8 {nchains} 256 -vmap_batch_size {2**19} -num_workers {ndevices}"
-        )
+        cmd = f"uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/run_scale.py {parallelisation} {vectorisaton} 8 {nchains} 256 -vmap_batch_size {2**19} -num_workers {ndevices}"
+        print('\033[95m' + cmd + '\033[0m')
+        subprocess.run(cmd, shell=True)
         
+        
+# python3 experiments/pedestrian/scale/run.py cuda 8 20 sequential pmap
