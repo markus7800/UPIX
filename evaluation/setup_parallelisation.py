@@ -14,7 +14,7 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
     if parallelisation != "sequential" and not vectorisation.startswith("vmap"):
         print(f"Ignoring vectorisation '{vectorisation}' for non-sequential parallisation '{parallelisation}'")
     if vectorisation not in ("vmap_local", "vmap_global") and args.vmap_batch_size > 0:
-        print(f"Ignoring batch_size {args.vmap_batch_size} for vectorisation '{vectorisation}'")
+        print(f"Ignoring vmap_batch_size {args.vmap_batch_size} for vectorisation '{vectorisation}'")
     if parallelisation == "sequential":
         if num_workers > 0 and vectorisation in ("vmap_local", "vmap_global"):
             print(f"Ignoring num_workers '{vectorisation}' for non-sequential parallelisation '{parallelisation}'")

@@ -38,4 +38,7 @@ if args.platform == "cuda":
         subprocess.run(cmd, shell=True)
         
         
+# python3 experiments/pedestrian/scale/run.py cuda 1 20 sequential pmap
+# python3 experiments/pedestrian/scale/run.py cuda 2 20 sequential pmap
+# python3 experiments/pedestrian/scale/run.py cuda 4 20 sequential pmap
 # python3 experiments/pedestrian/scale/run.py cuda 8 20 sequential pmap
