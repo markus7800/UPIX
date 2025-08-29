@@ -168,7 +168,10 @@ def vectorise_scan_pmap(step: Callable[[SCAN_CARRY_TYPE,SCAN_DATA_TYPE],Tuple[SC
             progressbar_mngr.start_progress()
             
         if vmap_step:
-            _step = jax.vmap(step, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
+            if vmap_batch_size > 0:
+                _step = batched_vmap(step, in_axes=(carry_axes,0), out_axes=(carry_axes,0), batch_size=vmap_batch_size)
+            else:
+                _step = jax.vmap(step, in_axes=(carry_axes,0), out_axes=(carry_axes,0))
         else:
             _step = step
             
