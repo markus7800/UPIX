@@ -82,15 +82,6 @@ def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation, n_devices):
     
     scan_f = vectorise_scan(step, None, 1, batch_size, 0, vectorisation, n_devices, pmngr, lambda x: x)
 
-    def _count(q, _xs, _lps):
-        def count_step(s, data):
-            x, lp = data
-            return jnp.logaddexp(s, jax.lax.select(x <= q, lp, -jnp.inf)), None
-        return jax.lax.scan(count_step, jnp.array(-jnp.inf,float), (_xs, _lps))[0]
-    count = jax.vmap(_count, in_axes=(0,None,None), out_axes=0)
-    count_fn = vectorise(count, in_axes=(None,1,1), out_axes=0, batch_axis_size=batch_size, vectorisation=vectorisation, n_devices=n_devices, vmap_batch_size=0)
-
-        
     def _get_c(i, key):
         pmngr.desc = f"{i}"
         rng_keys = jax.random.split(key, (num_batches,batch_size))
@@ -100,16 +91,14 @@ def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation, n_devices):
         # ixs = result["start"]
         # lps = result["lp"]
         
-        
-        # def _cdf(q):
-        #     lp_for_x_lt_q = jnp.where(xs < q, lps, jax.numpy.full_like(lps, -jnp.inf))
-        #     assert isinstance(lp_for_x_lt_q, jax.Array)
-        #     return jax.scipy.special.logsumexp(lp_for_x_lt_q)
-        # c = jax.lax.map(lambda a: _cdf(*a) , (qs,))
-        
-        c = count_fn(qs, xs, lps)
-        
         s = jax.scipy.special.logsumexp(lps)
+        
+        def _cdf(q):
+            lp_for_x_lt_q = jnp.where(xs < q, lps, jax.numpy.full_like(lps, -jnp.inf))
+            assert isinstance(lp_for_x_lt_q, jax.Array)
+            return jax.scipy.special.logsumexp(lp_for_x_lt_q)
+        
+        c = jax.lax.map(lambda a: _cdf(*a) , (qs,))
         
         del xs
         del lps
