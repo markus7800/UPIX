@@ -154,12 +154,17 @@ if __name__ == "__main__":
     plt.show()
     
     
+    workload = {
+        "n_chains": dcc_obj.mcmc_n_chains
+    }
+
     result_metrics = {
         "W1": W1_distance.item(),
         "L_inf": infty_distance.item()
     }
         
     json_result = {
+        "workload": workload,
         "timings": timings,
         "dcc_timings": dcc_obj.get_timings(),
         "result_metrics": result_metrics,
@@ -169,4 +174,4 @@ if __name__ == "__main__":
     }
     
     if not args.no_save:
-        write_json_result(json_result, "experiments", "pedestrian", "comp", prefix=f"nchains_{dcc_obj.mcmc_n_chains}_")
+        write_json_result(json_result, "experiments", "pedestrian", "scale", prefix=f"nchains_{dcc_obj.mcmc_n_chains:07d}_")

@@ -35,7 +35,7 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
         if jax.device_count() == 1:
             print(f"Warning: Vectorisation is set to'{vectorisation}' but only 1 jax devices is available.")
         if num_workers == 0:
-            print(f"Warning: num_workers for '{vectorisation}' is defaulted to '{jax.device_count()=}'")
+            print(f"Warning: num_workers for '{vectorisation}' is defaulted to {jax.device_count()=}")
         if vectorisation == "pmap":
             return ParallelisationConfig(
                 parallelisation=ParallelisationType.Sequential,
@@ -58,7 +58,7 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
         assert vectorisation in ("vmap_local", "vmap_global")
         vectorisation_type = VectorisationType.LocalVMAP if vectorisation == "vmap_local" else VectorisationType.GlobalVMAP
         if num_workers == 0:
-            print(f"Warning: num_workers for '{vectorisation}' is defaulted to '{get_cpu_count()=}'")
+            print(f"Warning: num_workers for '{vectorisation}' is defaulted to {get_cpu_count()=}")
         if parallelisation == "cpu_multiprocess":
             return ParallelisationConfig(
                 parallelisation=ParallelisationType.MultiProcessingCPU,
@@ -70,7 +70,7 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
             )
         else:
             if num_workers == 0:
-                print(f"Warning: num_workers for '{vectorisation}' is defaulted to '{jax.device_count()=}'")
+                print(f"Warning: num_workers for '{vectorisation}' is defaulted to {jax.device_count()=}")
             assert parallelisation == "jax_devices"
             assert num_workers <= jax.device_count()
             return ParallelisationConfig(

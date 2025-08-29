@@ -246,8 +246,10 @@ def write_json_result(json_result: Dict, *folders: str, prefix: str = ""):
     from datetime import datetime
     platform = json_result["environment_info"]["platform"]
     num_workers = json_result["pconfig"]["num_workers"]
+    id_str = str(uuid.uuid4())
+    json_result["id"] = id_str
     now = datetime.today().strftime('%Y-%m-%d_%H-%M')
-    fpath = pathlib.Path(*folders, f"{prefix}{platform}_{num_workers}_{now}_{str(uuid.uuid4())[:8]}.json")
+    fpath = pathlib.Path(*folders, f"{prefix}{platform}_{num_workers}_{now}_{id_str[:8]}.json")
     fpath.parent.mkdir(exist_ok=True, parents=True)
     with open(fpath, "w") as f:
         json.dump(json_result, f, indent=2)
