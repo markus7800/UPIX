@@ -179,6 +179,17 @@ def get_cpu_count() -> int:
     else:
         return int(psutil.cpu_count()) # type: ignore
 
+def get_gpu_names() -> List[str]:
+    try:
+        return list(
+            map(
+                lambda l: l.partition(" (UUID")[0],
+                subprocess.check_output(['nvidia-smi', '-L']).decode().rstrip().splitlines()
+            )
+        )
+    except:
+        return []
+
 import time
 from datetime import datetime
 RETURN_VAL = TypeVar("RETURN_VAL")
@@ -235,6 +246,7 @@ def get_environment_info() -> Dict:
     return {
         "platform": jnp.array([]).device.platform, # type: ignore # there has to be a better way,
         "cpu-brand": cpuinfo.get_cpu_info()["brand_raw"],
+        "gpu-brand": get_gpu_names(),
         "jax_environment": jax.print_environment_info(True),
         "cpu_count": get_cpu_count(),
         "git_commit": _get_last_git_commit(),

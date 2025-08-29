@@ -38,6 +38,15 @@ if args.platform == "cuda":
         subprocess.run(cmd, shell=True)
         
         
+# make sure to uv sync --extra=cpu beforehand
+
+# python3 experiments/pedestrian/scale/run.py cpu 8 20 sequential pmap
+# python3 experiments/pedestrian/scale/run.py cpu 16 20 sequential pmap
+# python3 experiments/pedestrian/scale/run.py cpu 32 20 sequential pmap
+# python3 experiments/pedestrian/scale/run.py cpu 64 20 sequential pmap
+        
+# make sure to uv sync --extra=cuda beforehand
+
 # python3 experiments/pedestrian/scale/run.py cuda 1 20 sequential pmap
 # python3 experiments/pedestrian/scale/run.py cuda 2 20 sequential pmap
 # python3 experiments/pedestrian/scale/run.py cuda 4 20 sequential pmap

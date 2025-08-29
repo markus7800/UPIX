@@ -58,6 +58,9 @@
   "environment_info": {
     "platform": "cpu",
     "cpu-brand": "AMD EPYC 9355 32-Core Processor",
+    "gpu-brand": [
+      "No devices found."
+    ],
     "jax_environment": "jax:    0.7.1\njaxlib: 0.7.1\nnumpy:  2.3.2\npython: 3.13.7 (main, Aug 18 2025, 19:20:03) [Clang 20.1.4 ]\ndevice info: cpu-64, 64 local devices\"\nprocess_count: 1\nplatform: uname_result(system='Linux', node='a-l40s-o-2', release='5.14.0-503.40.1.el9_5.x86_64', version='#1 SMP PREEMPT_DYNAMIC Wed Apr 30 17:38:54 UTC 2025', machine='x86_64')\nXLA_FLAGS=--xla_force_host_platform_device_count=64",
     "cpu_count": 64,
     "git_commit": "e97fb1c3f582c152f07381cfa7008213f5c2a9a4",
