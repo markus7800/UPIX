@@ -11,6 +11,7 @@ import sys
 from jax._src.config import trace_context
 import subprocess
 import psutil
+import cpuinfo
 
 __all__ = [
     "bcolors",
@@ -27,7 +28,8 @@ __all__ = [
     "log_error",
     "log_critical",
     "get_environment_info",
-    "write_json_result"
+    "write_json_result",
+    "get_cpu_count"
 ]
 
 class bcolors:
@@ -171,6 +173,12 @@ def track_compilation_time():
     finally:
         _unregister_event_duration_listener_by_callback(tracker)
 
+def get_cpu_count() -> int:
+    if hasattr(os, "sched_getaffinity"):
+        return int(os.sched_getaffinity(0)) # type: ignore
+    else:
+        return int(psutil.cpu_count()) # type: ignore
+
 import time
 from datetime import datetime
 RETURN_VAL = TypeVar("RETURN_VAL")
@@ -189,7 +197,7 @@ def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...
         # computing the metric and displaying it
         wall_time = end_wall - start_wall
         cpu_time = end_cpu - start_cpu
-        cpu_count = psutil.cpu_count()
+        cpu_count = get_cpu_count()
         end_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
         timings = {
@@ -226,8 +234,9 @@ def _get_last_git_commit() -> str:
 def get_environment_info() -> Dict:
     return {
         "platform": jnp.array([]).device.platform, # type: ignore # there has to be a better way,
+        "cpu-brand": cpuinfo.get_cpu_info()["brand_raw"],
         "jax_environment": jax.print_environment_info(True),
-        "cpu_count": psutil.cpu_count(),
+        "cpu_count": get_cpu_count(),
         "git_commit": _get_last_git_commit(),
         "command": sys.argv[0]
     }

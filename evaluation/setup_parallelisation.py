@@ -1,5 +1,6 @@
 
 from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType
+from dccxjax.utils import get_cpu_count
 import jax
 import os
 import psutil
@@ -57,12 +58,12 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
         assert vectorisation in ("vmap_local", "vmap_global")
         vectorisation_type = VectorisationType.LocalVMAP if vectorisation == "vmap_local" else VectorisationType.GlobalVMAP
         if num_workers == 0:
-            print(f"Warning: num_workers for '{vectorisation}' is defaulted to '{psutil.cpu_count() or 1=}'")
+            print(f"Warning: num_workers for '{vectorisation}' is defaulted to '{get_cpu_count()=}'")
         if parallelisation == "cpu_multiprocess":
             return ParallelisationConfig(
                 parallelisation=ParallelisationType.MultiProcessingCPU,
                 vectorisation=vectorisation_type,
-                num_workers=num_workers or psutil.cpu_count() or 1,
+                num_workers=num_workers or get_cpu_count(),
                 cpu_affinity=args.cpu_affinity,
                 force_task_order = args.force_task_order,
                 vmap_batch_size=args.vmap_batch_size
