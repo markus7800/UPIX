@@ -38,6 +38,7 @@ def get_parallelisation_config(args) -> ParallelisationConfig:
             return ParallelisationConfig(
                 parallelisation=ParallelisationType.Sequential,
                 vectorisation=VectorisationType.PMAP,
+                vmap_batch_size=args.vmap_batch_size,
                 num_workers=num_workers or jax.device_count(),
             )
         if vectorisation == "smap_local":
