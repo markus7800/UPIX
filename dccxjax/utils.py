@@ -175,7 +175,7 @@ def track_compilation_time():
 
 def get_cpu_count() -> int:
     if hasattr(os, "sched_getaffinity"):
-        return int(os.sched_getaffinity(0)) # type: ignore
+        return int(len(os.sched_getaffinity(0))) # type: ignore
     else:
         return int(psutil.cpu_count()) # type: ignore
 
