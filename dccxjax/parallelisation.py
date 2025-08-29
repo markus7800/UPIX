@@ -96,12 +96,12 @@ def vectorise(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, vector
             return jax.pmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes, devices=devices[:batch_axis_size])
         else:
             # assert batch_axis_size % device_count == 0
-            return pmap_vmap(fn, axis_name=SHARDING_AXIS, num_batches=device_count, in_axes=in_axes, out_axes=out_axes, devices=devices)
+            return pmap_vmap(fn, axis_name=SHARDING_AXIS, num_batches=device_count, in_axes=in_axes, out_axes=out_axes, devices=devices, vmap_batch_size=vmap_batch_size)
     elif vectorisation == VectorisationType.LocalSMAP:
         return jax.jit(fn) # type: ignore
     else:
         assert vectorisation == VectorisationType.GlobalSMAP
-        return jax.jit(smap_vmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes)) # type: ignore
+        return jax.jit(smap_vmap(fn, axis_name=SHARDING_AXIS, in_axes=in_axes, out_axes=out_axes, vmap_batch_size=vmap_batch_size)) # type: ignore
         
 def parallel_run(fn: Callable[..., FUNCTION_RET_TYPE], args: Tuple, batch_axis_size: int, vectorisation: VectorisationType, n_devices: int) -> FUNCTION_RET_TYPE:
     if vectorisation == VectorisationType.LocalSMAP or vectorisation == VectorisationType.GlobalSMAP:

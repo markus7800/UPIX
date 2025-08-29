@@ -3,7 +3,7 @@ from dccxjax.types import PRNGKey, Trace, Traces, StackedTrace, StackedTraces
 import jax
 import jax.numpy as jnp
 from dccxjax.parallelisation import ParallelisationConfig, VectorisationType, vectorise, parallel_run, SHARDING_AXIS
-from dccxjax.jax_utils import smap_vmap
+from dccxjax.jax_utils import smap_vmap, batched_vmap
 
 __all__ = [
     "estimate_log_Z_for_SLP_from_prior",
@@ -15,9 +15,12 @@ def estimate_log_Z_for_SLP_from_prior(slp: SLP, N: int, rng_key: PRNGKey, pconfi
     
     # this does not really make a difference
     if pconfig.vectorisation == VectorisationType.LocalVMAP:
-        _gen_likelihood_weight = jax.vmap(slp._gen_likelihood_weight)
+        if pconfig.vmap_batch_size > 0:
+            _gen_likelihood_weight = batched_vmap(slp._gen_likelihood_weight, batch_size=pconfig.vmap_batch_size)
+        else:
+            _gen_likelihood_weight = jax.vmap(slp._gen_likelihood_weight)
     elif pconfig.vectorisation == VectorisationType.LocalSMAP:
-        _gen_likelihood_weight = smap_vmap(slp._gen_likelihood_weight, axis_name=SHARDING_AXIS)
+        _gen_likelihood_weight = smap_vmap(slp._gen_likelihood_weight, axis_name=SHARDING_AXIS, vmap_batch_size=pconfig.vmap_batch_size)
     else:
         _gen_likelihood_weight = slp._gen_likelihood_weight
     vectorised_fn = vectorise(_gen_likelihood_weight, 0, 0, N, pconfig.vectorisation, pconfig.num_workers, vmap_batch_size=pconfig.vmap_batch_size)

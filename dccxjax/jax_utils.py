@@ -124,7 +124,7 @@ def put_batch_axis_back(args, batch_axes):
     
     return tree.unflatten(transposed_args)
 
-# like jax.lax.map but with in_axes and out_axes, batch_size must divided batch_axis dim
+# like jax.lax.map but with in_axes and out_axes, batch_size should divided batch_axis dim
 def batched_vmap(fun: FUN_TYPE, batch_size: int, in_axes: int | None | Sequence[Any] = 0, out_axes: Any = 0) -> FUN_TYPE:
     vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
     def mapped_fun(*args):
@@ -169,10 +169,14 @@ def pmap_vmap(fun: FUN_TYPE,
     in_axes: int | None | Sequence[Any] = 0,
     out_axes: Any = 0,
     devices: Sequence[Device] | None = None,  # noqa: F811
+    vmap_batch_size: int = 0
     ) -> FUN_TYPE:
         
     
-    vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
+    if vmap_batch_size > 0:
+        vfun = batched_vmap(fun, in_axes=in_axes, out_axes=out_axes, batch_size=vmap_batch_size)
+    else:
+        vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
     pvfun = jax.pmap(vfun, axis_name=axis_name, in_axes=in_axes, out_axes=out_axes, devices=devices)
     
     def mapped_fun(*args):
@@ -205,9 +209,14 @@ def smap_vmap(fun: FUN_TYPE,
     *,
     axis_name: AxisName,
     in_axes: int | None | Sequence[Any] = 0,
-    out_axes: Any = 0) -> FUN_TYPE:
+    out_axes: Any = 0,
+    vmap_batch_size: int = 0,
+    ) -> FUN_TYPE:
     
-    vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
+    if vmap_batch_size > 0:
+        vfun = batched_vmap(fun, in_axes=in_axes, out_axes=out_axes, batch_size=vmap_batch_size)
+    else:
+        vfun = jax.vmap(fun, in_axes=in_axes, out_axes=out_axes)
     return smap(vfun, axis_name=axis_name, in_axes=in_axes, out_axes=out_axes) # type: ignore
 
 

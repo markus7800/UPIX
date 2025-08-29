@@ -245,8 +245,8 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
                 lp = jax.vmap(log_prob_fn)(X)
                 elbo = (lp - lq).sum() / L
             elif vectorisation in "smap":
-                X, lq = smap_vmap(guide.sample_and_log_prob, axis_name=SHARDING_AXIS, in_axes=0, out_axes=0)(jax.random.split(rng_key, L))
-                lp = smap_vmap(log_prob_fn, axis_name=SHARDING_AXIS, in_axes=0, out_axes=0)(X)
+                X, lq = smap_vmap(guide.sample_and_log_prob, axis_name=SHARDING_AXIS, in_axes=0, out_axes=0, vmap_batch_size=vmap_batch_size)(jax.random.split(rng_key, L))
+                lp = smap_vmap(log_prob_fn, axis_name=SHARDING_AXIS, in_axes=0, out_axes=0, vmap_batch_size=vmap_batch_size)(X)
                 elbo = (lp - lq).sum() / L
             else:
                 assert vectorisation in "psum"

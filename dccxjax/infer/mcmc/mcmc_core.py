@@ -282,7 +282,7 @@ def get_mcmc_kernel(
                     else:
                         new_kernel_state = jax.vmap(kernel, in_axes=(0,None,None,0), out_axes=0)(kernel_keys, state.temperature, state.data_annealing, kernel_state) # (1)
                 else:
-                    new_kernel_state = smap_vmap(kernel, axis_name=SHARDING_AXIS, in_axes=(0,None,None,0), out_axes=0)(kernel_keys, state.temperature, state.data_annealing, kernel_state)
+                    new_kernel_state = smap_vmap(kernel, axis_name=SHARDING_AXIS, in_axes=(0,None,None,0), out_axes=0, vmap_batch_size=vmap_batch_size)(kernel_keys, state.temperature, state.data_annealing, kernel_state)
             else:
                 new_kernel_state = kernel(kernel_key, state.temperature, state.data_annealing, kernel_state) # (2)
                 
