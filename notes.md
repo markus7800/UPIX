@@ -21,6 +21,11 @@ uv run --frozen --python=python3.13 --extra=cuda evaluation/pedestrian/run_scale
 
 uv run --frozen --python=python3.13 --extra=cpu evaluation/pedestrian/run_scale.py sequential pmap 8 1048576 256 --cpu -host_device_count ...
 
+### Nonparametric HMC
+
+uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 8 256 0 -n_processes 8
+
+
 ## GP
 
 uv run  --frozen --python=python3.13 --extra=cpu --with=pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local --cpu -omp 1 -num_workers=...

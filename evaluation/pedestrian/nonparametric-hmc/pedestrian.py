@@ -45,9 +45,8 @@ def pyro_walk_model() -> float:
 
 import torch.multiprocessing as mp
 
-def target_NP_LA_DHMC(rep, bar_pos=None):
+def target_NP_LA_DHMC(rep, burnin, count, bar_pos=None):
     # pick best from paper
-    count = 1_000
     eps = 0.1
     L = 5
     alpha = 0.1
@@ -56,29 +55,30 @@ def target_NP_LA_DHMC(rep, bar_pos=None):
         lambda trace: run_prob_prog(walk_model, trace=trace),
         name=f"walk_model_{rep}",
         count=count,
-        burnin=0,  # 100,
+        burnin=burnin,
         eps=eps,
         L=L,
         K=K,
         alpha=alpha,
         seed=rep,
-        bar_pos=bar_pos
+        bar_pos=bar_pos,
+        save_samples=False
     )
 
-def target_NP_DHMC(rep, bar_pos=None):
+def target_NP_DHMC(rep, burnin, count, bar_pos=None):
     # pick from paper
-    count = 1_000
     eps = 0.1
     num_steps = 50
     run_inference(
         lambda trace: run_prob_prog(walk_model, trace=trace),
         name=f"walk_model{rep}",
         count=count,
-        burnin=100,
+        burnin=burnin,
         eps=eps,
         leapfrog_steps=num_steps,
         seed=rep,
-        bar_pos=bar_pos
+        bar_pos=bar_pos,
+        save_samples=False
     )
 
 import argparse
@@ -88,10 +88,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("algorithm", help="NP-LA-DHMC | NP-DHMC")
     parser.add_argument("repetitions", default=10, type=int)
+    parser.add_argument("n_iter", default=1000, type=int)
+    parser.add_argument("burnin", default=100, type=int)
     parser.add_argument("-n_processes", default=1, type=int)
     args = parser.parse_args()
 
-    count = 1_000
+    n_iter = args.n_iter
+    burnin = args.burnin
     repetitions = args.repetitions
 
     assert args.n_processes <= repetitions
@@ -102,22 +105,53 @@ if __name__ == "__main__":
         if args.n_processes > 1:
             processes = []
             with mp.Pool(args.n_processes) as p:
-                p.starmap(target_NP_LA_DHMC, [(rep, rep) for rep in range(repetitions)])
+                p.starmap(target_NP_LA_DHMC, [(rep, burnin, n_iter, rep % args.n_processes) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
                 print(
                     f"REPETITION {rep+1}/{repetitions}"
                 )
-                target_NP_LA_DHMC(rep)
+                target_NP_LA_DHMC(rep, n_iter, burnin, rep)
 
     elif args.algorithm == "NP-DHMC":
         if args.n_processes > 1:
             # takes ~ 2:30s for 10 * 1_000 samples
             with mp.Pool(args.n_processes) as p:
-                p.starmap(target_NP_DHMC, [(rep, rep % args.n_processes) for rep in range(repetitions)])
+                p.starmap(target_NP_DHMC, [(rep, n_iter, burnin, rep % args.n_processes) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")
-                target_NP_DHMC(rep)
+                target_NP_DHMC(rep, n_iter, burnin, rep)
                 
-    tqdm.write(f"\nFinished in {monotonic() - t0:.3f}s.")
+    inference_time = monotonic() - t0
+    tqdm.write(f"\nFinished in {inference_time:.3f}s.")
+    
+    import pathlib, json, uuid
+    from datetime import datetime
+    import cpuinfo
+    platform = "cpu"
+    num_workers = args.n_processes
+    id_str = str(uuid.uuid4())
+    json_result = {
+        "id": id_str,
+        "workload": {
+            "n_chains": repetitions,
+            "n_samples_per_chain": n_iter,
+            "burnin": burnin
+        },
+        "timings": {
+            "inference_time": inference_time
+        },
+        "environment_info": {
+            "platform": "cpu",
+            "cpu-brand": cpuinfo.get_cpu_info()["brand_raw"],
+        }
+    }
+    now = datetime.today().strftime('%Y-%m-%d_%H-%M')
+    fpath = pathlib.Path(
+        "experiments", "pedestrian", "comp",
+        f"npdhmc_{repetitions}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
+    fpath.parent.mkdir(exist_ok=True, parents=True)
+    with open(fpath, "w") as f:
+        json.dump(json_result, f, indent=2)
+    
