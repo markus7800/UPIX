@@ -15,8 +15,7 @@ ndevices = int(args.ndevices)
 parallelisation = str(args.parallelisation)
 vectorisaton = str(args.vectorisaton)
 
-NCHAINS2 = [2**n for n in [3, 10, 13, 16, 17, 18, 19, 20] if n <= args.maxpow]
-NCHAINS = [2**n for n in range(3,20) if 2**n not in NCHAINS2]
+NCHAINS = [2**n for n in range(3,20+1) if n <= args.maxpow]
 print(NCHAINS)
 
 
