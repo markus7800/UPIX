@@ -154,7 +154,8 @@ if __name__ == "__main__":
         plt.show()
         
     workload = {
-        "n_chains": dcc_obj.mcmc_n_chains
+        "n_chains": dcc_obj.mcmc_n_chains,
+        "n_samples_per_chain": dcc_obj.mcmc_n_samples_per_chain,
     }
 
     result_metrics = {

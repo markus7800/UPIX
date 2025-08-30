@@ -1,0 +1,14 @@
+{
+  "id": "4be366ff-6778-494e-be22-8083606bedef",
+  "workload": {
+    "n_chains": 8,
+    "n_samples_per_chain": 256
+  },
+  "timings": {
+    "inference_time": 40.598240500024986
+  },
+  "environment_info": {
+    "platform": "cpu",
+    "cpu-brand": "Apple M2 Pro"
+  }
+}

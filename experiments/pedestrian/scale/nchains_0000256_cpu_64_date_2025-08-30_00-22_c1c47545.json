@@ -1,6 +1,7 @@
 {
   "workload": {
-    "n_chains": 256
+    "n_chains": 256,
+    "n_samples_per_chain": 256
   },
   "timings": {
     "start_date": "2025-08-30 00:22:27",
