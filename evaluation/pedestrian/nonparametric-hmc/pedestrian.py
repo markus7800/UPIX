@@ -45,7 +45,7 @@ def pyro_walk_model() -> float:
 
 import torch.multiprocessing as mp
 
-def target_NP_LA_DHMC(rep, burnin, count, bar_pos=None):
+def target_NP_LA_DHMC(rep, burnin, count, bar_pos=None, disable_bar=False):
     # pick best from paper
     eps = 0.1
     L = 5
@@ -62,10 +62,11 @@ def target_NP_LA_DHMC(rep, burnin, count, bar_pos=None):
         alpha=alpha,
         seed=rep,
         bar_pos=bar_pos,
+        disable_bar=disable_bar,
         save_samples=False
     )
 
-def target_NP_DHMC(rep, burnin, count, bar_pos=None):
+def target_NP_DHMC(rep, burnin, count, bar_pos=None, disable_bar=False):
     # pick from paper
     eps = 0.1
     num_steps = 50
@@ -78,6 +79,7 @@ def target_NP_DHMC(rep, burnin, count, bar_pos=None):
         leapfrog_steps=num_steps,
         seed=rep,
         bar_pos=bar_pos,
+        disable_bar=disable_bar,
         save_samples=False
     )
 
@@ -91,11 +93,13 @@ if __name__ == "__main__":
     parser.add_argument("n_iter", default=1000, type=int)
     parser.add_argument("burnin", default=100, type=int)
     parser.add_argument("-n_processes", default=1, type=int)
+    parser.add_argument("--disable_bar", action="store_true")
     args = parser.parse_args()
 
     n_iter = args.n_iter
     burnin = args.burnin
     repetitions = args.repetitions
+    disable_bar=args.disable_bar
 
     assert args.n_processes <= repetitions
     
@@ -105,7 +109,7 @@ if __name__ == "__main__":
         if args.n_processes > 1:
             processes = []
             with mp.Pool(args.n_processes) as p:
-                p.starmap(target_NP_LA_DHMC, [(rep, burnin, n_iter, rep % args.n_processes) for rep in range(repetitions)])
+                p.starmap(target_NP_LA_DHMC, [(rep, burnin, n_iter, rep % args.n_processes, disable_bar) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
                 print(
@@ -117,7 +121,7 @@ if __name__ == "__main__":
         if args.n_processes > 1:
             # takes ~ 2:30s for 10 * 1_000 samples
             with mp.Pool(args.n_processes) as p:
-                p.starmap(target_NP_DHMC, [(rep, n_iter, burnin, rep % args.n_processes) for rep in range(repetitions)])
+                p.starmap(target_NP_DHMC, [(rep, n_iter, burnin, rep % args.n_processes, disable_bar) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")

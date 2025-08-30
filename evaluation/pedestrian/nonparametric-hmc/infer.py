@@ -196,6 +196,7 @@ def np_dhmc(
     eps: float,
     burnin: int = None,
     bar_pos: int = None,
+    disable_bar: bool = False
 ) -> List[T]:
     """Samples from a probabilistic program using NP-DHMC.
 
@@ -218,7 +219,7 @@ def np_dhmc(
     is_cont = result.is_cont.clone().detach()
     count += burnin
     accept_count = 0
-    for _ in tqdm(range(count),position=bar_pos, desc="Worker "+str(bar_pos) if bar_pos is not None else None, leave=False, mininterval=1):
+    for _ in tqdm(range(count),position=bar_pos, desc="Worker "+str(bar_pos) if bar_pos is not None else None, leave=False, mininterval=1, disable=disable_bar):
         N = len(q)
         dt = ((torch.rand(()) + 0.5) * eps).item()
         gaussian = Normal(0, 1).sample([N]) * is_cont
@@ -274,7 +275,8 @@ def np_lookahead_dhmc(
     K: int = 0,
     alpha: float = 1,
     burnin: int = None,
-    bar_pos: int = None
+    bar_pos: int = None,
+    disable_bar: bool = False
 ) -> Tuple[List[T], Any]:
     """Samples from a probabilistic program using "Lookahead" NP-DHMC.
 
@@ -310,7 +312,7 @@ def np_lookahead_dhmc(
     p = gaussian + laplace
     count += burnin
     accept_count = 0
-    for _ in tqdm(range(count), position=bar_pos, desc="Worker "+str(bar_pos) if bar_pos is not None else None, mininterval=1):
+    for _ in tqdm(range(count), position=bar_pos, desc="Worker "+str(bar_pos) if bar_pos is not None else None, mininterval=1, disable=disable_bar):
         N = len(q)
         dt = ((torch.rand(()) + 0.5) * eps).item()
         p_cont = p * math.sqrt(1 - alpha * alpha) + Normal(0, alpha).sample([N])
@@ -375,6 +377,7 @@ def run_inference(
     burnin: int = None,
     seed: int = None,
     bar_pos: int = None,
+    disable_bar: bool = False,
     save_samples: bool = False,
     **kwargs
 ) -> dict:
@@ -408,6 +411,7 @@ def run_inference(
             leapfrog_steps=leapfrog_steps,
             burnin=burnin,
             bar_pos=bar_pos,
+            disable_bar=disable_bar,
             **kwargs,
         ),
     )
@@ -441,6 +445,7 @@ def run_inference_icml2022(
     burnin: int = None,
     seed: int = None,
     bar_pos: int = None,
+    disable_bar: bool = False,
     save_samples: bool = False,
     **kwargs
 ) -> dict:
@@ -481,6 +486,7 @@ def run_inference_icml2022(
             burnin=burnin,
             alpha=alpha,
             bar_pos=bar_pos,
+            disable_bar=disable_bar
             **kwargs,
         )
     )

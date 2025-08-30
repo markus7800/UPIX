@@ -23,7 +23,7 @@ uv run --frozen --python=python3.13 --extra=cpu evaluation/pedestrian/run_scale.
 
 ### Nonparametric HMC
 
-uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 8 256 0 -n_processes 8
+uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 8 256 0 -n_processes 8  --disable_bar
 
 
 ## GP
