@@ -1,0 +1,18 @@
+{
+  "id": "a1f7e2b7-050c-490a-8270-df7e7cb01230",
+  "workload": {
+    "n_chains": 16,
+    "n_samples_per_chain": 256,
+    "burnin": 0
+  },
+  "timings": {
+    "inference_time": 46.30979115795344
+  },
+  "environment_info": {
+    "platform": "cpu",
+    "cpu-brand": "AMD EPYC 9355 32-Core Processor",
+    "cpu_count": 16,
+    "git_commit": "",
+    "command": "evaluation/pedestrian/nonparametric-hmc/pedestrian.py"
+  }
+}
