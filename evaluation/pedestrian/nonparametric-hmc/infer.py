@@ -486,7 +486,7 @@ def run_inference_icml2022(
             burnin=burnin,
             alpha=alpha,
             bar_pos=bar_pos,
-            disable_bar=disable_bar
+            disable_bar=disable_bar,
             **kwargs,
         )
     )
