@@ -7,4 +7,4 @@ jobstr = """
 python3 experiments/runners/run_pedestrian_scale.py cuda %d 20 sequential pmap --no_progress
 """ % ndevices
 
-sbatch("CPU", "ped_gpu", ndevices, jobstr)
+sbatch("GPU", "ped_gpu", ndevices, jobstr)
