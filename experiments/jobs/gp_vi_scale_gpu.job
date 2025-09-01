@@ -5,8 +5,11 @@
 #SBATCH --gres=gpu:l40s:8
 #SBATCH --cpus-per-task=32
 #SBATCH --cpu-freq=high
+#SBATCH --mail-user=markus.h.boeck@tuwien.ac.at
+#SBATCH --mail-type=BEGIN,END,FAIL
 
-uv sync --extra=gpu
+export UV_PROJECT_ENVIRONMENT=.venv-gpu
+uv sync --extra=cuda
 
 python3 experiments/runners/run_gp_vi_scale.py cuda 1 20 sequential pmap --no_progress
 python3 experiments/runners/run_gp_vi_scale.py cuda 2 20 sequential pmap --no_progress
