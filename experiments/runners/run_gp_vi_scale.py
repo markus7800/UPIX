@@ -23,17 +23,18 @@ n_iter = 1000
 Ls = [2**n for n in range(0,args.maxpow+1)]
 print(f"{Ls=}")
 
-progress = "--no_progress" if args.no_progress else ""
-
+flags = ""
+if args.no_progress:
+    flags += "--no_progress "
+if args.no_save:
+    flags += "--no_save "
+    
 if args.platform == "cpu":
     assert parallelisation == "sequential"
     assert vectorisaton == "smap_local"
     for L in Ls:
-        if vectorisaton.startswith("smap"):
-            num_workers = min(L, ndevices)
-        else:
-            num_workers = ndevices
-        cmd = f"uv run --frozen -p python3.13 --extra=cpu --with-requirements=evaluation/gp/requirements.txt evaluation/gp/run_scale_vi.py {parallelisation} {vectorisaton} {n_slps} {L} {n_iter} -host_device_count {ndevices} -num_workers {num_workers} -omp {num_workers} --cpu {progress}"
+        # have to set OMP_NUM_THREADS=1 otherwise crazy CPU over-util, do not really know why
+        cmd = f"uv run --frozen -p python3.13 --extra=cpu --with-requirements=evaluation/gp/requirements.txt evaluation/gp/run_scale_vi.py {parallelisation} {vectorisaton} {n_slps} {L} {n_iter} -host_device_count {ndevices} -num_workers {ndevices} -omp 1 --cpu {flags}"
         print('# CMD: ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
@@ -45,11 +46,7 @@ if args.platform == "cuda":
     if (parallelisation, vectorisaton) == ("sequential", "vmap_local"):
         assert ndevices == 1 
     for L in Ls:
-        if vectorisaton.startswith("smap"):
-            num_workers = min(L, ndevices)
-        else:
-            num_workers = ndevices
-        cmd = f"uv run --frozen -p python3.13 --extra=cuda --with-requirements=evaluation/gp/requirements.txt evaluation/gp/run_scale_vi.py {parallelisation} {vectorisaton} {n_slps} {L} {n_iter} -vmap_batch_size {2**19} -num_workers {num_workers} {progress}"
+        cmd = f"uv run --frozen -p python3.13 --extra=cuda --with-requirements=evaluation/gp/requirements.txt evaluation/gp/run_scale_vi.py {parallelisation} {vectorisaton} {n_slps} {L} {n_iter} -vmap_batch_size {2**19} -num_workers {ndevices} {flags}"
         print('# ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
