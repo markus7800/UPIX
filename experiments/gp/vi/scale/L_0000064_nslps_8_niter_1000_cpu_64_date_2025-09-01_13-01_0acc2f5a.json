@@ -1,0 +1,70 @@
+{
+  "workload": {
+    "L": 64,
+    "n_iter": 1000,
+    "n_slps": 8
+  },
+  "timings": {
+    "start_date": "2025-09-01 12:52:04",
+    "end_date": "2025-09-01 13:01:58",
+    "wall_time": 593.7614824930206,
+    "cpu_usage": 62.48637471837207,
+    "cpu_count": 64,
+    "jax_total_jit_time": 7.209804058074951,
+    "jax_trace_time": 1.3901267051696777,
+    "jax_lower_time": 1.3901267051696777,
+    "jax_comp_time": 1.3901267051696777
+  },
+  "dcc_timings": {
+    "inference_time": 587.8362517668866,
+    "logweight_estimate_time": 2.449366837972775,
+    "total_time": 593.7606248340453
+  },
+  "result_metrics": {},
+  "args": {
+    "parallelisation": "sequential",
+    "vectorisation": "smap_local",
+    "host_device_count": 64,
+    "num_workers": 64,
+    "vmap_batch_size": 0,
+    "cpu": true,
+    "cpu_affinity": false,
+    "omp": 64,
+    "force_task_order": false,
+    "no_save": false,
+    "no_progress": true,
+    "n_slps": 8,
+    "L": 64,
+    "n_iter": 1000,
+    "show_plots": false
+  },
+  "pconfig": {
+    "parallelisation": "sequential",
+    "vectorisation": "localsmap",
+    "num_workers": 64,
+    "cpu_affinity": false,
+    "vmap_batch_size": 0,
+    "force_task_order": false,
+    "environ": {
+      "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "JAX_PLATFORMS": "cpu"
+    },
+    "verbose": true
+  },
+  "environment_info": {
+    "platform": "cpu",
+    "cpu-brand": "AMD EPYC 9355 32-Core Processor",
+    "gpu-brand": [
+      "No devices found."
+    ],
+    "jax_environment": "jax:    0.7.1\njaxlib: 0.7.1\nnumpy:  2.3.2\npython: 3.13.7 (main, Aug 18 2025, 19:20:03) [Clang 20.1.4 ]\ndevice info: cpu-64, 64 local devices\"\nprocess_count: 1\nplatform: uname_result(system='Linux', node='a-l40s-o-1', release='5.14.0-503.40.1.el9_5.x86_64', version='#1 SMP PREEMPT_DYNAMIC Wed Apr 30 17:38:54 UTC 2025', machine='x86_64')\nJAX_PLATFORMS=cpu\nXLA_FLAGS=--xla_force_host_platform_device_count=64",
+    "cpu_count": 64,
+    "git_commit": "f77fe49c9acf09ba520739d140f6608f2e554830",
+    "command": "evaluation/gp/run_scale_vi.py"
+  },
+  "id": "0acc2f5a-bf5c-40b8-b447-880079aa0d85"
+}
