@@ -9,6 +9,7 @@ parser.add_argument("maxpow", type=int)
 parser.add_argument("parallelisation")
 parser.add_argument("vectorisaton")
 parser.add_argument("--no_progress", action="store_true")
+parser.add_argument("--no_colors", action="store_true")
 args = parser.parse_args()
 
 assert args.platform in ("cpu", "cuda")
@@ -28,7 +29,7 @@ if args.platform == "cpu":
     assert vectorisaton == "pmap"
     for nchains in NCHAINS:
         cmd = f"uv run --frozen -p python3.13 --extra=cpu evaluation/pedestrian/run_scale.py {parallelisation} {vectorisaton} {n_slps} {nchains} {n_iter} -host_device_count {ndevices} -num_workers {ndevices} --cpu {progress}"
-        print('\033[95m' + cmd + '\033[0m')
+        print('## ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
         subprocess.run(cmd, shell=True)
         
 
@@ -38,5 +39,5 @@ if args.platform == "cuda":
         assert ndevices == 1 
     for nchains in NCHAINS:
         cmd = f"uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/run_scale.py {parallelisation} {vectorisaton} {n_slps} {nchains} {n_iter} -vmap_batch_size {2**19} -num_workers {ndevices} {progress}"
-        print('\033[95m' + cmd + '\033[0m')
+        print('## ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
         subprocess.run(cmd, shell=True)

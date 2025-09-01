@@ -12,6 +12,6 @@ sbatch <<EOT
 export UV_PROJECT_ENVIRONMENT=.venv-cpu
 uv sync --extra=cpu
 
-python3 experiments/runners/run_pedestrian_scale.py cpu $1 20 sequential pmap --no_progress
+python3 experiments/runners/run_pedestrian_scale.py cpu $1 20 sequential pmap --no_progress --no_colors
 
 EOT

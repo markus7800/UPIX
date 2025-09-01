@@ -5,7 +5,7 @@ from enum import Enum, auto, StrEnum
 import jax
 from jax.sharding import Mesh
 from jax.experimental.mesh_utils import create_device_mesh
-from dccxjax.utils import bcolors, maybe_jit_warning, JitVariationTracker, log_warn
+from dccxjax.utils import maybe_jit_warning, JitVariationTracker, log_warn
 from typing import Callable, TypeVar, Tuple
 from dccxjax.jax_utils import batched_vmap, smap_vmap, pmap_vmap, batch_func_args, unbatch_output, concatentate_output
 from dccxjax.types import IntArray
@@ -69,13 +69,13 @@ def create_default_device_mesh(dim: int, n_devices: int):
     devices = jax.devices()[:n_devices]
     device_count = len(devices)
     if device_count == 1:
-        log_warn(bcolors.FAIL + "Creating device mesh for sharding, but only have one device." + bcolors.ENDC)
+        log_warn("Creating device mesh for sharding, but only have one device.")
     if dim < device_count:
-        log_critical(bcolors.FAIL + f"Configured {device_count} devices, but sharding dim is smaller {dim}.\n"
-              "Consider using pmap vectorisation instead." + bcolors.ENDC)
+        log_critical(f"Configured {device_count} devices, but sharding dim is smaller {dim}.\n"
+              "Consider using pmap vectorisation instead.")
         assert device_count <= dim
     if dim % device_count != 0:
-        log_critical(bcolors.FAIL + f"Sharding dim={dim} is not multiple of number of devices={device_count}." + bcolors.ENDC)
+        log_critical(f"Sharding dim={dim} is not multiple of number of devices={device_count}.")
         assert dim % device_count == 0
     return Mesh(create_device_mesh((device_count,), devices=devices), axis_names=(SHARDING_AXIS,))
 
