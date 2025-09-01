@@ -34,10 +34,10 @@ if args.platform == "cpu":
         else:
             num_workers = ndevices
         cmd = f"uv run --frozen -p python3.13 --extra=cpu --with-requirements=evaluation/gp/requirements.txt evaluation/gp/run_scale_vi.py {parallelisation} {vectorisaton} {n_slps} {L} {n_iter} -host_device_count {ndevices} -num_workers {num_workers} -omp {num_workers} --cpu {progress}"
-        print('## ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
+        print('# CMD: ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
-        print(f"Finished in {time.monotonic()-t0:.3f}s")
+        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
         
 
 if args.platform == "cuda":
@@ -50,7 +50,7 @@ if args.platform == "cuda":
         else:
             num_workers = ndevices
         cmd = f"uv run --frozen -p python3.13 --extra=cuda --with-requirements=evaluation/gp/requirements.txt evaluation/gp/run_scale_vi.py {parallelisation} {vectorisaton} {n_slps} {L} {n_iter} -vmap_batch_size {2**19} -num_workers {num_workers} {progress}"
-        print('## ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
+        print('# ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
-        print(f"Finished in {time.monotonic()-t0:.3f}s")
+        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")

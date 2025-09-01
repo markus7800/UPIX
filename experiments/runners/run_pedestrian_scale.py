@@ -29,10 +29,10 @@ if args.platform == "cpu":
     assert vectorisaton == "pmap"
     for nchains in NCHAINS:
         cmd = f"uv run --frozen -p python3.13 --extra=cpu evaluation/pedestrian/run_scale.py {parallelisation} {vectorisaton} {n_slps} {nchains} {n_iter} -host_device_count {ndevices} -num_workers {ndevices} --cpu {progress}"
-        print('## ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
+        print('# CMD: ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
-        print(f"Finished in {time.monotonic()-t0:.3f}s")
+        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
         
 
 if args.platform == "cuda":
@@ -41,7 +41,7 @@ if args.platform == "cuda":
         assert ndevices == 1 
     for nchains in NCHAINS:
         cmd = f"uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/run_scale.py {parallelisation} {vectorisaton} {n_slps} {nchains} {n_iter} -vmap_batch_size {2**19} -num_workers {ndevices} {progress}"
-        print('## ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
+        print('# CMD: ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
-        print(f"Finished in {time.monotonic()-t0:.3f}s")
+        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
