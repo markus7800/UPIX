@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --job-name=gp_vi_gpu
+#SBATCH --partition=GPU-l40s
+#SBATCH --nodes=1
+#SBATCH --gres=gpu:l40s:8
+#SBATCH --cpus-per-task=32
+#SBATCH --cpu-freq=high
+
+uv sync --extra=gpu
+
+python3 experiments/runners/run_gp_vi_scale.py cuda 1 20 sequential pmap --no_progress
+python3 experiments/runners/run_gp_vi_scale.py cuda 2 20 sequential pmap --no_progress
+python3 experiments/runners/run_gp_vi_scale.py cuda 4 20 sequential pmap --no_progress
+python3 experiments/runners/run_gp_vi_scale.py cuda 8 20 sequential pmap --no_progress
+

@@ -30,7 +30,8 @@ if __name__ == "__main__":
         max_active_slps = 3,
         max_new_active_slps = 3,
         one_inference_run_per_slp = True,
-        parallelisation = get_parallelisation_config(args)
+        parallelisation = get_parallelisation_config(args),
+        disable_progress=args.no_progress
     )
 
     result = timed(smc_dcc_obj.run)(jax.random.key(0))

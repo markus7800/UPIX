@@ -73,7 +73,7 @@ def create_default_device_mesh(dim: int, n_devices: int):
     if dim < device_count:
         log_critical(bcolors.FAIL + f"Configured {device_count} devices, but sharding dim is smaller {dim}.\n"
               "Consider using pmap vectorisation instead." + bcolors.ENDC)
-        assert device_count > dim
+        assert device_count <= dim
     if dim % device_count != 0:
         log_critical(bcolors.FAIL + f"Sharding dim={dim} is not multiple of number of devices={device_count}." + bcolors.ENDC)
         assert dim % device_count == 0

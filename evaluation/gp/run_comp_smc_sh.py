@@ -27,7 +27,8 @@ if __name__ == "__main__":
         init_n_samples=1_000,
         successive_halving=SuccessiveHalving(10_000, 10),
         parallelisation = get_parallelisation_config(args),
-        round_n_particles_to_multiple = jax.device_count()
+        round_n_particles_to_multiple = jax.device_count(),
+        disable_progress=args.no_progress
     )
     # assert smc_dcc_obj.pconfig.vectorisation == VectorisationType.LocalVMAP
 

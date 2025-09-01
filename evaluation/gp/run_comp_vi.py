@@ -27,7 +27,8 @@ if __name__ == "__main__":
         advi_optimizer=Adam(0.005),
         elbo_estimate_n_samples=100,
         successive_halving=SuccessiveHalving(1_000_000, 10),
-        parallelisation = get_parallelisation_config(args)
+        parallelisation = get_parallelisation_config(args),
+        disable_progress=args.no_progress
     )
 
     result = timed(vi_dcc_obj.run)(jax.random.key(0))

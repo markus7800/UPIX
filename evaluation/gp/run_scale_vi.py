@@ -45,10 +45,11 @@ if __name__ == "__main__":
         advi_L=args.L,
         advi_optimizer=Adam(0.005),
         elbo_estimate_n_samples=100,
-        parallelisation = get_parallelisation_config(args)
+        parallelisation = get_parallelisation_config(args),
+        disable_progress=args.no_progress
     )
 
-    result = timed(vi_dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(vi_dcc_obj.run)(jax.random.key(0))
     result.pprint()
 
     if args.show_plots:
@@ -89,3 +90,28 @@ if __name__ == "__main__":
             plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
         plt.show()
         
+        
+    workload = {
+        "L": args.L,
+        "n_iter": args.n_iter,
+        "n_slps": len(result.get_slps())
+    }
+
+    result_metrics = {
+    }
+        
+    json_result = {
+        "workload": workload,
+        "timings": timings,
+        "dcc_timings": vi_dcc_obj.get_timings(),
+        "result_metrics": result_metrics,
+        "args": args.__dict__,
+        "pconfig": vi_dcc_obj.pconfig.__dict__,
+        "environment_info": get_environment_info()
+    }
+    
+    if not args.no_save:
+        prefix = f"L_{args.L:07d}_nslps_{len(result.get_slps())}_niter_{args.n_iter}_"
+        write_json_result(json_result, "experiments", "gp", "vi", "scale", prefix=prefix)
+
+

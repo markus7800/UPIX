@@ -40,6 +40,7 @@ if __name__ == "__main__":
         smc_collect_inference_info=True,
         parallelisation = get_parallelisation_config(args),
         smc_n_partilces = args.n_particles,
+        disable_progress=args.no_progress
     )
 
     result = timed(smc_dcc_obj.run)(jax.random.key(0))

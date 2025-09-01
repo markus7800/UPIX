@@ -92,6 +92,7 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         
         self.share_progress_bar: bool = self.config.get("share_progress_bar", True)
         self.shared_progress_bar: Optional[tqdm] = None
+        self.disable_progress: bool = self.config.get("disable_progress", False)
 
         self.debug_memory: bool = self.config.get("debug_memory", False)
 
@@ -202,11 +203,11 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         
         if is_sequential(self.pconfig) and self.share_progress_bar:
             # set bar_format to make bar completely invisible at beginning
-            self.shared_progress_bar = tqdm(total=0, position=0, leave=False, bar_format="{bar}")
+            self.shared_progress_bar = tqdm(total=0, position=0, leave=False, bar_format="{bar}", disable=self.disable_progress)
             self.shared_progress_bar.bar_format = "{l_bar}{bar}{r_bar}"
-            outer_bar = tqdm(total=0, position=1, leave=False, desc="Iteration 0", mininterval=0)
+            outer_bar = tqdm(total=0, position=1, leave=False, desc="Iteration 0", mininterval=0, disable=self.disable_progress)
         else:
-            outer_bar = tqdm(total=0, position=0, leave=False, desc="Iteration 0", mininterval=0)
+            outer_bar = tqdm(total=0, position=0, leave=False, desc="Iteration 0", mininterval=0, disable=self.disable_progress)
 
         while len(self.active_slps) > 0:
             t0 = time.monotonic()
@@ -333,13 +334,13 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
             "total_time": self.total_time
         }
 
-def initialise_active_slps_from_prior(model: Model, verbose: int, init_n_samples: int, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
+def initialise_active_slps_from_prior(model: Model, verbose: int, init_n_samples: int, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey, disable_progress: bool):
     if verbose >= 2:
         tqdm.write("Initialise active SLPS.")
     discovered_slps: List[SLP] = []
 
     # default samples from prior
-    for _ in tqdm(range(init_n_samples), desc="Search SLPs from prior"):
+    for _ in tqdm(range(init_n_samples), desc="Search SLPs from prior", disable=disable_progress):
         rng_key, key = jax.random.split(rng_key)
         trace = sample_from_prior(model, key)
 

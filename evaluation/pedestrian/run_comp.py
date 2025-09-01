@@ -73,7 +73,8 @@ if __name__ == "__main__":
                 max_iterations=1,
                 mcmc_collect_for_all_traces=True,
                 mcmc_optimise_memory_with_early_return_map=True,
-                return_map=lambda trace: {key: trace[key] for key in return_keys if key in trace}
+                return_map=lambda trace: {key: trace[key] for key in return_keys if key in trace},
+                disable_progress=args.no_progress
     )
 
     result, timings = timed(dcc_obj.run)(jax.random.key(0))
@@ -176,4 +177,5 @@ if __name__ == "__main__":
     }
     
     if not args.no_save:
-        write_json_result(json_result, "experiments", "pedestrian", "scale", prefix=f"nchains_{dcc_obj.mcmc_n_chains:07d}_")
+        prefix = f"nchains_{dcc_obj.mcmc_n_chains:07d}_nslps_{len(result.get_slps())}_niter_{dcc_obj.mcmc_n_samples_per_chain}_"
+        write_json_result(json_result, "experiments", "pedestrian", "scale", prefix=prefix)

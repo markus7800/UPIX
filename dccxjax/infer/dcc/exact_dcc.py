@@ -65,7 +65,7 @@ class ExactDCC(AbstractDCC[ExactDCCResult]):
         assert self.pconfig.vectorisation == VectorisationType.LocalVMAP
         
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
-        initialise_active_slps_from_prior(self.model, self.verbose, self.init_n_samples, active_slps, inactive_slps, rng_key)
+        initialise_active_slps_from_prior(self.model, self.verbose, self.init_n_samples, active_slps, inactive_slps, rng_key, self.disable_progress)
 
     @abstractmethod
     def get_query_variables(self, slp: SLP) -> List[str]:
