@@ -20,7 +20,7 @@ vectorisaton = str(args.vectorisaton)
 n_slps = 8
 n_iter = 1000
 
-Ls = [2**n for n in range(3,20+1) if n <= args.maxpow]
+Ls = [2**n for n in range(0,args.maxpow+1)]
 print(f"{Ls=}")
 
 progress = "--no_progress" if args.no_progress else ""

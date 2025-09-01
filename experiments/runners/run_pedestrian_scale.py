@@ -19,7 +19,7 @@ vectorisaton = str(args.vectorisaton)
 n_slps = 8
 n_iter = 256
 
-NCHAINS = [2**n for n in range(3,20+1) if n <= args.maxpow]
+NCHAINS = [2**n for n in range(3,args.maxpow+1)]
 print(f"{NCHAINS=}")
 
 progress = "--no_progress" if args.no_progress else ""
