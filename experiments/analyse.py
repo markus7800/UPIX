@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
 
-path = pathlib.Path("experiments", "pedestrian", "scale")
+path = pathlib.Path("experiments", "pedestrian", "scale_paper")
 
 results = []
 for file in os.listdir(path):
@@ -55,12 +55,12 @@ ax.set_xticks(xticks, [f"{x:,d}" for x in xticks], rotation=75)
 ax.set_xlabel("number of MCMC chains")
 
 plt.yscale("log")
-# ax.set_ylim(bottom=10, top=300)
 ax.yaxis.set_major_locator(LogLocator(base=10.0, subs=None))
 ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=[]))
-yticks = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+yticks = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
 ax.set_yticks(yticks, [f"{y:,d}" for y in yticks])
 ax.set_ylabel("Inference time [s]")
+ax.set_ylim(bottom=5, top=2500)
 
 # colors = {
 #     "cpu": "tab:blue",

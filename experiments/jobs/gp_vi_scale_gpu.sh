@@ -14,6 +14,6 @@ sbatch <<EOT
 export UV_PROJECT_ENVIRONMENT=.venv-cuda
 uv sync --extra=cuda
 
-python3 experiments/runners/run_gp_vi_scale.py cuda $1 20 sequential smap_local --no_progress --no_colors
+python3 experiments/runners/run_gp_vi_scale.py cuda $1 10 sequential smap_local --no_progress --no_colors
 
 EOT

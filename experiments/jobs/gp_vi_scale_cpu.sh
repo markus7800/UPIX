@@ -12,6 +12,6 @@ sbatch <<EOT
 export UV_PROJECT_ENVIRONMENT=.venv-cpu
 uv sync --extra=cpu
 
-python3 experiments/runners/run_gp_vi_scale.py cpu $1 20 sequential smap_local --no_progress --no_colors
+python3 experiments/runners/run_gp_vi_scale.py cpu $1 10 sequential smap_local --no_progress --no_colors
 
 EOT
