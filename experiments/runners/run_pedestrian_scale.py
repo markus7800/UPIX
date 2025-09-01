@@ -1,52 +1,33 @@
 import subprocess
-import argparse
 import time
+from scale_args import get_scale_args
 
-parser = argparse.ArgumentParser()
-parser.add_argument("platform", help="cpu | cuda")
-parser.add_argument("ndevices", type=int)
-parser.add_argument("maxpow", type=int)
-parser.add_argument("parallelisation")
-parser.add_argument("vectorisaton")
-parser.add_argument("--no_progress", action="store_true")
-parser.add_argument("--no_colors", action="store_true")
-parser.add_argument("--no_save", action="store_true")
-args = parser.parse_args()
+platform, ndevices, maxpow, parallelisation, vectorisation, flags = get_scale_args()
 
-assert args.platform in ("cpu", "cuda")
-ndevices = int(args.ndevices)
-parallelisation = str(args.parallelisation)
-vectorisaton = str(args.vectorisaton)
 n_slps = 8
 n_iter = 256
 
-NCHAINS = [2**n for n in range(3,args.maxpow+1)]
+NCHAINS = [2**n for n in range(0,maxpow+1)]
 print(f"{NCHAINS=}")
 
-flags = ""
-if args.no_progress:
-    flags += "--no_progress "
-if args.no_save:
-    flags += "--no_save "
-
-if args.platform == "cpu":
+if platform == "cpu":
     assert parallelisation == "sequential"
-    assert vectorisaton == "pmap"
+    assert vectorisation == "pmap"
     for nchains in NCHAINS:
-        cmd = f"uv run --frozen -p python3.13 --extra=cpu evaluation/pedestrian/run_scale.py {parallelisation} {vectorisaton} {n_slps} {nchains} {n_iter} -host_device_count {ndevices} -num_workers {ndevices} --cpu {flags}"
-        print('# CMD: ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
+        cmd = f"uv run --frozen -p python3.13 --extra=cpu evaluation/pedestrian/run_scale.py {parallelisation} {vectorisation} {n_slps} {nchains} {n_iter} -host_device_count {ndevices} -num_workers {ndevices} --cpu {flags}"
+        print('# CMD: ' + cmd)
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
         print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
         
 
-if args.platform == "cuda":
-    assert (parallelisation, vectorisaton) in (("sequential", "pmap"), ("sequential", "vmap_global"),  ("jax_devices", "vmap_global"))
-    if (parallelisation, vectorisaton) == ("sequential", "vmap_global"):
+if platform == "cuda":
+    assert (parallelisation, vectorisation) in (("sequential", "pmap"), ("sequential", "vmap_global"),  ("jax_devices", "vmap_global"))
+    if (parallelisation, vectorisation) == ("sequential", "vmap_global"):
         assert ndevices == 1 
     for nchains in NCHAINS:
-        cmd = f"uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/run_scale.py {parallelisation} {vectorisaton} {n_slps} {nchains} {n_iter} -vmap_batch_size {2**19} -num_workers {ndevices} {flags}"
-        print('# CMD: ' + cmd) if args.no_colors else print('\033[95m' + cmd + '\033[0m')
+        cmd = f"uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/run_scale.py {parallelisation} {vectorisation} {n_slps} {nchains} {n_iter} -vmap_batch_size {2**19} -num_workers {ndevices} {flags}"
+        print('# CMD: ' + cmd)
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
         print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
