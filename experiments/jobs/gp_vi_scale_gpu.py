@@ -1,8 +1,10 @@
 from job_gen import sbatch
 import sys
 
-jobstr = """
-python3 experiments/runners/run_gp_vi_scale.py cuda $1 12 sequential smap_local --no_progress --no_colors
-"""
+ndevices = int(sys.argv[1])
 
-sbatch("GPU", "gp_vi_gpu", int(sys.argv[1]), jobstr)
+jobstr = """
+python3 experiments/runners/run_gp_vi_scale.py cuda %d 12 sequential smap_local --no_progress --no_colors
+""" % ndevices
+
+sbatch("GPU", "gp_vi_gpu", ndevices, jobstr)

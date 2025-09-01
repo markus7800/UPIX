@@ -45,5 +45,6 @@ def sbatch(platform: str, jobname: str, ndevices: int, jobstr: str):
     assert platform in ("CPU", "GPU")
     template = CPU_TEMPLATE if platform == "CPU" else GPU_TEMPLATE
     cmd = template % (jobname + f"_{ndevices}", ndevices, jobstr)
+    print(cmd)
     subprocess.run(cmd, shell=True)
     
