@@ -232,41 +232,36 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
     log_prob_fn = slp.log_prob
     def elbo_fn(params: jax.Array, rng_key: PRNGKey) -> FloatArray:
         guide.update_params(params)
-        if L == 1:
+        if L == 1 and vectorisation == "vmap":
             X, lq = guide.sample_and_log_prob(rng_key)
             lp = log_prob_fn(X)
             elbo = lp - lq
         else:
-            if vectorisation in "vmap":
+            if vectorisation == "vmap":
                 if vmap_batch_size > 0:
                     X, lq = batched_vmap(guide.sample_and_log_prob, batch_size=vmap_batch_size)(jax.random.split(rng_key, L))
                 else:
                     X, lq = jax.vmap(guide.sample_and_log_prob)(jax.random.split(rng_key, L))
                 lp = jax.vmap(log_prob_fn)(X)
                 elbo = (lp - lq).sum() / L
-            elif vectorisation in "smap":
+            elif vectorisation == "smap":
                 X, lq = smap_vmap(guide.sample_and_log_prob, axis_name=SHARDING_AXIS, in_axes=0, out_axes=0, vmap_batch_size=vmap_batch_size)(jax.random.split(rng_key, L))
                 lp = smap_vmap(log_prob_fn, axis_name=SHARDING_AXIS, in_axes=0, out_axes=0, vmap_batch_size=vmap_batch_size)(X)
                 elbo = (lp - lq).sum() / L
             else:
-                assert vectorisation in "psum"
+                assert vectorisation == "psum"
                 X, lq = guide.sample_and_log_prob(rng_key)
                 lp = log_prob_fn(X)
                 elbo = lp - lq
                 
-            # def _elbo_step(elbo: FloatArray, sample_key: PRNGKey) -> Tuple[FloatArray, None]:
-            #     X, lq = guide.sample_and_log_prob(sample_key)
-            #     lp = log_prob_fn(X)
-            #     return elbo + (lp - lq), None
-            # elbo, _ = jax.lax.scan(_elbo_step, jnp.array(0., float), jax.random.split(rng_key, L))
-            # elbo = elbo / L
         return elbo
     
     def advi_step(advi_state: ADVIState[OPTIMIZER_STATE], rng_key: PRNGKey) -> Tuple[ADVIState[OPTIMIZER_STATE], FloatArray]:
         iteration, optimizer_state = advi_state
         params = optimizer.get_params_fn(optimizer_state)
         elbo, elbo_grad = jax.value_and_grad(elbo_fn, argnums=0)(params, rng_key)
-        if vectorisation in "psum":
+        if vectorisation == "psum":
+            # have to do here for correct grads
             elbo = jax.lax.psum(elbo, SHARDING_AXIS) / L
             elbo_grad = jax.lax.psum(elbo_grad, SHARDING_AXIS) / L
         new_optimizer_state = optimizer.update_fn(cast(int, iteration), -elbo_grad, optimizer_state)
