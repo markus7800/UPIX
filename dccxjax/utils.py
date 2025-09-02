@@ -229,8 +229,8 @@ def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...
             _unregister_event_duration_listener_by_callback(compilation_time_tracker)
             timings["jax_total_jit_time"] = jax_total_jit_time
             timings["jax_trace_time"] = trace_time
-            timings["jax_lower_time"] = trace_time
-            timings["jax_comp_time"] = trace_time
+            timings["jax_lower_time"] = lower_time
+            timings["jax_comp_time"] = comp_time
             
         return out, timings
     
