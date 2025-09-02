@@ -20,7 +20,7 @@ from dccxjax.infer.variational_inference.optimizers import Adagrad, SGD, Adam
 
 from enumerate_slps import find_active_slps_through_enumeration
 
-AutoGPConfig()
+RecheiltConfig()
 
 class VIConfig2(VIConfig):
     def __init__(self, model: Model, *ignore, verbose=0, **config_kwargs) -> None:
@@ -94,7 +94,8 @@ if __name__ == "__main__":
     workload = {
         "L": args.L,
         "n_iter": args.n_iter,
-        "n_slps": len(result.get_slps())
+        "n_slps": len(result.get_slps()),
+        "config": NODE_CONFIG.NAME
     }
 
     result_metrics = {

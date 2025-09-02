@@ -18,6 +18,7 @@ xs, xs_val, ys, ys_val = get_data_autogp()
 def normalise(a: jax.Array): return a / a.sum()
 
 class NodeConfig:
+    NAME: str
     N_LEAF_NODE_TYPES: int
     NODE_TYPES: List[type[GPKernel]]
     NODE_TYPE_PROBS: jax.Array
@@ -30,12 +31,14 @@ def AutoGPConfig():
     # NODE_CONFIG.N_LEAF_NODE_TYPES = 5
     # NODE_CONFIG.NODE_TYPES = [Constant, Linear, SquaredExponential, GammaExponential, Periodic, Plus, Times]
     # NODE_CONFIG.NODE_TYPE_PROBS = normalise(jnp.array([0, 6, 0, 6, 6, 5, 5],float))
+    NODE_CONFIG.NAME = "AutoGP"
     NODE_CONFIG.N_LEAF_NODE_TYPES = 3
     NODE_CONFIG.NODE_TYPES = [Linear, GammaExponential, Periodic, Plus, Times]
     NODE_CONFIG.NODE_TYPE_PROBS = normalise(jnp.array([6, 6, 6, 5, 5],float))
     
 def RecheiltConfig():
     global NODE_CONFIG
+    NODE_CONFIG.NAME = "Reichelt2022"
     NODE_CONFIG.N_LEAF_NODE_TYPES = 4
     NODE_CONFIG.NODE_TYPES = [UnitRationalQuadratic, UnitPolynomialDegreeOne, UnitSquaredExponential, UnitPeriodic, Plus, Times]
     NODE_CONFIG.NODE_TYPE_PROBS = normalise(jnp.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1],float))

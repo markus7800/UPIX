@@ -39,11 +39,11 @@ if __name__ == "__main__":
     smc_dcc_obj = SMCDCCConfig2(m, verbose=2,
         smc_collect_inference_info=True,
         parallelisation = get_parallelisation_config(args),
-        smc_n_partilces = args.n_particles,
+        smc_n_particles = args.n_particles,
         disable_progress=args.no_progress
     )
 
-    result = timed(smc_dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(smc_dcc_obj.run)(jax.random.key(0))
     result.pprint()
 
     if args.show_plots:
@@ -89,3 +89,26 @@ if __name__ == "__main__":
             plt.plot(xs_pred, m, color="black")
             plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
         plt.show()
+        
+    workload = {
+        "n_particles": args.n_particles,
+        "n_slps": len(result.get_slps()),
+        "config": NODE_CONFIG.NAME
+    }
+
+    result_metrics = {
+    }
+        
+    json_result = {
+        "workload": workload,
+        "timings": timings,
+        "dcc_timings": smc_dcc_obj.get_timings(),
+        "result_metrics": result_metrics,
+        "args": args.__dict__,
+        "pconfig": smc_dcc_obj.pconfig.__dict__,
+        "environment_info": get_environment_info()
+    }
+    
+    if not args.no_save:
+        prefix = f"nparticles_{args.n_particles:07d}_nslps_{len(result.get_slps())}_"
+        write_json_result(json_result, "gp", "smc", "scale", prefix=prefix)

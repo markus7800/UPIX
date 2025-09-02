@@ -2,12 +2,12 @@ import subprocess
 import time
 from scale_args import get_scale_args
 
-platform, ndevices, maxpow, parallelisation, vectorisation, flags = get_scale_args()
+platform, ndevices, minpow, maxpow, parallelisation, vectorisation, flags = get_scale_args()
 
 n_slps = 8
 n_iter = 256
 
-NCHAINS = [2**n for n in range(0,maxpow+1)]
+NCHAINS = [2**n for n in range(minpow,maxpow+1)]
 print(f"{NCHAINS=}")
 
 if platform == "cpu":

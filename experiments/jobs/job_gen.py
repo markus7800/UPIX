@@ -18,7 +18,7 @@ uv sync --frozen --extra=cpu
 EOT
 """
 
-GPU_TEMPLATE = """
+CUDA_TEMPLATE = """
 sbatch <<EOT
 #!/bin/bash
 #SBATCH --job-name=%s
@@ -42,9 +42,42 @@ EOT
 import subprocess
 
 def sbatch(platform: str, jobname: str, ndevices: int, jobstr: str):
-    assert platform in ("CPU", "GPU")
-    template = CPU_TEMPLATE if platform == "CPU" else GPU_TEMPLATE
+    assert platform in ("cpu", "cuda")
+    template = CPU_TEMPLATE if platform == "cpu" else CUDA_TEMPLATE
     cmd = template % (jobname + f"_{ndevices}", ndevices, jobstr)
     print(cmd)
     subprocess.run(cmd, shell=True)
     
+
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("runner")
+parser.add_argument("platform", help="cpu | cuda")
+parser.add_argument("ndevices", type=int)
+parser.add_argument("minpow", type=int)
+parser.add_argument("minpow", type=int)
+args = parser.parse_args()
+
+assert args.platform in ("cpu", "cuda")
+
+pconfig_and_flags = {
+    "experiments/runners/run_pedestrian_scale.py": "sequential pmap --no_progress",
+    "experiments/runners/run_gp_vi_scale.py": "sequential smap_local --no_progress",
+    "experiments/runners/run_gp_smc_scale.py": "sequential smap_local --no_progress",
+}[args.runner]
+
+jobname_prefix = {
+    "experiments/runners/run_pedestrian_scale.py": "ped_",
+    "experiments/runners/run_gp_vi_scale.py": "gp_vi_",
+    "experiments/runners/run_gp_smc_scale.py": "gp_smc",
+}[args.runner]
+jobname = jobname_prefix + args.plaform + "_" + str(args.ndevices)
+
+# maxpows:
+# pedestrian: 20
+# gp vi:      13
+# gm smc:     ??
+
+jobstr = f"python3 {args.runner} {args.plaform} {args.ndevices} {args.minpow} {args.maxpow} {pconfig_and_flags}"
+
+sbatch(args.plaform, jobname, args.ndevices, jobstr)
