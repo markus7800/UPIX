@@ -71,7 +71,7 @@ jobname_prefix = {
     "experiments/runners/run_pedestrian_scale.py": "ped_",
     "experiments/runners/run_gp_vi_scale.py": "gp_vi_",
     "experiments/runners/run_gp_smc_scale.py": "gp_smc_",
-    "experiments/runners/run_gmm_scale.py": "gp_smc_",
+    "experiments/runners/run_gmm_scale.py": "gmm_",
 }[args.runner]
 jobname = jobname_prefix + args.platform
 
