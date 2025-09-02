@@ -22,6 +22,7 @@ __all__ = [
     "vectorise",
     "vectorise_scan",
     "parallel_run",
+    "parallel_map",
 ]
 
 class ParallelisationType(StrEnum):
@@ -109,6 +110,25 @@ def parallel_run(fn: Callable[..., FUNCTION_RET_TYPE], args: Tuple, batch_axis_s
             return jax.device_get(fn(*args)) # device_get to unshard output
     else:
         return fn(*args)
+    
+# convience wrapper around vectorise + vmap
+def parallel_map(fn: FUNCTION_TYPE, in_axes, out_axes, batch_axis_size: int, pconfig: ParallelisationConfig,
+                 vectorisation: VectorisationType | None = None, n_devices: int | None = None, vmap_batch_size: int | None = None, promote_to_global: bool = False) -> FUNCTION_TYPE:
+    
+    _vectorisation = vectorisation if vectorisation is not None else pconfig.vectorisation
+    if promote_to_global:
+        if _vectorisation == VectorisationType.LocalSMAP: _vectorisation = VectorisationType.GlobalSMAP
+        if _vectorisation == VectorisationType.LocalVMAP: _vectorisation = VectorisationType.GlobalVMAP
+    _n_devices = n_devices if n_devices is not None else pconfig.num_workers
+    _vmap_batch_size = vmap_batch_size if vmap_batch_size is not None else pconfig.vmap_batch_size
+    
+    vfn = vectorise(fn, in_axes, out_axes, batch_axis_size, _vectorisation, _n_devices, _vmap_batch_size)
+    
+    def mapped_fun(*args):
+        return parallel_run(vfn, args, batch_axis_size, _vectorisation, _n_devices)
+    
+    return mapped_fun # type: ignore
+    
     
 # from tqdm.auto import tqdm
 # def typeoftree(tree):

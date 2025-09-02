@@ -3,6 +3,7 @@ import jax
 from dccxjax.core import *
 from dccxjax.infer import SMCDCC, T, MCMCRegime, MCMCStep, MCMCSteps, RW, HMC, PredicateSelector, SuffixSelector
 from dccxjax.infer import DataAnnealingSchedule, data_annealing_schedule_from_range, TemperetureSchedule, tempering_schedule_from_sigmoid
+from dccxjax.parallelisation import parallel_map
 
 from gp import *
 
@@ -18,7 +19,8 @@ class SMCDCCConfig(SMCDCC[T], Generic[T]):
 
     def produce_samples_from_path_prior(self, slp: SLP, rng_key: PRNGKey) -> Tuple[StackedTrace, Optional[FloatArray]]:
         Y: Trace = {addr: value  for addr,value in slp.decision_representative.items() if SuffixSelector("node_type").contains(addr)}
-        particles, _ = jax.vmap(slp.generate, in_axes=(0,None))(jax.random.split(rng_key, self.smc_n_particles), Y)
+        _generate = parallel_map(slp.generate, in_axes=(0,None), out_axes=0, batch_axis_size=self.smc_n_particles, pconfig=self.pconfig, promote_to_global=True)
+        particles, _ = _generate(jax.random.split(rng_key, self.smc_n_particles),Y)
         return StackedTrace(particles, self.smc_n_particles), None
     
     def estimate_path_log_prob(self, slp: SLP, rng_key: PRNGKey) -> FloatArray:

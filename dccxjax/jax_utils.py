@@ -17,14 +17,17 @@ __all__ = [
 
 FUN_TYPE = TypeVar("FUN_TYPE", bound=Callable)
 
-# def map_vmap(fun: FUN_TYPE, batchsize: int) -> FUN_TYPE:
-#     def mapped_fun(*args):
-#         return jax.lax.map(fun, args, batch_size=batchsize)
-#     return mapped_fun # type: ignore
-    
+def get_batch_axis_size(args, in_axes):
+    in_leaves, in_tree = tree_flatten(args)
+    in_axes_flat = flatten_axes("get_batch_axis_size in_axes", in_tree, in_axes)
+    leaf_batch_axis_sizes = ([leaf.shape[axis] for axis, leaf in zip(in_axes_flat, in_leaves) if axis is not None])
+    batch_axis_size = leaf_batch_axis_sizes[0]
+    assert all(size == batch_axis_size for size in leaf_batch_axis_sizes)
+    return batch_axis_size
+
 def batch_func_args(args, in_axes, *, batch_size: int | None = None, num_batches: int | None = None):
     in_leaves, in_tree = tree_flatten(args)
-    in_axes_flat = flatten_axes("pmap_vmap in_axes", in_tree, in_axes)
+    in_axes_flat = flatten_axes("batch_func_args in_axes", in_tree, in_axes)
     # print("in_axes_flat:", in_axes_flat)
     
     # the dimension of each specified axis must agree (as in vmap)

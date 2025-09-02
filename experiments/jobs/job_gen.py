@@ -76,7 +76,7 @@ jobname = jobname_prefix + args.plaform + "_" + str(args.ndevices)
 # maxpows:
 # pedestrian: 20
 # gp vi:      13
-# gm smc:     ??
+# gm smc:     14
 
 jobstr = f"python3 {args.runner} {args.plaform} {args.ndevices} {args.minpow} {args.maxpow} {pconfig_and_flags}"
 
