@@ -81,6 +81,6 @@ jobname = jobname_prefix + args.platform + "_" + str(args.ndevices)
 # gp vi:  00-13
 # gm smc: 00-14
 
-jobstr = f"python3 {args.runner} {args.plaform} {args.ndevices} {args.minpow} {args.maxpow} {pconfig_and_flags}"
+jobstr = f"python3 {args.runner} {args.platform} {args.ndevices} {args.minpow} {args.maxpow} {pconfig_and_flags}"
 
-sbatch(args.plaform, jobname, args.ndevices, jobstr)
+sbatch(args.platform, jobname, args.ndevices, jobstr)
