@@ -11,6 +11,9 @@ NCHAINS = [2**n for n in range(0,maxpow+1)]
 print(f"{NCHAINS=}")
 
 if platform == "cpu":
+    check_cmd = f"uv run --frozen -p python3.13 --extra=cpu experiments/runners/check_environ.py cpu {ndevices}"
+    subprocess.run(check_cmd, shell=True, check=True)
+    
     assert parallelisation == "sequential"
     assert vectorisation == "pmap"
     for nchains in NCHAINS:
@@ -22,6 +25,9 @@ if platform == "cpu":
         
 
 if platform == "cuda":
+    check_cmd = f"uv run --frozen -p python3.13 --extra=cuda experiments/runners/check_environ.py gpu {ndevices}"
+    subprocess.run(check_cmd, shell=True, check=True)
+    
     assert (parallelisation, vectorisation) in (("sequential", "pmap"), ("sequential", "vmap_global"),  ("jax_devices", "vmap_global"))
     if (parallelisation, vectorisation) == ("sequential", "vmap_global"):
         assert ndevices == 1 

@@ -11,6 +11,9 @@ Ls = [2**n for n in range(0,maxpow+1)]
 print(f"{Ls=}")
 
 if platform == "cpu":
+    check_cmd = f"uv run --frozen -p python3.13 --extra=cpu experiments/runners/check_environ.py cpu {ndevices}"
+    subprocess.run(check_cmd, shell=True, check=True)
+    
     assert parallelisation == "sequential"
     assert vectorisation == "smap_local"
     for L in Ls:
@@ -23,6 +26,9 @@ if platform == "cpu":
         
 
 if platform == "cuda":
+    check_cmd = f"uv run --frozen -p python3.13 --extra=cuda experiments/runners/check_environ.py gpu {ndevices}"
+    subprocess.run(check_cmd, shell=True, check=True)
+    
     assert (parallelisation, vectorisation) in (("sequential", "smap_local"), ("sequential", "vmap_local"),  ("jax_devices", "vmap_local"))
     if (parallelisation, vectorisation) == ("sequential", "vmap_local"):
         assert ndevices == 1 

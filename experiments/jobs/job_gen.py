@@ -11,7 +11,7 @@ sbatch <<EOT
 #SBATCH --mail-type=BEGIN,END,FAIL
 
 export UV_PROJECT_ENVIRONMENT=.venv-cpu
-uv sync --extra=cpu
+uv sync --frozen --extra=cpu
 
 %s
 
@@ -32,7 +32,7 @@ sbatch <<EOT
 #SBATCH --mail-type=BEGIN,END,FAIL
 
 export UV_PROJECT_ENVIRONMENT=.venv-cuda
-uv sync --extra=cuda
+uv sync --frozen --extra=cuda
 
 %s
 
