@@ -73,12 +73,13 @@ jobname_prefix = {
     "experiments/runners/run_gp_smc_scale.py": "gp_smc_",
     "experiments/runners/run_gmm_scale.py": "gp_smc_",
 }[args.runner]
-jobname = jobname_prefix + args.plaform + "_" + str(args.ndevices)
+jobname = jobname_prefix + args.platform + "_" + str(args.ndevices)
 
-# maxpows:
-# pedestrian: 20
-# gp vi:      13
-# gm smc:     14
+# pows:
+# ped:    00-20
+# gmm:    ??-??
+# gp vi:  00-13
+# gm smc: 00-14
 
 jobstr = f"python3 {args.runner} {args.plaform} {args.ndevices} {args.minpow} {args.maxpow} {pconfig_and_flags}"
 
