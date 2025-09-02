@@ -59,6 +59,28 @@ if __name__ == "__main__":
         parallelisation=get_parallelisation_config(args)
     )
 
-    # takes ~185s for 10 * 25_000 * 11 samples
-    result = timed(dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(dcc_obj.run)(jax.random.key(0))
     result.pprint(sortkey="slp")
+    
+    workload = {
+        "n_chains": args.n_chains,
+        "n_samples_per_chain": args.n_samples_per_chain,
+        "n_slps": len(result.get_slps())
+    }
+
+    result_metrics = {
+    }
+        
+    json_result = {
+        "workload": workload,
+        "timings": timings,
+        "dcc_timings": dcc_obj.get_timings(),
+        "result_metrics": result_metrics,
+        "args": args.__dict__,
+        "pconfig": dcc_obj.pconfig.__dict__,
+        "environment_info": get_environment_info()
+    }
+    
+    if not args.no_save:
+        prefix = f"nchains_{args.n_chains:07d}_nslps_{len(result.get_slps())}_niter_{args.n_samples_per_chain}_"
+        write_json_result(json_result, "gmm", "scale", prefix=prefix)

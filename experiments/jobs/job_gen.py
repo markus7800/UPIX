@@ -64,12 +64,14 @@ pconfig_and_flags = {
     "experiments/runners/run_pedestrian_scale.py": "sequential pmap --no_progress",
     "experiments/runners/run_gp_vi_scale.py": "sequential smap_local --no_progress",
     "experiments/runners/run_gp_smc_scale.py": "sequential smap_local --no_progress",
+    "experiments/runners/run_gmm_scale.py": "sequential pmap --no_progress",
 }[args.runner]
 
 jobname_prefix = {
     "experiments/runners/run_pedestrian_scale.py": "ped_",
     "experiments/runners/run_gp_vi_scale.py": "gp_vi_",
-    "experiments/runners/run_gp_smc_scale.py": "gp_smc",
+    "experiments/runners/run_gp_smc_scale.py": "gp_smc_",
+    "experiments/runners/run_gmm_scale.py": "gp_smc_",
 }[args.runner]
 jobname = jobname_prefix + args.plaform + "_" + str(args.ndevices)
 

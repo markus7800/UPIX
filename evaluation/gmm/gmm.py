@@ -10,7 +10,7 @@ from typing import List
 from dccxjax.types import _unstack_sample_data
 from typing import Any, Dict
 from dataclasses import dataclass
-from dccxjax.parallelisation import VectorisationType, parallel_run
+from dccxjax.parallelisation import VectorisationType, parallel_run, parallel_map
 
 from gibbs_proposals import *
 from reversible_jumps import *
@@ -134,15 +134,9 @@ class DCCConfig(MCMCDCC[T]):
         def _merge(X: Trace, lp: FloatArray, rng_key: PRNGKey):
             return merge_move(X, lp, rng_key, K, ys, self.model.log_prob)
         
-        vectorisation = self.pconfig.vectorisation
-        if vectorisation == VectorisationType.LocalVMAP:
-            vectorisation = VectorisationType.GlobalVMAP
-        if vectorisation == VectorisationType.LocalSMAP:
-            vectorisation = VectorisationType.GlobalSMAP
-        
         batch_axis_size = last_inference_result.value_tree[1].size if last_inference_result.value_tree is not None else last_inference_result.last_state.log_prob.size
-        split = vectorise(_split, 0, 0, batch_axis_size, vectorisation, self.pconfig.vmap_batch_size)
-        merge = vectorise(_merge, 0, 0, batch_axis_size, vectorisation, self.pconfig.vmap_batch_size)
+        split = parallel_map(_split, 0, 0, batch_axis_size, self.pconfig, promote_to_global=True)
+        merge = parallel_map(_merge, 0, 0, batch_axis_size, self.pconfig, promote_to_global=True)
 
         def _task(rng_key: PRNGKey, last_inference_result: MCMCInferenceResult):
             if last_inference_result.value_tree is not None:
@@ -160,12 +154,12 @@ class DCCConfig(MCMCDCC[T]):
 
             transition_log_probs: Dict[Any, FloatArray] = dict()
             
-            _split_transition_log_prob = parallel_run(split, (traces, lps, jax.random.split(rng_key, lps.shape[0])), n_samples, vectorisation)
+            _split_transition_log_prob = split(traces, lps, jax.random.split(rng_key, lps.shape[0]))
             split_transition_log_prob = jax.scipy.special.logsumexp(_split_transition_log_prob) - jnp.log(n_samples)
             if K == 0: 
                 transition_log_probs[(K, K+1)] = split_transition_log_prob
             else:
-                _merge_transition_log_prob = parallel_run(merge, (traces, lps, jax.random.split(rng_key, lps.shape[0])), n_samples, vectorisation)
+                _merge_transition_log_prob = merge(traces, lps, jax.random.split(rng_key, lps.shape[0]))
                 merge_transition_log_prob = jax.scipy.special.logsumexp(_merge_transition_log_prob) - jnp.log(n_samples)
 
                 merge_transition_log_prob = merge_transition_log_prob - jnp.log(2)
