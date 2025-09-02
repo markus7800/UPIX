@@ -170,7 +170,7 @@ if __name__ == "__main__":
     now = datetime.today().strftime('%Y-%m-%d_%H-%M')
     prefix = "npdhmc" if args.algorithm == "NP-DHMC" else "npladhmc"
     fpath = pathlib.Path(
-        "experiments", "pedestrian", "comp",
+        "experiments", "data", "pedestrian", "comp",
         f"npdhmc_{repetitions}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
     fpath.parent.mkdir(exist_ok=True, parents=True)
     with open(fpath, "w") as f:

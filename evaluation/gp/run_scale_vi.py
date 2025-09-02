@@ -112,6 +112,6 @@ if __name__ == "__main__":
     
     if not args.no_save:
         prefix = f"L_{args.L:07d}_nslps_{len(result.get_slps())}_niter_{args.n_iter}_"
-        write_json_result(json_result, "experiments", "gp", "vi", "scale", prefix=prefix)
+        write_json_result(json_result, "gp", "vi", "scale", prefix=prefix)
 
 

@@ -12,3 +12,4 @@ dccxjax.egg-info
 build
 *.out
 tmp*
+experiments/data

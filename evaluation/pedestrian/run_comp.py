@@ -178,4 +178,4 @@ if __name__ == "__main__":
     
     if not args.no_save:
         prefix = f"nchains_{dcc_obj.mcmc_n_chains:07d}_nslps_{len(result.get_slps())}_niter_{dcc_obj.mcmc_n_samples_per_chain}_"
-        write_json_result(json_result, "experiments", "pedestrian", "scale", prefix=prefix)
+        write_json_result(json_result , "pedestrian", "scale", prefix=prefix)
