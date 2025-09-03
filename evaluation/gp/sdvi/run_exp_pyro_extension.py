@@ -423,6 +423,55 @@ def main(cfg):
 
     with open("resource_allocation_metrics.pickle", "wb") as f:
         pickle.dump(resource_allocation_metrics, f)
+        
+    if sdvi.SCALE_EXPERIMENT:
+        import sys
+        import pathlib, json, uuid
+        from datetime import datetime
+        import cpuinfo
+        
+        def get_cpu_count() -> int:
+            if hasattr(os, "sched_getaffinity"):
+                return int(len(os.sched_getaffinity(0))) # type: ignore
+            else:
+                return int(os.cpu_count()) # type: ignore
+        def _get_last_git_commit() -> str:
+            try:
+                return subprocess.check_output(['git', 'log',  '--format=%H', '-n', '1']).decode().rstrip()
+            except:
+                return ""
+        
+        platform = "cpu"
+        num_workers = get_cpu_count()
+        id_str = str(uuid.uuid4())
+        json_result = {
+            "id": id_str,
+            "workload": {
+                "L": sdvi.exclusive_kl_num_particles,
+                "n_iter": 1000,
+                "n_slps": len(sdvi.branching_traces)
+            },
+            "timings": {
+                "inference_time": sdvi.inference_time
+            },
+            "environment_info": {
+                "platform": "cpu",
+                "cpu-brand": cpuinfo.get_cpu_info()["brand_raw"],
+                "cpu_count": get_cpu_count(),
+                "git_commit": _get_last_git_commit(),
+                "command": sys.argv[0]
+            }
+        }
+        now = datetime.today().strftime('%Y-%m-%d_%H-%M')
+        fpath = pathlib.Path(
+            os.path.dirname(os.path.realpath(__file__)), "..", "..", "..",
+            "experiments", "data", "gp", "sdvi",
+            f"L_{sdvi.exclusive_kl_num_particles}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
+        print(fpath)
+        fpath.parent.mkdir(exist_ok=True, parents=True)
+        with open(fpath, "w") as f:
+            json.dump(json_result, f, indent=2)
+        
 
 
 if __name__ == "__main__":

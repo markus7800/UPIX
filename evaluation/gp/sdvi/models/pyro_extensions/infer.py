@@ -4,6 +4,7 @@ import pyro.distributions as dist
 import tqdm
 import copy
 import logging
+import time
 
 from pyro import poutine
 from pyro.infer.autoguide.initialization import init_to_mean
@@ -58,7 +59,10 @@ class SDVI:
         init_loc_fn=init_to_mean,  # Initialization of the means of the AutoGuides
         use_iwae_for_weights=False,
         save_metrics_every_n=100,
+        SCALE_EXPERIMENT = False,
     ):
+        self.SCALE_EXPERIMENT = SCALE_EXPERIMENT
+        if self.SCALE_EXPERIMENT: assert num_parallel_processes == 1
         self.num_parallel_processes = num_parallel_processes
 
         self.model = model
@@ -105,7 +109,15 @@ class SDVI:
         # the model so that it lies in the given SLP.
         self.branching_sample_values = dict()
         self.prototype_traces = dict()
-
+        
+        # 0 ... 1RQ
+        # 1 ... 1Poly
+        # 2 ... 1SqExp
+        # 3 ... 1Per
+        # 4 ... Plus
+        # 5 ... Times
+        first_8_bt = {"0", "1", "2", "3", "400", "410", "402", "431"}
+                 
         min_logjoint = torch.tensor(float("inf"))
         for _ in range(num_samples):
             with pyro.poutine.trace_messenger.TraceMessenger() as tmsngr:
@@ -116,6 +128,8 @@ class SDVI:
             trace = tmsngr.get_trace()
             if self.slps_identified_by_discrete_samples:
                 bt = btmsngr.get_trace()
+                if self.SCALE_EXPERIMENT and bt not in first_8_bt: continue
+                 
             else:
                 addresses = get_sample_addresses(trace)
                 bt = ",".join(addresses)
@@ -260,6 +274,8 @@ class SDVI:
         # Calculate number of phases
         num_slps = len(branching_traces)
         num_phases = self.utility_class.calculate_num_phases(num_slps)
+        if self.SCALE_EXPERIMENT:
+            num_phases = 1
 
         logging.info(f"Split training into {num_phases} phases.")
         for i in range(num_phases):
@@ -267,6 +283,8 @@ class SDVI:
             num_optimization_steps = (
                 self.utility_class.calculate_num_optimization_steps(len(active_slps))
             )
+            if self.SCALE_EXPERIMENT:
+                num_optimization_steps = 1000
             logging.info(f"Phase {i+1}. {num_optimization_steps=} {num_particles=} {len(active_slps)=}")
             # Run optimization on each SLP
             args = [
@@ -288,6 +306,7 @@ class SDVI:
                     iwae_num_inner,
                     base_seed,
                     self.save_metrics_every_n,
+                    None if self.num_parallel_processes == 1 else 4,
                 )
                 for ix, selected_bt in enumerate(active_slps)
             ]
@@ -307,6 +326,8 @@ class SDVI:
                         )
                     )
             else:
+                
+                t0 = time.monotonic()
                 results = list(  # Turn iterator into list.
                     tqdm.tqdm(
                         map(
@@ -318,6 +339,7 @@ class SDVI:
                         ),  # Pass in total length for proper progress bar.
                     )
                 )
+                self.inference_time = time.monotonic() - t0
 
             # Update metrics
             for ix, selected_bt in enumerate(active_slps):
@@ -427,6 +449,7 @@ class SDVI:
                         iwae_num_inner,
                         base_seed,
                         self.save_metrics_every_n,
+                        4
                     )
                     for ix, selected_bt in enumerate(active_slps)
                 ]
@@ -756,6 +779,7 @@ def inner_loop(*args, **kwargs):
         iwae_num_inner,
         base_seed,
         save_metrics_every_n,
+        num_threads
     ) = args
     # if slp_identified_by_sampled_values(branching_trace, branching_sampled_values):
     if slps_identified_by_discrete_samples:
@@ -782,8 +806,11 @@ def inner_loop_reparam(
     iwae_num_inner,
     base_seed,
     save_every,
+    num_threads
 ):
-    torch.set_num_threads(4)
+    if num_threads is not None:
+        torch.set_num_threads(num_threads)
+        
     torch.set_default_dtype(torch.float64)
     torch.manual_seed(base_seed + worker_ix)
     pyro.set_rng_seed(base_seed + worker_ix)
@@ -986,8 +1013,10 @@ def inner_loop_score(
     iwae_num_inner,
     base_seed,
     save_every,
+    num_threads,
 ):
-    torch.set_num_threads(4)
+    if num_threads is not None:
+        torch.set_num_threads(num_threads)
     torch.set_default_dtype(torch.float64)
     torch.manual_seed(base_seed + worker_ix)
     pyro.set_rng_seed(base_seed + worker_ix)

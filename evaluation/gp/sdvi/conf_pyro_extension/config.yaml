@@ -1,8 +1,8 @@
 hydra:
   run:
-    dir: ./experiments/${name}/${hydra.job.override_dirname}/seed=${seed}
+    dir: ./experiments/data/sdvi_tmp/${name}/${hydra.job.override_dirname}/seed=${seed}
   sweep:
-    dir: ./experiments/${name}/${hydra.job.override_dirname}
+    dir: ./experiments/data/sdvi_tmp/${name}/${hydra.job.override_dirname}
   job:
     config:
       override_dirname:
@@ -40,6 +40,7 @@ sdvi:
   use_iwae_for_weights: False
   num_parallel_processes: 10
   save_metrics_every_n: 10
+  SCALE_EXPERIMENT: False
 
 
 init_loc_fn: init_to_mean
