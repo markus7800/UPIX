@@ -17,24 +17,36 @@ PATH = pathlib.Path(args.folder)
 if PATH.name == "pedestrian":
     SCALE_COL = "n_chains"
     TITLE = "Pedestrian Model"
-    X_LABEL = "Number of MCMC chains"
+    X_LABEL = "Number of HMC chains"
 
 elif PATH.parent.name == "gp" and PATH.name == "vi":
     SCALE_COL = "L"
-    TITLE = "GP Model"
+    TITLE = "Gaussian Process Model"
     X_LABEL = "Number of samples per ADVI step L"
+    
+elif PATH.parent.name == "gp" and PATH.name == "smc":
+    SCALE_COL = "n_particles"
+    TITLE = "Gaussian Process Model"
+    X_LABEL = "Number of SMC particles"
+    
+elif PATH.name == "gmm":
+    SCALE_COL = "n_chains"
+    TITLE = "Gaussian Mixture Model"
+    X_LABEL = "Number of MH chains"
+    
 else:
     exit(1)
 
 results = []
-for file in os.listdir(PATH.joinpath("scale")):
-    if file.endswith(".json"):
-        with open(PATH.joinpath("scale", file), "r") as f:
-            jdict = json.load(f)
-            df_dict = jdict["workload"] | jdict["timings"] | jdict["dcc_timings"] | jdict["pconfig"] | jdict["environment_info"]
-            del df_dict["environ"]
-            del df_dict["jax_environment"]
-            results.append(df_dict)
+for dirpath, _, files in os.walk(PATH.joinpath("scale")):
+    for file in files:
+        if file.endswith(".json"):
+            with open(pathlib.Path(dirpath, file), "r") as f:
+                jdict = json.load(f)
+                df_dict = jdict["workload"] | jdict["timings"] | jdict["dcc_timings"] | jdict["pconfig"] | jdict["environment_info"]
+                del df_dict["environ"]
+                del df_dict["jax_environment"]
+                results.append(df_dict)
             
             
 df = pd.DataFrame(results)
@@ -43,23 +55,23 @@ df = df.set_index(["platform", "n_available_devices", SCALE_COL], verify_integri
 df = df.sort_index()
 df = df.reset_index()
 
-if PATH.name == "pedestrian":
-    npdhmc_results = []
-    for file in os.listdir(PATH.joinpath("comp")):
-        if file.startswith("npdhmc") and file.endswith(".json"):
-            with open(PATH.joinpath("comp", file), "r") as f:
-                jdict = json.load(f)
-                df_dict = jdict["workload"] | jdict["timings"] | jdict["environment_info"]
+# if PATH.name == "pedestrian":
+#     npdhmc_results = []
+#     for file in os.listdir(PATH.joinpath("comp")):
+#         if file.startswith("npdhmc") and file.endswith(".json"):
+#             with open(PATH.joinpath("comp", file), "r") as f:
+#                 jdict = json.load(f)
+#                 df_dict = jdict["workload"] | jdict["timings"] | jdict["environment_info"]
 
-                npdhmc_results.append(df_dict)
+#                 npdhmc_results.append(df_dict)
             
 
-    npdhmc_df = pd.DataFrame(npdhmc_results)
-    npdhmc_df = npdhmc_df[["platform", "cpu_count", "n_chains", "inference_time"]]
-    npdhmc_df = npdhmc_df.set_index(["platform", "cpu_count", "n_chains"], verify_integrity=True)
-    npdhmc_df = npdhmc_df.sort_index()
-    npdhmc_df = npdhmc_df.reset_index()
-    print(npdhmc_df)
+#     npdhmc_df = pd.DataFrame(npdhmc_results)
+#     npdhmc_df = npdhmc_df[["platform", "cpu_count", "n_chains", "inference_time"]]
+#     npdhmc_df = npdhmc_df.set_index(["platform", "cpu_count", "n_chains"], verify_integrity=True)
+#     npdhmc_df = npdhmc_df.sort_index()
+#     npdhmc_df = npdhmc_df.reset_index()
+#     print(npdhmc_df)
 
 from matplotlib.ticker import LogLocator
 
@@ -78,7 +90,7 @@ ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=[]))
 yticks = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
 ax.set_yticks(yticks, [f"{y:,d}" for y in yticks])
 ax.set_ylabel("Inference time [s]")
-ax.set_ylim(bottom=1, top=2500)
+# ax.set_ylim(bottom=1, top=2500)
 
 # colors = {
 #     "cpu": "tab:blue",
@@ -137,12 +149,12 @@ for (platform, n_devices), group in df.groupby(["platform", "n_available_devices
              marker=markers[(platform, n_devices)],
     )
     
-if PATH.name == "pedestrian":
-    for _, r in npdhmc_df.iterrows(): # type: ignore
-        series_count += 1
-        plt.scatter(r.n_chains, r.inference_time, label=f"NP-DHMC {r.cpu_count} cpu", c=colors[("npdhmc",r.cpu_count)], marker=markers[("npdhmc", r.cpu_count)])
+# if PATH.name == "pedestrian":
+#     for _, r in npdhmc_df.iterrows(): # type: ignore
+#         series_count += 1
+#         plt.scatter(r.n_chains, r.inference_time, label=f"NP-DHMC {r.cpu_count} cpu", c=colors[("npdhmc",r.cpu_count)], marker=markers[("npdhmc", r.cpu_count)])
 
-plt.legend(ncol=series_count // 4)
+plt.legend(ncol=series_count // 4 + 1)
 plt.title(TITLE)
 
 plt.tight_layout()
