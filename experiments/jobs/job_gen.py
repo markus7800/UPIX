@@ -8,7 +8,7 @@ sbatch <<EOT
 #SBATCH --cpus-per-task=%d
 #SBATCH --cpu-freq=high
 #SBATCH --output=R-%%x.%%j.out
-#SBATCH --error=R-%%x.%%j.err
+#SBATCH --error=R-%%x.%%j.out
 #SBATCH --mail-user=markus.h.boeck@tuwien.ac.at
 #SBATCH --mail-type=BEGIN,END,FAIL
 
@@ -26,12 +26,12 @@ sbatch <<EOT
 #SBATCH --job-name=%s
 #SBATCH --partition=GPU-l40s
 #SBATCH --nodes=1
-#SBATCH --nodelist=a-l40s-o-2
+#SBATCH --nodelist=a-l40s-o-%d
 #SBATCH --gres=gpu:l40s:%d
 #SBATCH --cpus-per-task=8
 #SBATCH --cpu-freq=high
 #SBATCH --output=R-%%x.%%j.out
-#SBATCH --error=R-%%x.%%j.err
+#SBATCH --error=R-%%x.%%j.out
 #SBATCH --mail-user=markus.h.boeck@tuwien.ac.at
 #SBATCH --mail-type=BEGIN,END,FAIL
 
@@ -45,10 +45,12 @@ EOT
 
 import subprocess
 
-def sbatch(platform: str, jobname: str, ndevices: int, jobstr: str):
+def sbatch(platform: str, jobname: str, ndevices: int, jobstr: str, node: int):
     assert platform in ("cpu", "cuda")
-    template = CPU_TEMPLATE if platform == "cpu" else CUDA_TEMPLATE
-    cmd = template % (jobname + f"_{ndevices}", ndevices, jobstr)
+    if platform == "cpu":
+        cmd = CPU_TEMPLATE % (jobname + f"_{ndevices:2d}", ndevices, jobstr)
+    else:
+        cmd = CUDA_TEMPLATE % (jobname + f"_{ndevices:1d}", node, ndevices, jobstr)
     print(cmd)
     subprocess.run(cmd, shell=True)
     
@@ -60,6 +62,7 @@ parser.add_argument("platform", help="cpu | cuda")
 parser.add_argument("ndevices", type=int)
 parser.add_argument("minpow", type=int)
 parser.add_argument("maxpow", type=int)
+parser.add_argument("-node", type=int, default=2)
 args = parser.parse_args()
 
 assert args.platform in ("cpu", "cuda")
@@ -87,7 +90,7 @@ jobname = jobname_prefix + args.platform
 
 jobstr = f"python3 {args.runner} {args.platform} {args.ndevices} {args.minpow} {args.maxpow} {pconfig_and_flags}"
 
-sbatch(args.platform, jobname, args.ndevices, jobstr)
+sbatch(args.platform, jobname, args.ndevices, jobstr, args.node)
 
 # python3 experiments/jobs/job_gen.py experiments/runners/run_pedestrian_scale.py cuda 8 0 20
 # python3 experiments/jobs/job_gen.py experiments/runners/run_gp_vi_scale.py cuda 8 0 13
