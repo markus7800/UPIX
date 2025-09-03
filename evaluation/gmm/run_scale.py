@@ -56,7 +56,8 @@ if __name__ == "__main__":
         mcmc_n_chains=args.n_chains,
         mcmc_n_samples_per_chain=args.n_samples_per_chain,
         mcmc_collect_for_all_traces=False,
-        parallelisation=get_parallelisation_config(args)
+        parallelisation=get_parallelisation_config(args),
+        disable_progress=args.no_progress
     )
 
     result, timings = timed(dcc_obj.run)(jax.random.key(0))

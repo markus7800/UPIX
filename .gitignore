@@ -11,5 +11,6 @@ tmp.txt
 dccxjax.egg-info
 build
 *.out
+*.err
 tmp*
 experiments/data
