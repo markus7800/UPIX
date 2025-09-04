@@ -20,14 +20,21 @@ uv sync --frozen --extra=cpu
 EOT
 """
 
+GRES = {
+    "GPU-a40": "gpu:a40",
+    "GPU-l40s": "gpu:l40s",
+    "GPU-a100": "gpu:a100",
+    "GPU-a100s": "gpu:a100s",
+    "GPU-h100": "gpu:h100"
+}
+
 CUDA_TEMPLATE = """
 sbatch <<EOT
 #!/bin/bash
 #SBATCH --job-name=%s
 #SBATCH --partition=%s
-#SBATCH --nodes=1
-#SBATCH --nodelist=%s
-#SBATCH --gres=gpu:l40s:%d
+#SBATCH --nodes=1%s
+#SBATCH --gres=%s:%d
 #SBATCH --cpus-per-task=8
 #SBATCH --cpu-freq=high
 #SBATCH --output=R-%%x.%%j.out
@@ -50,7 +57,11 @@ def sbatch(platform: str, jobname: str, ndevices: int, jobstr: str, partition: s
     if platform == "cpu":
         cmd = CPU_TEMPLATE % (jobname + f"_{ndevices:02d}", partition, ndevices, jobstr)
     else:
-        cmd = CUDA_TEMPLATE % (jobname + f"_{ndevices:1d}", partition, node, ndevices, jobstr)
+        if node != "":
+            node_str = "\n#SBATCH --nodelist=%s" % node
+        else:
+            node_str = ""
+        cmd = CUDA_TEMPLATE % (jobname + f"_{ndevices:1d}", partition, node_str, GRES[partition], ndevices, jobstr)
     print(cmd)
     subprocess.run(cmd, shell=True)
     
