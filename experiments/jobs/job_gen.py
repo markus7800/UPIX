@@ -21,20 +21,20 @@ EOT
 """
 
 GRES = {
-    "GPU-a40": "gpu:a40",
-    "GPU-l40s": "gpu:l40s",
-    "GPU-a100": "gpu:a100",
-    "GPU-a100s": "gpu:a100s",
-    "GPU-h100": "gpu:h100"
+    "GPU-a40": "gpu:a40:",
+    "GPU-l40s": "gpu:l40s:",
+    "GPU-a100": "gpu:a100:",
+    "GPU-a100s": "gpu:a100s:",
+    "GPU-h100": "gpu:h100:"
 }
 
 CUDA_TEMPLATE = """
 sbatch <<EOT
 #!/bin/bash
-#SBATCH --job-name=%s
-#SBATCH --partition=%s
-#SBATCH --nodes=1%s
-#SBATCH --gres=%s:%d
+#SBATCH --job-name={jobname}
+#SBATCH --partition={partition}
+#SBATCH --nodes=1{nodelist}
+#SBATCH --gres={gres}
 #SBATCH --cpus-per-task=8
 #SBATCH --cpu-freq=high
 #SBATCH --output=R-%%x.%%j.out
@@ -42,26 +42,34 @@ sbatch <<EOT
 #SBATCH --mail-user=markus.h.boeck@tuwien.ac.at
 #SBATCH --mail-type=BEGIN,END,FAIL
 
-export UV_PROJECT_ENVIRONMENT=.venv-cuda
+export UV_PROJECT_ENVIRONMENT=.venv-cuda-{jobname}
 uv sync --frozen --extra=cuda
 
-%s
+{jobstr}
+
+rm -rf .venv-cuda-{jobname}
 
 EOT
 """
 
 import subprocess
 
-def sbatch(platform: str, jobname: str, ndevices: int, jobstr: str, partition: str, node: str):
+def sbatch(platform: str, jobname_prefix: str, ndevices: int, jobstr: str, partition: str, node: str):
     assert platform in ("cpu", "cuda")
     if platform == "cpu":
-        cmd = CPU_TEMPLATE % (jobname + f"_{ndevices:02d}_{partition[4:]}", partition, ndevices, jobstr)
+        cmd = CPU_TEMPLATE % (jobname_prefix + "_cpu_" + f"{ndevices:02d}_{partition[4:]}", partition, ndevices, jobstr)
     else:
         if node != "":
             node_str = "\n#SBATCH --nodelist=%s" % node
         else:
             node_str = ""
-        cmd = CUDA_TEMPLATE % (jobname + f"_{ndevices:1d}_{partition[4:]}", partition, node_str, GRES[partition], ndevices, jobstr)
+        cmd = CUDA_TEMPLATE.format(
+            jobname=jobname_prefix + "_cuda_" + f"{ndevices:1d}_{partition[4:]}",
+            partition=partition,
+            nodelist=node_str,
+            gres=GRES[partition] + str(ndevices),
+            jobstr=jobstr,
+        )
     print(cmd)
     subprocess.run(cmd, shell=True)
     
@@ -87,12 +95,11 @@ pconfig_and_flags = {
 }[args.runner]
 
 jobname_prefix = {
-    "experiments/runners/run_pedestrian_scale.py": "ped_",
-    "experiments/runners/run_gp_vi_scale.py": "gp_vi_",
-    "experiments/runners/run_gp_smc_scale.py": "gp_smc_",
-    "experiments/runners/run_gmm_scale.py": "gmm_",
+    "experiments/runners/run_pedestrian_scale.py": "ped",
+    "experiments/runners/run_gp_vi_scale.py": "gp_vi",
+    "experiments/runners/run_gp_smc_scale.py": "gp_smc",
+    "experiments/runners/run_gmm_scale.py": "gmm",
 }[args.runner]
-jobname = jobname_prefix + args.platform
 
 # pows:
 # ped:    00-20
@@ -102,7 +109,7 @@ jobname = jobname_prefix + args.platform
 
 jobstr = f"python3 {args.runner} {args.platform} {args.ndevices} {args.minpow} {args.maxpow} {pconfig_and_flags}"
 
-sbatch(args.platform, jobname, args.ndevices, jobstr, args.p, args.w)
+sbatch(args.platform, jobname_prefix, args.ndevices, jobstr, args.p, args.w)
 
 # python3 experiments/jobs/job_gen.py experiments/runners/run_pedestrian_scale.py cuda 8 0 20
 # python3 experiments/jobs/job_gen.py experiments/runners/run_gp_vi_scale.py cuda 8 0 13

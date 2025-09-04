@@ -43,16 +43,19 @@ class ExactDCCResult(BaseDCCResult):
     def __repr__(self) -> str:
         return f"Exact-DCCResult({len(self.slp_log_weights)} SLPs)"
     
-    def pprint(self, *, sortkey: str = "logweight"):
-        print("Exact-DCCResult {")
+    def sprint(self, *, sortkey: str = "logweight"):
+        s = "Exact-DCCResult {\n"
         if len(self.slp_log_weights) > 0:
             log_Z_normaliser = self.get_log_weight_normaliser()
             slp_log_weights_list = self.get_log_weights_sorted(sortkey)
             for slp, log_weight in slp_log_weights_list:
                 factor = self.slp_to_factor[slp]
-                print(f"\t{slp.formatted()}: {factor} with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
-        print("}")
+                s += f"\t{slp.formatted()}: {factor} with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}\n"
+        s += "}\n"
+        return s
         
+    def pprint(self, *, sortkey: str = "logweight"):
+        self.sprint(sortkey=sortkey)
     # TODO
     
 class ExactDCC(AbstractDCC[ExactDCCResult]):

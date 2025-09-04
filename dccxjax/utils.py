@@ -29,7 +29,8 @@ __all__ = [
     "log_critical",
     "get_environment_info",
     "write_json_result",
-    "get_cpu_count"
+    "get_cpu_count",
+    "check_pmap"
 ]
 
 class bcolors:
@@ -259,11 +260,16 @@ def write_json_result(json_result: Dict, *folders: str, prefix: str = ""):
     import pathlib, json, uuid
     from datetime import datetime
     platform = json_result["environment_info"]["platform"]
-    n_devices = json_result["environment_info"]["n_available_devices"]
+    # n_devices = json_result["environment_info"]["n_available_devices"]
+    num_workers = json_result["pconfig"]["num_workers"]
     id_str = str(uuid.uuid4())
     json_result["id"] = id_str
     now = datetime.today().strftime('%Y-%m-%d_%H-%M')
-    fpath = pathlib.Path("experiments", "data", *folders, f"{platform}_{n_devices:02d}", f"{prefix}{platform}_{n_devices:02d}_date_{now}_{id_str[:8]}.json")
+    dev = json_result["environment_info"]["gpu-brand"][0][len("GPU 0: ")].replace(" ", "_") if platform == "gpu" else "cpu"
+    fpath = pathlib.Path("experiments", "data", *folders, f"{dev}_{num_workers:02d}", f"{prefix}{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
     fpath.parent.mkdir(exist_ok=True, parents=True)
     with open(fpath, "w") as f:
         json.dump(json_result, f, indent=2)
+        
+def check_pmap():
+    return jax.pmap(lambda x: x + jax.lax.axis_index("batch"), axis_name="batch")(jnp.zeros((jax.device_count(),),int))

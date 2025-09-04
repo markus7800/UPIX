@@ -31,14 +31,18 @@ class BaseDCCResult:
             slp_log_weights_list.sort(key = lambda v: v[0].sort_key())
         return slp_log_weights_list
     
-    def pprint(self, *, sortkey: str = "logweight"):
+    def sprint(self, *, sortkey: str = "logweight"):
         assert sortkey in ("log_weight", "slp")
         log_Z_normaliser = self.get_log_weight_normaliser()
-        print("BaseDCCResult {")
+        s = "BaseDCCResult {\n"
         slp_log_weights_list = self.get_log_weights_sorted(sortkey)
         for slp, log_weight in slp_log_weights_list:
-            print(f"\t{slp.formatted()}: with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}")
-        print("}")
+            s += f"\t{slp.formatted()}: with prob={jnp.exp(log_weight - log_Z_normaliser).item():.6f}, log_Z={log_weight.item():6f}\n"
+        s += "}\n"
+        return s
+        
+    def pprint(self, *, sortkey: str = "logweight"):
+        self.sprint(sortkey=sortkey)
     
     def get_slp_weights(self, predicate: Callable[[SLP], bool] = lambda _: True) -> Dict[SLP, float]:
         log_Z_normaliser = self.get_log_weight_normaliser()

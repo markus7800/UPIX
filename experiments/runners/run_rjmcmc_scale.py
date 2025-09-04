@@ -16,11 +16,12 @@ CMD_TEMPLATE = "julia -t %d --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.
 
 RUNNER_T0 = time.monotonic()
 
-for nchains in NCHAINS:
-    cmd = CMD_TEMPLATE % (args.ndevices, nchains, 256)
-    print('# CMD: ' + cmd)
-    t0 = time.monotonic()
-    subprocess.run(cmd, shell=True)
-    print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
+for n_iter in [256, 2048]:
+    for nchains in NCHAINS:
+        cmd = CMD_TEMPLATE % (args.ndevices, nchains, n_iter)
+        print('# CMD: ' + cmd)
+        t0 = time.monotonic()
+        subprocess.run(cmd, shell=True)
+        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
         
 print(f"\n# Runner finished in {time.monotonic() - RUNNER_T0:.3f}s")

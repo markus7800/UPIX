@@ -16,7 +16,7 @@ setup_logging(logging.WARNING)
 
 from gmm import *
 
-
+from dccxjax.infer.mcmc.metropolis import MHInfo
 
 class StaticDCCConfig(DCCConfig):
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
@@ -51,6 +51,7 @@ if __name__ == "__main__":
     m = gmm(ys)
     m.set_slp_formatter(formatter)
     m.set_slp_sort_key(find_K)
+    print(f"N_CHAINS={args.n_chains} N_SAMPLES_PER_CHAIN={args.n_samples_per_chain}")
 
     dcc_obj = StaticDCCConfig(m, verbose=2,
         mcmc_n_chains=args.n_chains,
@@ -68,8 +69,15 @@ if __name__ == "__main__":
         "n_samples_per_chain": args.n_samples_per_chain,
         "n_slps": len(result.get_slps())
     }
+    
+    avg_acceptance_rate = jnp.mean(jnp.vstack(
+        [jnp.vstack([info.accepted/args.n_samples_per_chain for info in r[0].last_state.infos if isinstance(info, MHInfo)])
+         for r in dcc_obj.inference_results.values() if isinstance(r[0], MCMCInferenceResult) and r[0].last_state.infos is not None]))
 
     result_metrics = {
+        "result_str": result.sprint(sortkey="slp"),
+        "avg_acceptance_rate": avg_acceptance_rate.item(),
+        "pmap_check": str(check_pmap())
     }
         
     json_result = {

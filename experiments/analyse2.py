@@ -13,28 +13,24 @@ args = parser.parse_args()
 
 PATH = pathlib.Path(args.folder)
 
-
+METRIC_COL = "inference_time"
 if PATH.name == "pedestrian":
     SCALE_COL = "n_chains"
-    METRIC_COL = "total_time"
     TITLE = "Pedestrian Model"
     X_LABEL = "Number of HMC chains"
 
 elif PATH.parent.name == "gp" and PATH.name == "vi":
     SCALE_COL = "L"
-    METRIC_COL = "total_time"
     TITLE = "Gaussian Process Model"
     X_LABEL = "Number of samples per ADVI step L"
     
 elif PATH.parent.name == "gp" and PATH.name == "smc":
     SCALE_COL = "n_particles"
-    METRIC_COL = "total_time"
     TITLE = "Gaussian Process Model"
     X_LABEL = "Number of SMC particles"
     
 elif PATH.name == "gmm":
     SCALE_COL = "n_chains"
-    METRIC_COL = "total_time"
     TITLE = "Gaussian Mixture Model"
     X_LABEL = "Number of MH chains"
     
@@ -57,28 +53,12 @@ df = pd.DataFrame(results)
 if PATH.name == "gmm":
     df = df[df["n_samples_per_chain"] == 2048]
     
-df = df[["platform", "n_available_devices", SCALE_COL, METRIC_COL]]
-df = df.set_index(["platform", "n_available_devices", SCALE_COL], verify_integrity=True)
+df["gpu-brand"] = df["gpu-brand"].map(lambda x: x[0][len("GPU 0: "):])
+    
+df = df[["platform", "gpu-brand", "num_workers", SCALE_COL, "total_time", "inference_time", "jax_total_jit_time", "n_available_devices"]]
+df = df.set_index(["platform", "gpu-brand", "num_workers", SCALE_COL], verify_integrity=True)
 df = df.sort_index()
 df = df.reset_index()
-
-# if PATH.name == "pedestrian":
-#     npdhmc_results = []
-#     for file in os.listdir(PATH.joinpath("comp")):
-#         if file.startswith("npdhmc") and file.endswith(".json"):
-#             with open(PATH.joinpath("comp", file), "r") as f:
-#                 jdict = json.load(f)
-#                 df_dict = jdict["workload"] | jdict["timings"] | jdict["environment_info"]
-
-#                 npdhmc_results.append(df_dict)
-            
-
-#     npdhmc_df = pd.DataFrame(npdhmc_results)
-#     npdhmc_df = npdhmc_df[["platform", "cpu_count", "n_chains", "inference_time"]]
-#     npdhmc_df = npdhmc_df.set_index(["platform", "cpu_count", "n_chains"], verify_integrity=True)
-#     npdhmc_df = npdhmc_df.sort_index()
-#     npdhmc_df = npdhmc_df.reset_index()
-#     print(npdhmc_df)
 
 from matplotlib.ticker import LogLocator
 
@@ -99,12 +79,6 @@ ax.set_yticks(yticks, [f"{y:,d}" for y in yticks])
 ax.set_ylabel(METRIC_COL + " [s]")
 # ax.set_ylim(bottom=1, top=2500)
 
-# colors = {
-#     "cpu": "tab:blue",
-#     "gpu": "tab:orange",
-#     "npdhmc": "tab:green"
-# }
-
 def get_shade(color, i, n):
     i = i - 1
     rgb = np.array(mcolors.to_rgb(color))
@@ -123,44 +97,31 @@ markers = {
     ("cpu", 16): M[1],
     ("cpu", 32): M[2],
     ("cpu", 64): M[3],
-    ("npdhmc", 8): M[0],
-    ("npdhmc", 16): M[1],
-    ("npdhmc", 32): M[2],
-    ("npdhmc", 64): M[3],
 }
+
 colors = {
-    ("gpu", 1): get_shade("tab:blue", 4, 10),
-    ("gpu", 2): get_shade("tab:blue", 6, 10),
-    ("gpu", 4): get_shade("tab:blue", 8, 10),
-    ("gpu", 8): get_shade("tab:blue", 10, 10),
-    ("cpu", 8): get_shade("tab:orange", 4, 10),
-    ("cpu", 16): get_shade("tab:orange", 6, 10),
-    ("cpu", 32): get_shade("tab:orange", 8, 10),
-    ("cpu", 64): get_shade("tab:orange", 10, 10),
-    ("npdhmc", 8): get_shade("tab:green", 10, 10),
-    ("npdhmc", 16): get_shade("tab:green", 10, 10),
-    ("npdhmc", 32): get_shade("tab:green", 10, 10),
-    ("npdhmc", 64): get_shade("tab:green", 10, 10),
+    "NVIDIA L40S": "tab:blue",
+    "NVIDIA A40": "tab:orange",
+    "NVIDIA A100-SXM4-40GB": "tab:green",
 }
+
+def get_color(brand, n_devices):
+    s = (np.log2(n_devices) + 2) * 2
+    return get_shade(colors[brand], s, 10)
 ax.grid(True)
 ax.set_axisbelow(True)
 
 series_count = 0
 
-for (platform, n_devices), group in df.groupby(["platform", "n_available_devices"]):
+for (platform, gpu, n_devices), group in df.groupby(["platform", "gpu-brand", "num_workers"]):
     print(group)
     series_count += 1
     plt.plot(group[SCALE_COL], group[METRIC_COL],
-             label=f"{n_devices} {platform}", 
-             c=colors[(platform, n_devices)],
+             label=f"{n_devices} {platform} {gpu}", 
+             c=get_color(gpu, n_devices),
              marker=markers[(platform, n_devices)],
     )
     
-# if PATH.name == "pedestrian":
-#     for _, r in npdhmc_df.iterrows(): # type: ignore
-#         series_count += 1
-#         plt.scatter(r.n_chains, r.inference_time, label=f"NP-DHMC {r.cpu_count} cpu", c=colors[("npdhmc",r.cpu_count)], marker=markers[("npdhmc", r.cpu_count)])
-
 plt.legend(ncol= np.ceil(series_count / 4))
 plt.title(TITLE)
 
