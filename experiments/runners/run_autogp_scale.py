@@ -10,14 +10,14 @@ parser.add_argument("minpow", type=int)
 parser.add_argument("maxpow", type=int)
 args = parser.parse_args()
 
-NCHAINS = [2**n for n in range(args.minpow,args.maxpow+1)]
+NPARTICLES = [2**n for n in range(args.minpow,args.maxpow+1)]
 
-CMD_TEMPLATE = "julia -t %d --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl %d %d"
+CMD_TEMPLATE = "julia -t %d --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl %d false"
 
 RUNNER_T0 = time.monotonic()
 
-for nchains in NCHAINS:
-    cmd = CMD_TEMPLATE % (args.ndevices, nchains, 256)
+for nparticles in NPARTICLES:
+    cmd = CMD_TEMPLATE % (args.ndevices, nparticles)
     print('# CMD: ' + cmd)
     t0 = time.monotonic()
     subprocess.run(cmd, shell=True)

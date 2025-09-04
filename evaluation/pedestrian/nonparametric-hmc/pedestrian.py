@@ -102,27 +102,27 @@ if __name__ == "__main__":
     repetitions = args.repetitions
     disable_bar=args.disable_bar
 
-    assert args.n_processes <= repetitions
+    if args.n_processes > repetitions:
+        n_processes = repetitions
+    else:
+        n_processes = args.n_processes
     
     t0 = monotonic()
     
     if args.algorithm == "NP-LA-DHMC":
-        if args.n_processes > 1:
+        if n_processes > 1:
             processes = []
-            with mp.Pool(args.n_processes) as p:
-                p.starmap(target_NP_LA_DHMC, [(rep, burnin, n_iter, rep % args.n_processes, disable_bar) for rep in range(repetitions)])
+            with mp.Pool(n_processes) as p:
+                p.starmap(target_NP_LA_DHMC, [(rep, burnin, n_iter, rep % n_processes, disable_bar) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
-                print(
-                    f"REPETITION {rep+1}/{repetitions}"
-                )
+                print(f"REPETITION {rep+1}/{repetitions}")
                 target_NP_LA_DHMC(rep, n_iter, burnin, rep, disable_bar)
 
     elif args.algorithm == "NP-DHMC":
-        if args.n_processes > 1:
-            # takes ~ 2:30s for 10 * 1_000 samples
-            with mp.Pool(args.n_processes) as p:
-                p.starmap(target_NP_DHMC, [(rep, n_iter, burnin, rep % args.n_processes, disable_bar) for rep in range(repetitions)])
+        if n_processes > 1:
+            with mp.Pool(n_processes) as p:
+                p.starmap(target_NP_DHMC, [(rep, n_iter, burnin, rep % n_processes, disable_bar) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")
@@ -147,7 +147,6 @@ if __name__ == "__main__":
             return ""
     
     platform = "cpu"
-    n_processes = args.n_processes
     id_str = str(uuid.uuid4())
     json_result = {
         "id": id_str,
@@ -171,7 +170,7 @@ if __name__ == "__main__":
     prefix = "npdhmc" if args.algorithm == "NP-DHMC" else "npladhmc"
     fpath = pathlib.Path(
         "experiments", "data", "pedestrian", "nonparametric",
-        f"{prefix}_nchains_{repetitions}_niter_{n_iter}_{platform}_{n_processes:02d}_date_{now}_{id_str[:8]}.json")
+        f"{prefix}_nchains_{repetitions:07d}_niter_{n_iter}_{platform}_{args.n_processes:02d}_date_{now}_{id_str[:8]}.json")
     fpath.parent.mkdir(exist_ok=True, parents=True)
     with open(fpath, "w") as f:
         json.dump(json_result, f, indent=2)

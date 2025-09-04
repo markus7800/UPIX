@@ -20,10 +20,13 @@ uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/require
     sdvi.SCALE_EXPERIMENT=true
 """
 
+RUNNER_T0 = time.monotonic()
+
 for L in Ls:
     cmd = CMD_TEMPLATE % L
     print('# CMD: ' + cmd)
     t0 = time.monotonic()
     subprocess.run(cmd, shell=True)
     print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
-        
+            
+print(f"\n# Runner finished in {time.monotonic() - RUNNER_T0:.3f}s")

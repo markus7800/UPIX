@@ -10,6 +10,8 @@ n_iter = 1000
 Ls = [2**n for n in range(minpow,maxpow+1)]
 print(f"{Ls=}")
 
+RUNNER_T0 = time.monotonic()
+
 if platform == "cpu":
     check_cmd = f"uv run --frozen -p python3.13 --extra=cpu experiments/runners/check_environ.py cpu {ndevices}"
     subprocess.run(check_cmd, shell=True, check=True)
@@ -22,8 +24,7 @@ if platform == "cpu":
         print('# CMD: ' + cmd)
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
-        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
-        
+        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s") 
 
 if platform == "cuda":
     check_cmd = f"uv run --frozen -p python3.13 --extra=cuda experiments/runners/check_environ.py gpu {ndevices}"
@@ -38,3 +39,5 @@ if platform == "cuda":
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
         print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
+
+print(f"\n# Runner finished in {time.monotonic() - RUNNER_T0:.3f}s")

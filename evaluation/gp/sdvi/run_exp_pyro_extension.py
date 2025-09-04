@@ -466,7 +466,7 @@ def main(cfg):
         fpath = pathlib.Path(
             os.path.dirname(os.path.realpath(__file__)), "..", "..", "..",
             "experiments", "data", "gp", "sdvi",
-            f"L_{sdvi.exclusive_kl_num_particles}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
+            f"L_{sdvi.exclusive_kl_num_particles:07d}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
         print(fpath)
         fpath.parent.mkdir(exist_ok=True, parents=True)
         with open(fpath, "w") as f:

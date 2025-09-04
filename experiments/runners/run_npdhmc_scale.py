@@ -16,10 +16,13 @@ CMD_TEMPLATE = """
 uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC %d 256 0 -n_processes %d --disable_bar
 """
 
+RUNNER_T0 = time.monotonic()
+
 for nchains in NCHAINS:
-    cmd = CMD_TEMPLATE % (nchains, min(nchains,args.ndevices))
+    cmd = CMD_TEMPLATE % (nchains, args.ndevices)
     print('# CMD: ' + cmd)
     t0 = time.monotonic()
     subprocess.run(cmd, shell=True)
     print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
         
+print(f"\n# Runner finished in {time.monotonic() - RUNNER_T0:.3f}s")

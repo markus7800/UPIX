@@ -6,6 +6,7 @@ using ProgressLogging: @progress
 using UUIDs
 using Dates
 using Hwloc
+using Printf
 global_logger(TerminalLogger(right_justify=120))
 
 include("dirichlet.jl")
@@ -98,8 +99,8 @@ function main()
     res = @timed begin
         n_chains = parse(Int, ARGS[1])
         n_samples_per_chain = parse(Int, ARGS[2])
-        T = Threads.nthreads()
-        println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, nthreads=$T")
+        nthreads = Threads.nthreads()
+        println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, nthreads=$nthreads")
         N = n_samples_per_chain
         result = Vector{Vector{Float64}}(undef, n_chains)
 
@@ -131,12 +132,12 @@ function main()
     "platform": "cpu",
     "cpu-brand": "$(Sys.cpu_info()[1].model)",
     "cpu_count": $(Hwloc.num_virtual_cores()),
-    "threads": $T
+    "threads": $nthreads
   }
 }
 """
     mkpath("experiments/data/gmm/rjmcmc/")
-    open("experiments/data/gmm/rjmcmc/nchains_$(n_chains)_niter_$(n_samples_per_chain)_$(date)_$(id[1:8]).json", "w") do f
+    open(@sprintf("experiments/data/gmm/rjmcmc/nchains_%07d_niter_%d_cpu_%02d_date_%s_%s.json", n_chains, n_samples_per_chain, nthreads, date, id[1:8]), "w") do f
         write(f, json)
     end
 end
