@@ -2,20 +2,20 @@
 CPU_TEMPLATE = """
 sbatch <<EOT
 #!/bin/bash
-#SBATCH --job-name=%s
-#SBATCH --partition=%s
+#SBATCH --job-name={jobname}
+#SBATCH --partition={partition}
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=%d
+#SBATCH --cpus-per-task={ncpus}
 #SBATCH --cpu-freq=high
-#SBATCH --output=R-%%x.%%j.out
-#SBATCH --error=R-%%x.%%j.out
+#SBATCH --output=R-%x.%j.out
+#SBATCH --error=R-%x.%j.out
 #SBATCH --mail-user=markus.h.boeck@tuwien.ac.at
 #SBATCH --mail-type=BEGIN,END,FAIL
 
 export UV_PROJECT_ENVIRONMENT=.venv-cpu
 uv sync --frozen --extra=cpu
 
-%s
+{jobstr}
 
 EOT
 """
@@ -37,8 +37,8 @@ sbatch <<EOT
 #SBATCH --gres={gres}
 #SBATCH --cpus-per-task=8
 #SBATCH --cpu-freq=high
-#SBATCH --output=R-%%x.%%j.out
-#SBATCH --error=R-%%x.%%j.out
+#SBATCH --output=R-%x.%j.out
+#SBATCH --error=R-%x.%j.out
 #SBATCH --mail-user=markus.h.boeck@tuwien.ac.at
 #SBATCH --mail-type=BEGIN,END,FAIL
 
@@ -57,7 +57,12 @@ import subprocess
 def sbatch(platform: str, jobname_prefix: str, ndevices: int, jobstr: str, partition: str, node: str):
     assert platform in ("cpu", "cuda")
     if platform == "cpu":
-        cmd = CPU_TEMPLATE % (jobname_prefix + "_cpu_" + f"{ndevices:02d}_{partition[4:]}", partition, ndevices, jobstr)
+        cmd = CPU_TEMPLATE.format(
+            jobname=jobname_prefix + "_cpu_" + f"{ndevices:02d}_{partition[4:]}",
+            partition=partition,
+            ncpus=ndevices,
+            jobstr=jobstr
+        )
     else:
         if node != "":
             node_str = "\n#SBATCH --nodelist=%s" % node
