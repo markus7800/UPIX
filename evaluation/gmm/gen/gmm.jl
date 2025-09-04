@@ -3,6 +3,9 @@ using Logging: global_logger
 using TerminalLoggers: TerminalLogger
 using Gen
 using ProgressLogging: @progress
+using UUIDs
+using Dates
+using Hwloc
 global_logger(TerminalLogger(right_justify=120))
 
 include("dirichlet.jl")
@@ -75,12 +78,12 @@ ys = [-7.87951290075215, -23.251364738213493, -5.34679518882793, -3.163770449770
 
 inference_constraints = choicemap([(:y => i, y) for (i, y) in enumerate(ys)]...);
 
-function run_inference(seed::Int, N::Int, verbose::Bool)
+function run_inference(seed::Int, N::Int)
     Gen.Random.seed!(seed)
     mcmc_tr, = generate(gmm, (length(ys),), inference_constraints)
     Ks = zeros(Int, N)
 
-    @progress for i=1:N
+    for i=1:N
         k = mcmc_tr[:k]
         Ks[i] = k
         mcmc_tr = mcmc_kernel(mcmc_tr)
@@ -88,27 +91,53 @@ function run_inference(seed::Int, N::Int, verbose::Bool)
     return Float64[sum(Ks .== i) / N for i in 1:maximum(Ks)]
 end
 
-run_inference(0, 100, false)
-@time run_inference(0, 25_000, true)
+run_inference(0, 100) # jit compile
 # exit()
 
 function main()
-    T = Threads.nthreads()
-    println("T=$T")
-    N = 25_000
-    result = Vector{Vector{Float64}}(undef, T)
+    res = @timed begin
+        n_chains = parse(Int, ARGS[1])
+        n_samples_per_chain = parse(Int, ARGS[2])
+        T = Threads.nthreads()
+        println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, nthreads=$T")
+        N = n_samples_per_chain
+        result = Vector{Vector{Float64}}(undef, n_chains)
 
-    Threads.@threads for i in 1:T
-        result[i] = run_inference(i, N, false)
-    end
-    max_k = maximum(length(r) for r in result)
-    weights = zeros(max_k)
-    for r in result
-        for (k, k_frac) in enumerate(r)
-            weights[k] += k_frac / T
+        Threads.@threads for i in 1:n_chains
+            result[i] = run_inference(i, N)
         end
+        max_k = maximum(length(r) for r in result)
+        weights = zeros(max_k)
+        for r in result
+            for (k, k_frac) in enumerate(r)
+                weights[k] += k_frac / n_chains
+            end
+        end
+        display(weights)
     end
-    display(weights)
+    id = string(uuid4())
+    date = string(Dates.format(now(), "yyyy-mm-dd_HH-MM"))
+    json = """
+{
+  "id": "$id",
+  "workload": {
+    "n_chains": $n_chains,
+    "n_samples_per_chain": $n_samples_per_chain
+  },
+  "timings": {
+    "inference_time": $(res.time)
+  },
+  "environment_info": {
+    "platform": "cpu",
+    "cpu-brand": "$(Sys.cpu_info()[1].model)",
+    "cpu_count": $(Hwloc.num_virtual_cores()),
+    "threads": $T
+  }
+}
+"""
+    mkpath("experiments/data/gmm/rjmcmc/")
+    open("experiments/data/gmm/rjmcmc/nchains_$(n_chains)_niter_$(n_samples_per_chain)_$(date)_$(id[1:8]).json", "w") do f
+        write(f, json)
+    end
 end
-# ~130s for 10 * 25_000 samples
-@time main()
+main()

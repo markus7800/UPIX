@@ -55,13 +55,13 @@ import subprocess
 def sbatch(platform: str, jobname: str, ndevices: int, jobstr: str, partition: str, node: str):
     assert platform in ("cpu", "cuda")
     if platform == "cpu":
-        cmd = CPU_TEMPLATE % (jobname + f"_{ndevices:02d}", partition, ndevices, jobstr)
+        cmd = CPU_TEMPLATE % (jobname + f"_{ndevices:02d}_{partition}", partition, ndevices, jobstr)
     else:
         if node != "":
             node_str = "\n#SBATCH --nodelist=%s" % node
         else:
             node_str = ""
-        cmd = CUDA_TEMPLATE % (jobname + f"_{ndevices:1d}", partition, node_str, GRES[partition], ndevices, jobstr)
+        cmd = CUDA_TEMPLATE % (jobname + f"_{ndevices:1d}_{partition}", partition, node_str, GRES[partition], ndevices, jobstr)
     print(cmd)
     subprocess.run(cmd, shell=True)
     

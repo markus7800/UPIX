@@ -116,7 +116,7 @@ if __name__ == "__main__":
                 print(
                     f"REPETITION {rep+1}/{repetitions}"
                 )
-                target_NP_LA_DHMC(rep, n_iter, burnin, rep)
+                target_NP_LA_DHMC(rep, n_iter, burnin, rep, disable_bar)
 
     elif args.algorithm == "NP-DHMC":
         if args.n_processes > 1:
@@ -126,7 +126,7 @@ if __name__ == "__main__":
         else:
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")
-                target_NP_DHMC(rep, n_iter, burnin, rep)
+                target_NP_DHMC(rep, n_iter, burnin, rep, disable_bar)
                 
     inference_time = monotonic() - t0
     tqdm.write(f"\nFinished in {inference_time:.3f}s.")
@@ -147,7 +147,7 @@ if __name__ == "__main__":
             return ""
     
     platform = "cpu"
-    num_workers = args.n_processes
+    n_processes = args.n_processes
     id_str = str(uuid.uuid4())
     json_result = {
         "id": id_str,
@@ -170,8 +170,8 @@ if __name__ == "__main__":
     now = datetime.today().strftime('%Y-%m-%d_%H-%M')
     prefix = "npdhmc" if args.algorithm == "NP-DHMC" else "npladhmc"
     fpath = pathlib.Path(
-        "experiments", "data", "pedestrian", "comp",
-        f"npdhmc_{repetitions}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
+        "experiments", "data", "pedestrian", "nonparametric",
+        f"{prefix}_nchains_{repetitions}_niter_{n_iter}_{platform}_{n_processes:02d}_date_{now}_{id_str[:8]}.json")
     fpath.parent.mkdir(exist_ok=True, parents=True)
     with open(fpath, "w") as f:
         json.dump(json_result, f, indent=2)

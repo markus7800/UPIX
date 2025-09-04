@@ -16,21 +16,25 @@ PATH = pathlib.Path(args.folder)
 
 if PATH.name == "pedestrian":
     SCALE_COL = "n_chains"
+    METRIC_COL = "inference_time"
     TITLE = "Pedestrian Model"
     X_LABEL = "Number of HMC chains"
 
 elif PATH.parent.name == "gp" and PATH.name == "vi":
     SCALE_COL = "L"
+    METRIC_COL = "inference_time"
     TITLE = "Gaussian Process Model"
     X_LABEL = "Number of samples per ADVI step L"
     
 elif PATH.parent.name == "gp" and PATH.name == "smc":
     SCALE_COL = "n_particles"
+    METRIC_COL = "inference_time"
     TITLE = "Gaussian Process Model"
     X_LABEL = "Number of SMC particles"
     
 elif PATH.name == "gmm":
     SCALE_COL = "n_chains"
+    METRIC_COL = "jax_total_jit_time"
     TITLE = "Gaussian Mixture Model"
     X_LABEL = "Number of MH chains"
     
@@ -50,7 +54,10 @@ for dirpath, _, files in os.walk(PATH.joinpath("scale")):
             
             
 df = pd.DataFrame(results)
-df = df[["platform", "n_available_devices", SCALE_COL, "inference_time"]]
+if PATH.name == "gmm":
+    df = df[df["n_samples_per_chain"] == 2048]
+    
+df = df[["platform", "n_available_devices", SCALE_COL, METRIC_COL]]
 df = df.set_index(["platform", "n_available_devices", SCALE_COL], verify_integrity=True)
 df = df.sort_index()
 df = df.reset_index()
@@ -89,7 +96,7 @@ ax.yaxis.set_major_locator(LogLocator(base=10.0, subs=None))
 ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=[]))
 yticks = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
 ax.set_yticks(yticks, [f"{y:,d}" for y in yticks])
-ax.set_ylabel("Inference time [s]")
+ax.set_ylabel(METRIC_COL + " [s]")
 # ax.set_ylim(bottom=1, top=2500)
 
 # colors = {
@@ -143,7 +150,7 @@ series_count = 0
 for (platform, n_devices), group in df.groupby(["platform", "n_available_devices"]):
     print(group)
     series_count += 1
-    plt.plot(group[SCALE_COL], group["inference_time"],
+    plt.plot(group[SCALE_COL], group[METRIC_COL],
              label=f"{n_devices} {platform}", 
              c=colors[(platform, n_devices)],
              marker=markers[(platform, n_devices)],
