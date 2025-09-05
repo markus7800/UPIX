@@ -97,6 +97,8 @@ if __name__ == "__main__":
     }
 
     result_metrics = {
+        "result_str": result.sprint(sortkey="slp"),
+        "pmap_check": str(check_pmap())
     }
         
     json_result = {

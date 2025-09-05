@@ -12,6 +12,7 @@ setup_devices_from_args(args)
 from dccxjax.core import *
 from dccxjax.viz import *
 from setup_parallelisation import get_parallelisation_config
+from dccxjax.infer.mcmc.hmc import HMCInfo
 
 import logging
 setup_logging(logging.WARN)
@@ -24,7 +25,7 @@ m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_t_max)
 
 
-from dccxjax.infer import MCMCDCC, T, MCMCRegime, MCMCStep, InferenceResult, LogWeightEstimate
+from dccxjax.infer import MCMCDCC, T, MCMCRegime, MCMCStep, InferenceResult, LogWeightEstimate, MCMCInferenceResult
 from dccxjax.infer import AllVariables, DHMC
 
 class DCCConfig(MCMCDCC[T]):
@@ -159,10 +160,17 @@ if __name__ == "__main__":
         "n_samples_per_chain": dcc_obj.mcmc_n_samples_per_chain,
         "n_slps": len(result.get_slps())
     }
+    
+    avg_acceptance_rate = jnp.mean(jnp.vstack(
+        [jnp.vstack([info.accepted/args.n_samples_per_chain for info in r[0].last_state.infos if isinstance(info, HMCInfo)])
+         for r in dcc_obj.inference_results.values() if isinstance(r[0], MCMCInferenceResult) and r[0].last_state.infos is not None]))
 
     result_metrics = {
         "W1": W1_distance.item(),
-        "L_inf": infty_distance.item()
+        "L_inf": infty_distance.item(),
+        "result_str": result.sprint(sortkey="slp"),
+        "avg_acceptance_rate": avg_acceptance_rate.item(),
+        "pmap_check": str(check_pmap())
     }
         
     json_result = {
