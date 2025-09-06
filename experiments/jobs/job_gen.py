@@ -9,8 +9,6 @@ sbatch <<EOT
 #SBATCH --cpu-freq=high
 #SBATCH --output=R-%x.%j.out
 #SBATCH --error=R-%x.%j.out
-#SBATCH --mail-user=markus.h.boeck@tuwien.ac.at
-#SBATCH --mail-type=BEGIN,END,FAIL
 
 export UV_PROJECT_ENVIRONMENT=.venv-cpu
 uv sync --frozen --extra=cpu
@@ -37,8 +35,6 @@ sbatch <<EOT
 #SBATCH --gres={gres}
 #SBATCH --output=R-%x.%j.out
 #SBATCH --error=R-%x.%j.out
-#SBATCH --mail-user=markus.h.boeck@tuwien.ac.at
-#SBATCH --mail-type=BEGIN,END,FAIL
 
 export UV_PROJECT_ENVIRONMENT=.venv-cuda-{jobname}
 uv sync --frozen --extra=cuda
