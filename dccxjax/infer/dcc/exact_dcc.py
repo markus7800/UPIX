@@ -55,7 +55,7 @@ class ExactDCCResult(BaseDCCResult):
         return s
         
     def pprint(self, *, sortkey: str = "logweight"):
-        self.sprint(sortkey=sortkey)
+        print(self.sprint(sortkey=sortkey))
     # TODO
     
 class ExactDCC(AbstractDCC[ExactDCCResult]):

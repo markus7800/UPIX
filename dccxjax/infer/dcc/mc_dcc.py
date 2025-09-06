@@ -78,7 +78,7 @@ class MCDCCResult(BaseDCCResult, Generic[DCC_COLLECT_TYPE]):
         return s
     
     def pprint(self, *, sortkey: str = "logweight"):
-        self.sprint(sortkey=sortkey)
+        print(self.sprint(sortkey=sortkey))
 
     def _get_samples_for_slp(self, slp: SLP,
                              mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE],

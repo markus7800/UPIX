@@ -265,11 +265,11 @@ def write_json_result(json_result: Dict, *folders: str, prefix: str = ""):
     id_str = str(uuid.uuid4())
     json_result["id"] = id_str
     now = datetime.today().strftime('%Y-%m-%d_%H-%M')
-    dev = json_result["environment_info"]["gpu-brand"][0][len("GPU 0: ")].replace(" ", "_") if platform == "gpu" else "cpu"
+    dev = json_result["environment_info"]["gpu-brand"][0][len("GPU 0: "):].replace(" ", "_") if platform == "gpu" else "cpu"
     fpath = pathlib.Path("experiments", "data", *folders, f"{dev}_{num_workers:02d}", f"{prefix}{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
     fpath.parent.mkdir(exist_ok=True, parents=True)
     with open(fpath, "w") as f:
         json.dump(json_result, f, indent=2)
         
 def check_pmap():
-    return jax.pmap(lambda x: x + jax.lax.axis_index("batch"), axis_name="batch")(jnp.zeros((jax.device_count(),),int))
+    return jax.pmap(lambda x: jax.random.split(x))(jax.random.split(jax.random.key(0), jax.device_count()))

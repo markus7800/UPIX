@@ -6,7 +6,7 @@ from dccxjax.backend import set_host_device_count, set_platform
 def get_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("parallelisation", default="sequential", help="sequential | cpu_multiprocess | jax_devices")
-    parser.add_argument("vectorisation", default="vmap", help="vmap_local | vmap_global | pmap | smap_glibal | smap_local")
+    parser.add_argument("vectorisation", default="vmap", help="vmap_local | vmap_global | pmap | smap_global | smap_local")
     parser.add_argument("-host_device_count", default=1, type=int, required=False)
     parser.add_argument("-num_workers", default=0, type=int, required=False)
     parser.add_argument("-vmap_batch_size", default=0, type=int, required=False)

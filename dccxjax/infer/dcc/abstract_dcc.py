@@ -42,7 +42,7 @@ class BaseDCCResult:
         return s
         
     def pprint(self, *, sortkey: str = "logweight"):
-        self.sprint(sortkey=sortkey)
+        print(self.sprint(sortkey=sortkey))
     
     def get_slp_weights(self, predicate: Callable[[SLP], bool] = lambda _: True) -> Dict[SLP, float]:
         log_Z_normaliser = self.get_log_weight_normaliser()
