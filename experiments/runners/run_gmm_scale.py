@@ -6,7 +6,7 @@ platform, ndevices, minpow, maxpow, parallelisation, vectorisation, flags = get_
 
 n_slps = 8
 
-N_ITERS = [256, 2048]
+N_ITERS = [2048]
 
 NCHAINS = [2**n for n in range(minpow,maxpow+1)]
 print(f"{NCHAINS=}")
