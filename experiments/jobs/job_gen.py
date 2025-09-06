@@ -35,8 +35,6 @@ sbatch <<EOT
 #SBATCH --partition={partition}
 #SBATCH --nodes=1{nodelist}
 #SBATCH --gres={gres}
-#SBATCH --cpus-per-task=8
-#SBATCH --cpu-freq=high
 #SBATCH --output=R-%x.%j.out
 #SBATCH --error=R-%x.%j.out
 #SBATCH --mail-user=markus.h.boeck@tuwien.ac.at
