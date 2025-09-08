@@ -53,10 +53,12 @@ df = pd.DataFrame(results)
 if PATH.name == "gmm":
     df = df[df["n_samples_per_chain"] == 2048]
     
-df["gpu-brand"] = df["gpu-brand"].map(lambda x: x[0][len("GPU 0: "):])
+df["brand"] = df["gpu-brand"].map(lambda x: x[0][len("GPU 0: "):])
+df.loc[df["platform"] == "cpu", "brand"] = "CPU"
+
     
-df = df[["platform", "gpu-brand", "num_workers", SCALE_COL, "total_time", "inference_time", "jax_total_jit_time", "n_available_devices"]]
-df = df.set_index(["platform", "gpu-brand", "num_workers", SCALE_COL], verify_integrity=True)
+df = df[["platform", "brand", "num_workers", SCALE_COL, "total_time", "inference_time", "jax_total_jit_time", "n_available_devices"]]
+df = df.set_index(["platform", "brand", "num_workers", SCALE_COL], verify_integrity=True)
 df = df.sort_index()
 df = df.reset_index()
 
@@ -103,17 +105,21 @@ colors = {
     "NVIDIA L40S": "tab:blue",
     "NVIDIA A40": "tab:orange",
     "NVIDIA A100-SXM4-40GB": "tab:green",
+    "CPU": "tab:red",
 }
 
 def get_color(brand, n_devices):
-    s = (np.log2(n_devices) + 2) * 2
+    if brand == "CPU":
+        s = (np.log2(n_devices) - 1) * 2 # maps [8,16,32,64] to [4,6,8,10]
+    else:
+        s = (np.log2(n_devices) + 2) * 2 # maps [1,2,4,8] to [4,6,8,10]
     return get_shade(colors[brand], s, 10)
 ax.grid(True)
 ax.set_axisbelow(True)
 
 series_count = 0
 
-for (platform, gpu, n_devices), group in df.groupby(["platform", "gpu-brand", "num_workers"]):
+for (platform, gpu, n_devices), group in df.groupby(["platform", "brand", "num_workers"]):
     print(group)
     series_count += 1
     plt.plot(group[SCALE_COL], group[METRIC_COL],
@@ -122,7 +128,7 @@ for (platform, gpu, n_devices), group in df.groupby(["platform", "gpu-brand", "n
              marker=markers[(platform, n_devices)],
     )
     
-plt.legend(ncol= np.ceil(series_count / 4))
+plt.legend(ncol= np.ceil(series_count / 8), loc='upper left')
 plt.title(TITLE)
 
 plt.tight_layout()

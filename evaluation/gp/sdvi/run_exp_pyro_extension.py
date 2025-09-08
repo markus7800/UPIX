@@ -465,7 +465,7 @@ def main(cfg):
         now = datetime.today().strftime('%Y-%m-%d_%H-%M')
         fpath = pathlib.Path(
             os.path.dirname(os.path.realpath(__file__)), "..", "..", "..",
-            "experiments", "data", "gp", "sdvi",
+            "experiments", "data", "gp", "sdvi", f"{platform}_{num_workers:02d}",
             f"L_{sdvi.exclusive_kl_num_particles:07d}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
         print(fpath)
         fpath.parent.mkdir(exist_ok=True, parents=True)

@@ -136,8 +136,8 @@ function main()
   }
 }
 """
-    mkpath("experiments/data/gmm/rjmcmc/")
-    open(@sprintf("experiments/data/gmm/rjmcmc/nchains_%07d_niter_%d_cpu_%02d_date_%s_%s.json", n_chains, n_samples_per_chain, nthreads, date, id[1:8]), "w") do f
+    mkpath(@sprintf("experiments/data/gmm/rjmcmc/cpu_%02d", nthreads))
+    open(@sprintf("experiments/data/gmm/rjmcmc/cpu_%02d/nchains_%07d_niter_%d_cpu_%02d_date_%s_%s.json", nthreads, n_chains, n_samples_per_chain, nthreads, date, id[1:8]), "w") do f
         write(f, json)
     end
 end

@@ -169,7 +169,7 @@ if __name__ == "__main__":
     now = datetime.today().strftime('%Y-%m-%d_%H-%M')
     prefix = "npdhmc" if args.algorithm == "NP-DHMC" else "npladhmc"
     fpath = pathlib.Path(
-        "experiments", "data", "pedestrian", "nonparametric",
+        "experiments", "data", "pedestrian", "nonparametric", f"{platform}_{args.n_processes:02d}",
         f"{prefix}_nchains_{repetitions:07d}_niter_{n_iter}_{platform}_{args.n_processes:02d}_date_{now}_{id_str[:8]}.json")
     fpath.parent.mkdir(exist_ok=True, parents=True)
     with open(fpath, "w") as f:

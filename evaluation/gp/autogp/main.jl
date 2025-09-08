@@ -127,8 +127,8 @@ function main()
   }
 }
 """
-    mkpath("experiments/data/gp/autogp/")
-    open(@sprintf("experiments/data/gp/autogp/nparticles_%07d_cpu_%02d_date_%s_%s.json", n_particles, n_threads, date, id[1:8]), "w") do f
+    mkpath(@sprintf("experiments/data/gp/autogp/cpu_%02d", n_threads))
+    open(@sprintf("experiments/data/gp/autogp/cpu_%02d/nparticles_%07d_cpu_%02d_date_%s_%s.json", n_threads, n_particles, n_threads, date, id[1:8]), "w") do f
         write(f, json)
     end
 end

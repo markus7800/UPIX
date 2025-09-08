@@ -2,8 +2,15 @@
 
 import subprocess
 import time
+import argparse
 
-Ls = [2**n for n in range(0,0+1)]
+parser = argparse.ArgumentParser()
+parser.add_argument("ndevices", type=int)
+parser.add_argument("minpow", type=int)
+parser.add_argument("maxpow", type=int)
+args = parser.parse_args()
+
+Ls = [2**n for n in range(args.minpow,args.maxpow+1)]
 
 CMD_TEMPLATE = """
 uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/requirements.txt python3 evaluation/gp/sdvi/run_exp_pyro_extension.py \
@@ -15,7 +22,7 @@ uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/require
     sdvi.save_metrics_every_n=200 \
     resource_allocation=successive_halving \
     resource_allocation.num_total_iterations=1000000 \
-    sdvi.num_parallel_processes=1 \
+    sdvi.num_parallel_processes=%d \
     sdvi.exclusive_kl_num_particles=%d \
     sdvi.SCALE_EXPERIMENT=true
 """
@@ -23,7 +30,7 @@ uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/require
 RUNNER_T0 = time.monotonic()
 
 for L in Ls:
-    cmd = CMD_TEMPLATE % L
+    cmd = CMD_TEMPLATE % (args.ndevices, L)
     print('# CMD: ' + cmd)
     t0 = time.monotonic()
     subprocess.run(cmd, shell=True)

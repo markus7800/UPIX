@@ -62,7 +62,7 @@ class SDVI:
         SCALE_EXPERIMENT = False,
     ):
         self.SCALE_EXPERIMENT = SCALE_EXPERIMENT
-        if self.SCALE_EXPERIMENT: assert num_parallel_processes == 1
+        # if self.SCALE_EXPERIMENT: assert num_parallel_processes == 1
         self.num_parallel_processes = num_parallel_processes
 
         self.model = model
@@ -311,6 +311,7 @@ class SDVI:
                 for ix, selected_bt in enumerate(active_slps)
             ]
             if self.num_parallel_processes > 1:
+                t0 = time.monotonic()
                 with multiprocessing.get_context("spawn").Pool(
                     self.num_parallel_processes
                 ) as p:
@@ -325,6 +326,7 @@ class SDVI:
                             ),  # Pass in total length for proper progress bar.
                         )
                     )
+                self.inference_time = time.monotonic() - t0
             else:
                 
                 t0 = time.monotonic()
