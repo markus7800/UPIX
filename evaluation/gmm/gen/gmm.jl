@@ -92,11 +92,13 @@ function run_inference(seed::Int, N::Int)
     return Float64[sum(Ks .== i) / N for i in 1:maximum(Ks)]
 end
 
-run_inference(0, 100) # jit compile
-# exit()
 
 function main()
-    res = @timed begin
+    t0 = time_ns()
+    Base.cumulative_compile_timing(true)
+    t0_comp = Base.cumulative_compile_time_ns()
+    run_inference(0, 100) # run short chain to compile on main thread
+    begin
         n_chains = parse(Int, ARGS[1])
         n_samples_per_chain = parse(Int, ARGS[2])
         nthreads = Threads.nthreads()
@@ -116,6 +118,13 @@ function main()
         end
         display(weights)
     end
+    Base.cumulative_compile_timing(false);
+    t1_comp = Base.cumulative_compile_time_ns()
+    t1 = time_ns()
+
+    comp_time = (t1_comp[1] - t0_comp[1]) / 10^9 # second is re-compile time
+    wall_time = (t1 - t0) / 10^9
+
     id = string(uuid4())
     date = string(Dates.format(now(), "yyyy-mm-dd_HH-MM"))
     json = """
@@ -126,7 +135,9 @@ function main()
     "n_samples_per_chain": $n_samples_per_chain
   },
   "timings": {
-    "inference_time": $(res.time)
+    "inference_time": $(wall_time - comp_time),
+    "compilation_time": $(comp_time),
+    "wall_time": $(wall_time)
   },
   "environment_info": {
     "platform": "cpu",

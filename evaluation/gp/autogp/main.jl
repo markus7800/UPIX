@@ -40,7 +40,18 @@ function main()
 
     AutoGP.seed!(0)
 
-    res = @timed AutoGP.fit_smc!(model; schedule=AutoGP.Schedule.linear_schedule(n_train, .10), n_mcmc=75, n_hmc=10, verbose=true);
+    t0 = time_ns()
+    Base.cumulative_compile_timing(true)
+    t0_comp = Base.cumulative_compile_time_ns()
+
+    AutoGP.fit_smc!(model; schedule=AutoGP.Schedule.linear_schedule(n_train, .10), n_mcmc=75, n_hmc=10, verbose=true);
+    
+    Base.cumulative_compile_timing(false);
+    t1_comp = Base.cumulative_compile_time_ns()
+    t1 = time_ns()
+
+    comp_time = (t1_comp[1] - t0_comp[1]) / 10^9 # second is re-compile time
+    wall_time = (t1 - t0) / 10^9
 
     weights = AutoGP.particle_weights(model)
     kernels = AutoGP.covariance_kernels(model)
@@ -117,7 +128,9 @@ function main()
     "n_particles": $n_particles
   },
   "timings": {
-    "inference_time": $(res.time)
+    "inference_time": $(wall_time - comp_time),
+    "compilation_time": $(comp_time),
+    "wall_time": $(wall_time)
   },
   "environment_info": {
     "platform": "cpu",
