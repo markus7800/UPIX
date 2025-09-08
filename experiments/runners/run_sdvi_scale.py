@@ -5,7 +5,8 @@ import time
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("ndevices", type=int)
+# cpus are used as torch threads if nprocesses = 1
+parser.add_argument("nprocesses", type=int)
 parser.add_argument("minpow", type=int)
 parser.add_argument("maxpow", type=int)
 args = parser.parse_args()
@@ -30,7 +31,7 @@ uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/require
 RUNNER_T0 = time.monotonic()
 
 for L in Ls:
-    cmd = CMD_TEMPLATE % (args.ndevices, L)
+    cmd = CMD_TEMPLATE % (args.nprocesses, L)
     print('# CMD: ' + cmd)
     t0 = time.monotonic()
     subprocess.run(cmd, shell=True)
