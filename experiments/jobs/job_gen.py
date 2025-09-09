@@ -114,3 +114,9 @@ sbatch(args.platform, jobname_prefix, args.ndevices, jobstr, args.p, args.w)
 # python3 experiments/jobs/job_gen.py experiments/runners/run_gp_vi_scale.py cuda 8 0 13
 # python3 experiments/jobs/job_gen.py experiments/runners/run_gp_smc_scale.py cuda 8 0 15
 # python3 experiments/jobs/job_gen.py experiments/runners/run_gmm_scale.py cuda 8 10 18
+
+#!/bin/bash
+# python3 experiments/runners/run_autogp_scale.py $1 0 7
+# python3 experiments/runners/run_rjmcmc_scale.py $1 0 11 
+# python3 experiments/runners/run_npdhmc_scale.py $1 0 7
+# python3 experiments/runners/run_sdvi_scale.py 1 0 3
