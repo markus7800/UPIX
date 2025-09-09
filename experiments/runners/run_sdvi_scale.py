@@ -14,7 +14,7 @@ args = parser.parse_args()
 Ls = [2**n for n in range(args.minpow,args.maxpow+1)]
 
 CMD_TEMPLATE = """
-uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/requirements.txt python3 evaluation/gp/sdvi/run_exp_pyro_extension.py \
+OMP_NUM_THREADS=1 uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/requirements.txt python3 evaluation/gp/sdvi/run_exp_pyro_extension.py \
     name=gp_grammar_sdvi \
     sdvi.elbo_estimate_num_particles=100 \
     model=gp_kernel_learning \
