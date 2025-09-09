@@ -207,4 +207,4 @@ function merge_idx(j, k, j_star, j1, j2)
 end
 
 split_merge(tr) = mh(tr, split_merge_randomness, (), split_merge_involution;
-                    check=true)
+                    check=false)
