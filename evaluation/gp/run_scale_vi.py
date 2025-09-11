@@ -17,6 +17,7 @@ from setup_parallelisation import get_parallelisation_config
 
 from gp_vi import *
 from dccxjax.infer.variational_inference.optimizers import Adagrad, SGD, Adam
+from vi_plots import plot_results
 
 from enumerate_slps import find_active_slps_through_enumeration
 
@@ -27,7 +28,7 @@ class VIConfig2(VIConfig):
         VIDCC.__init__(self, model, *ignore, verbose=verbose, **config_kwargs)
 
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
-        find_active_slps_through_enumeration(NODE_CONFIG.N_LEAF_NODE_TYPES, active_slps, rng_key, args.n_slps, self.model)
+        find_active_slps_through_enumeration(NODE_CONFIG.N_LEAF_NODE_TYPES, active_slps, rng_key, args.n_slps, self.model, max_n_leaf=self.config["slp_max_n_leaf"])
     
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         inactive_slps.clear()
@@ -46,49 +47,15 @@ if __name__ == "__main__":
         advi_optimizer=Adam(0.005),
         elbo_estimate_n_samples=100,
         parallelisation = get_parallelisation_config(args),
-        disable_progress=args.no_progress
+        disable_progress=args.no_progress,
+        slp_max_n_leaf = 4,
     )
 
     result, timings = timed(vi_dcc_obj.run)(jax.random.key(0))
     result.pprint()
-
+    
     if args.show_plots:
-        slp_weights = list(result.get_slp_weights().items())
-        slp_weights.sort(key=lambda v: v[1])
-
-        xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
-        
-        for slp_ix in range(1,5+1):
-            slp, weight = slp_weights[-slp_ix]
-            print(slp.formatted(), weight)
-            g = result.slp_guides[slp]
-                
-            n_posterior_samples = 1_000
-                
-            key = jax.random.key(0)
-            posterior = Traces(g.sample(key, (n_posterior_samples,)), n_posterior_samples)
-            
-            samples = []
-            for i in tqdm(range(n_posterior_samples), desc="Sample posterior of MAP SLP"):
-                key, sample_key = jax.random.split(key)
-                trace = posterior.get_ix(i)
-                k = get_gp_kernel(trace)
-                noise = transform_param("noise", trace["noise"]) + 1e-5
-                mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
-                samples.append(mvn.sample(sample_key))
-
-            samples = jnp.vstack(samples)
-            m = jnp.mean(samples, axis=0)
-            q025 = jnp.quantile(samples, 0.025, axis=0)
-            q975 = jnp.quantile(samples, 0.975, axis=0)
-
-            plt.figure()
-            plt.title(f"{slp_ix}. {slp.formatted()}")
-            plt.scatter(xs, ys)
-            plt.scatter(xs_val, ys_val)
-            plt.plot(xs_pred, m, color="black")
-            plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
-        plt.show()
+        plot_results(result)
         
         
     workload = {

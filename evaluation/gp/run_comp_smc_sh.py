@@ -12,8 +12,11 @@ from setup_parallelisation import get_parallelisation_config
 from dccxjax.parallelisation import VectorisationType
 
 from gp_smc_sh import *
+from smc_plots import plot_results
+
 
 AutoGPConfig()
+# RecheiltConfig()
 
 if __name__ == "__main__":
     
@@ -32,8 +35,11 @@ if __name__ == "__main__":
     )
     # assert smc_dcc_obj.pconfig.vectorisation == VectorisationType.LocalVMAP
 
-    result = timed(smc_dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(smc_dcc_obj.run)(jax.random.key(0))
     result.pprint()
+    
+    if args.show_plots:
+        plot_results(m, result)
 
 
 # ((1Per * 1SqExp) + 1Poly): StackedSampleValues(dict, 1 x 530) with prob=0.000000, log_Z=144.877136

@@ -23,7 +23,7 @@ AutoGPConfig()
 
 class SMCDCCConfig2(SMCDCCConfig[T]):
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
-        find_active_slps_through_enumeration(NODE_CONFIG.N_LEAF_NODE_TYPES, active_slps, rng_key, args.n_slps, self.model)
+        find_active_slps_through_enumeration(NODE_CONFIG.N_LEAF_NODE_TYPES, active_slps, rng_key, args.n_slps, self.model, max_n_leaf=self.config["slp_max_n_leaf"])
     
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], inference_results: Dict[SLP, List[InferenceResult]], log_weight_estimates: Dict[SLP, List[LogWeightEstimate]], rng_key: PRNGKey):
         inactive_slps.clear()
@@ -40,7 +40,8 @@ if __name__ == "__main__":
         smc_collect_inference_info=True,
         parallelisation = get_parallelisation_config(args),
         smc_n_particles = args.n_particles,
-        disable_progress=args.no_progress
+        disable_progress=args.no_progress,
+        slp_max_n_leaf = 4
     )
 
     result, timings = timed(smc_dcc_obj.run)(jax.random.key(0))

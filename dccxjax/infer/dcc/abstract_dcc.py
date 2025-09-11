@@ -94,6 +94,8 @@ class AbstractDCC(ABC, Generic[DCC_RESULT_TYPE]):
         self.logweight_estimate_time = 0.
         self.total_time = 0.
         
+        self.inference_method_cache: Dict[SLP, Any] = dict()
+        
         self.share_progress_bar: bool = self.config.get("share_progress_bar", True)
         self.shared_progress_bar: Optional[tqdm] = None
         self.disable_progress: bool = self.config.get("disable_progress", False)

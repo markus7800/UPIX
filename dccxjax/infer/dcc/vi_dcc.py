@@ -101,18 +101,6 @@ class VIDCC(AbstractDCC[VIDCCResult]):
         self.inference_method_cache[slp] = advi
         return advi
     
-    # def estimate_log_weight(self, slp: SLP, rng_key: PRNGKey) -> LogWeightEstimate:
-    #     inference_results = self.inference_results.get(slp, [])
-    #     if len(inference_results) > 0:
-    #         last_result = inference_results[-1]
-    #         assert isinstance(last_result, ADVIInferenceResult)
-    #         guide = self.get_ADVI(slp).get_updated_guide(last_result.last_state)
-    #         Xs, lqs = guide.sample_and_log_prob(rng_key, shape=(self.elbo_estimate_n_samples,))
-    #         lps = jax.vmap(slp.log_prob)(Xs)
-    #         elbo = jnp.mean(lps - lqs)
-    #         return LogWeightEstimateFromADVI(elbo, self.elbo_estimate_n_samples)
-    #     else:
-    #         raise Exception("In VIDCC we should perform one run of ADVI before estimate_log_weight to estimate elbo from guide")
         
     def make_estimate_log_weight_task(self, slp: SLP, rng_key: PRNGKey) -> EstimateLogWeightTask:
         inference_results = self.inference_results.get(slp, [])
@@ -120,12 +108,19 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             last_result = inference_results[-1]
             assert isinstance(last_result, ADVIInferenceResult)
             guide = self.get_ADVI(slp).get_updated_guide(last_result.last_state)
+            def _post_info(result: LogWeightEstimate):
+                assert isinstance(result, LogWeightEstimateFromADVI)
+                if self.share_progress_bar:
+                    return f"Estimated logweight for {slp.formatted()}: {result.get_estimate()}"
+                else:
+                    return ""
+            
             def _task(rng_key: PRNGKey):
                 Xs, lqs = guide.sample_and_log_prob(rng_key, shape=(self.elbo_estimate_n_samples,))
                 lps = jax.vmap(slp.log_prob)(Xs)
                 elbo = jnp.mean(lps - lqs)
                 return LogWeightEstimateFromADVI(elbo, self.elbo_estimate_n_samples)
-            return EstimateLogWeightTask(_task, (rng_key,))
+            return EstimateLogWeightTask(_task, (rng_key,), post_info=_post_info)
         else:
             raise Exception("In VIDCC we should perform one run of ADVI before estimate_log_weight to estimate elbo from guide")
 
