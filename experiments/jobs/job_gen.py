@@ -88,7 +88,7 @@ assert args.platform in ("cpu", "cuda")
 
 pconfig_and_flags = {
     "experiments/runners/run_pedestrian_scale.py": "sequential pmap --no_progress",
-    "experiments/runners/run_gp_vi_scale.py": "sequential smap_local --no_progress",
+    "experiments/runners/run_gp_vi_scale.py": "sequential pmap --no_progress",
     "experiments/runners/run_gp_smc_scale.py": "sequential smap_local --no_progress",
     "experiments/runners/run_gmm_scale.py": "sequential pmap --no_progress",
 }[args.runner]

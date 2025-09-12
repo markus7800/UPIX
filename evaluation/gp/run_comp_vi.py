@@ -25,6 +25,7 @@ if __name__ == "__main__":
     vi_dcc_obj = VIConfig(m, verbose=2,
         init_n_samples=1_000,
         advi_L=1,
+        advi_n_runs=1,
         advi_optimizer=Adam(0.005),
         elbo_estimate_n_samples=100,
         successive_halving=SuccessiveHalving(1_000_000, 10),

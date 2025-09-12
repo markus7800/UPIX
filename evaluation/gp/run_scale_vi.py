@@ -6,6 +6,7 @@ from parse_args import *
 parser = get_arg_parser()
 if __name__ == "__main__":
     parser.add_argument("n_slps", help="number of slps to evaluate", type=int)
+    parser.add_argument("n_runs", help="number of parallel ADVI runs", type=int)
     parser.add_argument("L", help="number of samples to take per ADVI iteration", type=int)
     parser.add_argument("n_iter", help="number of ADVI iterations", type=int)
     parser.add_argument("--show_plots", action="store_true")
@@ -45,6 +46,7 @@ if __name__ == "__main__":
     vi_dcc_obj = VIConfig2(m, verbose=2,
         advi_n_iter = args.n_iter,
         advi_L=args.L,
+        advi_n_runs=args.n_runs,
         advi_optimizer=Adam(0.005),
         elbo_estimate_n_samples=100,
         parallelisation = get_parallelisation_config(args),
@@ -61,6 +63,7 @@ if __name__ == "__main__":
         
     workload = {
         "L": args.L,
+        "n_runs": args.n_runs,
         "n_iter": args.n_iter,
         "n_slps": len(result.get_slps()),
         "config": NODE_CONFIG.NAME
@@ -82,7 +85,7 @@ if __name__ == "__main__":
     }
     
     if not args.no_save:
-        prefix = f"L_{args.L:07d}_nslps_{len(result.get_slps())}_niter_{args.n_iter}_"
+        prefix = f"nruns_{args.n_runs:07d}_L_{args.L}_nslps_{len(result.get_slps())}_niter_{args.n_iter}_"
         write_json_result(json_result, "gp", "vi", "scale", prefix=prefix)
 
 
