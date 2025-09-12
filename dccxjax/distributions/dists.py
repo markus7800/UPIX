@@ -21,6 +21,7 @@ __all__ = [
     "Dirichlet",
     "SimplexArray",
     "Bernoulli",
+    "Dirac",
     "Poisson",
     "Categorical",
     "CategoricalLogits",
@@ -37,9 +38,9 @@ class Transform(Generic[TRANSFORM_DOMAIN, TRANSFORM_CODOMAIN]):
     def __init__(self, numpyro_transform: numypro_transforms.Transform) -> None:
         self.numpyro_transform = numpyro_transform
     def __call__(self, x: TRANSFORM_DOMAIN) -> TRANSFORM_CODOMAIN:
-        return self.numpyro_transform(x)
+        return self.numpyro_transform(x) # type: ignore
     def inv(self) -> "Transform[TRANSFORM_CODOMAIN, TRANSFORM_DOMAIN]":
-        return Transform(self.numpyro_transform.inv)
+        return Transform(self.numpyro_transform.inv) # type: ignore
 
 DIST_SUPPORT = TypeVar("DIST_SUPPORT", bound=jax.Array)
 DIST_SUPPORT_LIKE = TypeVar("DIST_SUPPORT_LIKE", bound=ArrayLike)
@@ -51,7 +52,7 @@ class Distribution(Generic[DIST_SUPPORT,DIST_SUPPORT_LIKE]):
     def rsample(self, key: PRNGKey, sample_shape=()) -> DIST_SUPPORT:
         return self.numpyro_base.rsample(key, sample_shape=sample_shape) # type: ignore
     def log_prob(self, value: DIST_SUPPORT | DIST_SUPPORT_LIKE) -> FloatArray:
-        return self.numpyro_base.log_prob(value)
+        return self.numpyro_base.log_prob(value) # type: ignore
     def biject_so_support(self) -> Transform[FloatArray, DIST_SUPPORT]:
         return Transform(numpyro_dists.biject_to(self.numpyro_base.support))
     @property
@@ -95,6 +96,10 @@ class Dirichlet(Distribution[SimplexArray,SimplexArray]):
 class Bernoulli(Distribution[IntArray,IntArrayLike]):
     def __init__(self, probs: FloatArrayLike):
         super().__init__(numpyro_dists.BernoulliProbs(probs)) # type: ignore
+        
+class Dirac(Distribution[IntArray, IntArrayLike]):
+    def __init__(self, v: IntArrayLike) -> None:
+        super().__init__(numpyro_dists.Delta(v)) # type: ignore
 
 class Poisson(Distribution[IntArray,IntArrayLike]):
     def __init__(self, rate: FloatArrayLike):
@@ -118,4 +123,4 @@ class TwoSidedTruncatedDistribution(Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE]
 
 class TransformedDistribution(Distribution[TRANSFORM_CODOMAIN,TRANSFORM_CODOMAIN]):
     def __init__(self, base: Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE], transforms: Transform[DIST_SUPPORT, TRANSFORM_CODOMAIN]) -> None:
-        super().__init__(numpyro_dists.TransformedDistribution(base.numpyro_base, transforms.numpyro_transform))
+        super().__init__(numpyro_dists.TransformedDistribution(base.numpyro_base, transforms.numpyro_transform)) # type: ignore

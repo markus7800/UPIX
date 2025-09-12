@@ -110,6 +110,7 @@ def initialise_reduction_size_heap(factors: List[Factor], var_to_dim: Dict[str,i
     reduction_size: Dict[str, ReductionSize] = dict()
     marignal_variables_set = set(marignal_variables)
     reduction_size_list: List[ReductionSize] = []
+    assert len(marignal_variables_set.intersection(var_to_dim.keys())) == len(marignal_variables_set)
     
     i = 1
     for v in var_to_dim.keys() - marignal_variables_set:
