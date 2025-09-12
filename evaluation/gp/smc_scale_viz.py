@@ -8,6 +8,7 @@ if __name__ == "__main__":
     m.set_slp_sort_key(lambda slp: get_gp_kernel(slp.decision_representative).size())
     m.set_equivalence_map(equivalence_map)
     
+    args.n_slps = 128
     smc_dcc_obj = SMCDCCConfig2(m, verbose=2,
         smc_collect_inference_info=True,
         parallelisation = get_parallelisation_config(args),
@@ -30,10 +31,9 @@ if __name__ == "__main__":
     n_particles_to_log_Zs: Dict[str,jax.Array] = dict()
     repetitions = 3
     
-    for smc_n_particles in [2**e for e in range(0,2)]:
+    for smc_n_particles in [2**e for e in range(0,15+1)]:
         log_Zs = []
         for seed in range(repetitions):
-            
             
             smc_dcc_obj.smc_n_particles = smc_n_particles
             smc = SMC(

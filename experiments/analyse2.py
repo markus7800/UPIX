@@ -55,6 +55,7 @@ if PATH.name == "gmm":
     df = df[df["n_samples_per_chain"] == 2048]
     
 df["kind"] = df["gpu-brand"].map(lambda x: x[0][len("GPU 0: "):])
+df.loc[df["kind"] == "NVIDIA A100-SXM4-40GB", "kind"] = "NVIDIA A100S"
 df.loc[df["platform"] == "cpu", "kind"] = "CPU"
     
 df = df[["platform", "kind", "num_workers", SCALE_COL, "total_time", "inference_time", "jax_total_jit_time", "n_available_devices"]]
@@ -111,7 +112,7 @@ markers = {
 colors = {
     "NVIDIA L40S": "tab:blue",
     "NVIDIA A40": "tab:orange",
-    "NVIDIA A100-SXM4-40GB": "tab:green",
+    "NVIDIA A100S": "tab:green",
     "CPU": "tab:red",
     "COMP": "tab:purple"
 }

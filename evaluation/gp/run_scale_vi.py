@@ -4,10 +4,11 @@ from typing import List
 sys.path.append("evaluation")
 from parse_args import *
 parser = get_arg_parser()
-parser.add_argument("n_slps", help="number of slps to evaluate", type=int)
-parser.add_argument("L", help="number of samples to take per ADVI iteration", type=int)
-parser.add_argument("n_iter", help="number of ADVI iterations", type=int)
-parser.add_argument("--show_plots", action="store_true")
+if __name__ == "__main__":
+    parser.add_argument("n_slps", help="number of slps to evaluate", type=int)
+    parser.add_argument("L", help="number of samples to take per ADVI iteration", type=int)
+    parser.add_argument("n_iter", help="number of ADVI iterations", type=int)
+    parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
 

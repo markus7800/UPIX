@@ -18,6 +18,7 @@ __all__ = [
 @dataclass
 class ADVIInferenceResult(InferenceResult):
     last_state: ADVIState
+    elbo: FloatArray
     def combine_results(self, other: InferenceResult) -> InferenceResult:
         # not used in default implementation of VIDCC
         assert isinstance(other, ADVIInferenceResult)
@@ -77,6 +78,7 @@ class VIDCC(AbstractDCC[VIDCCResult]):
 
         self.advi_n_iter: int = self.config.get("advi_n_iter", 1000)
         self.advi_L: int = self.config.get("advi_L", 1)
+        self.advi_n_runs: int = self.config.get("advi_n_runs", 1)
         self.advi_optimizer: Optimizer = self.config.get("advi_optimizer", Adagrad(1.))
 
         self.elbo_estimate_n_samples: int = self.config.get("elbo_estimate_n_samples", 100)
@@ -95,7 +97,7 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             assert isinstance(advi, ADVI)
             return advi
         guide = self.get_guide(slp)
-        advi = ADVI(slp, guide, self.advi_optimizer, self.advi_L, pconfig=self.pconfig,
+        advi = ADVI(slp, guide, self.advi_optimizer, self.advi_L, self.advi_n_runs, pconfig=self.pconfig,
                     show_progress=self.verbose >= 1 and is_sequential(self.pconfig),
                     shared_progressbar=self.shared_progress_bar)
         self.inference_method_cache[slp] = advi
@@ -107,7 +109,8 @@ class VIDCC(AbstractDCC[VIDCCResult]):
         if len(inference_results) > 0:
             last_result = inference_results[-1]
             assert isinstance(last_result, ADVIInferenceResult)
-            guide = self.get_ADVI(slp).get_updated_guide(last_result.last_state)
+            best_run = int(jnp.argmax(last_result.elbo[-1,:]).item()) if self.advi_n_runs > 1 else None
+            guide = self.get_ADVI(slp).get_updated_guide(last_result.last_state, best_run)
             def _post_info(result: LogWeightEstimate):
                 assert isinstance(result, LogWeightEstimateFromADVI)
                 if self.share_progress_bar:
@@ -147,12 +150,12 @@ class VIDCC(AbstractDCC[VIDCCResult]):
             # iteration is also used in progressbar (so we would have to add additional counter if we want to set iteration to different start value)
             def _task_continue(rng_key, last_state):
                 last_state, elbo = advi.continue_run(rng_key, last_state, n_iter=self.advi_n_iter, iteration=jnp.array(0,int))
-                return ADVIInferenceResult(last_state)
+                return ADVIInferenceResult(last_state, elbo)
             return InferenceTask(_task_continue, (rng_key, last_result.last_state), _f_run_pre_info, _f_run_post_info)
         else:
             def _task_run(rng_key):
                 last_state, elbo = advi.run(rng_key, n_iter=self.advi_n_iter)
-                return ADVIInferenceResult(last_state)
+                return ADVIInferenceResult(last_state, elbo)
             return InferenceTask(_task_run, (rng_key,), _f_run_pre_info, _f_run_post_info)
         
         
@@ -172,7 +175,8 @@ class VIDCC(AbstractDCC[VIDCCResult]):
         for slp, inference_result in inference_results.items():
             assert isinstance(inference_result, ADVIInferenceResult)
             advi = self.get_ADVI(slp)
-            guide = advi.get_updated_guide(inference_result.last_state)
+            best_run = int(jnp.argmax(inference_result.elbo[-1,:]).item()) if self.advi_n_runs > 1 else None
+            guide = advi.get_updated_guide(inference_result.last_state, best_run)
             slp_guides[slp] = guide
         return slp_guides
 

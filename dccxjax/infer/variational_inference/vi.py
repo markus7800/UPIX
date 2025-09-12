@@ -264,6 +264,7 @@ def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE]
             # have to do here for correct grads
             elbo = jax.lax.psum(elbo, SHARDING_AXIS) / L
             elbo_grad = jax.lax.psum(elbo_grad, SHARDING_AXIS) / L
+        elbo_grad = jax.lax.select(jnp.isnan(elbo_grad).any(), jnp.zeros_like(elbo_grad), elbo_grad)
         new_optimizer_state = optimizer.update_fn(cast(int, iteration), -elbo_grad, optimizer_state)
         return ADVIState(iteration + 1, new_optimizer_state), elbo
     
@@ -276,6 +277,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
                  guide: Guide,
                  optimizer: Optimizer[OPTIMIZER_STATE],
                  L: int,
+                 n_runs: int,
                  *,
                  pconfig: ParallelisationConfig,
                  show_progress: bool = False,
@@ -284,6 +286,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
         self.guide = guide
         self.optimizer = optimizer
         self.L = L
+        self.n_runs = n_runs
         self.show_progress = show_progress
         self.progressbar_mngr = ProgressbarManager(
             "ADVI for "+self.slp.formatted(),
@@ -293,20 +296,26 @@ class ADVI(Generic[OPTIMIZER_STATE]):
 
         self.pconfig = pconfig
         
-        if pconfig.vectorisation in (VectorisationType.GlobalSMAP, VectorisationType.PMAP):
-            self.vectorisation = "psum"
-            # params are replicated and gradients are shared across all jax devices
-            # if device_count < L redundant computation happens as we only take one param set
-            assert jax.device_count() >= self.L, f"L={self.L} cannot be greater than device_count={jax.device_count()} for {pconfig.vectorisation}.\nUse local smap instead or increase number of jax devices."
-        elif pconfig.vectorisation == VectorisationType.LocalVMAP:
-            self.vectorisation = "vmap"
-        elif pconfig.vectorisation == VectorisationType.LocalSMAP:
-            self.vectorisation = "smap"
+        if self.n_runs == 1:
+            if pconfig.vectorisation in (VectorisationType.GlobalSMAP, VectorisationType.PMAP):
+                self.vectorisation = "psum"
+                # params are replicated and gradients are shared across all jax devices
+                # if device_count < L redundant computation happens as we only take one param set
+                assert jax.device_count() >= self.L, f"L={self.L} cannot be greater than device_count={jax.device_count()} for {pconfig.vectorisation} and {n_runs=}.\nUse local smap instead or increase number of jax devices."
+            elif pconfig.vectorisation == VectorisationType.LocalVMAP:
+                self.vectorisation = "vmap"
+            elif pconfig.vectorisation == VectorisationType.LocalSMAP:
+                self.vectorisation = "smap"
+            else:
+                assert pconfig.vectorisation == VectorisationType.GlobalVMAP
+                raise Exception(f"Vectoristiation: Global vmap not supported for {n_runs=}")
+            self.advi_step = make_advi_step(slp, guide, optimizer, L, self.vectorisation, self.pconfig.vmap_batch_size)
         else:
-            assert pconfig.vectorisation == VectorisationType.GlobalVMAP
-            raise Exception(f"Vectoristiation: Global vmap not supported")
+            self.vectorisation = "none"
+            assert pconfig.vectorisation in (VectorisationType.GlobalVMAP, VectorisationType.GlobalSMAP, VectorisationType.PMAP)
+            self.advi_step = make_advi_step(slp, guide, optimizer, L, "vmap", 1)
+            
 
-        self.advi_step = make_advi_step(slp, guide, optimizer, L, self.vectorisation, self.pconfig.vmap_batch_size)
 
         self.cached_advi_scan: Optional[Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]] = None
 
@@ -314,12 +323,19 @@ class ADVI(Generic[OPTIMIZER_STATE]):
         
         self.progressbar_mngr.set_num_samples(n_iter)
 
-        if self.vectorisation == "psum":
-            keys = jax.random.split(rng_key, (n_iter,self.L))
-            init_state = ADVIState(iteration, broadcast_jaxtree(state.optimizer_state, (self.L,)))
+        init_state = ADVIState(iteration, state.optimizer_state)
+                
+        if self.n_runs == 1:
+            if self.vectorisation == "psum":
+                keys = jax.random.split(rng_key, (n_iter,self.L))
+                init_state = ADVIState(iteration, broadcast_jaxtree(state.optimizer_state, (self.L,)))
+            else:
+                keys = jax.random.split(rng_key, n_iter)
+            batch_axis_size = self.L
         else:
-            keys = jax.random.split(rng_key, n_iter)
-            init_state = ADVIState(iteration, state.optimizer_state)
+            keys = jax.random.split(rng_key, (n_iter,self.n_runs))
+            batch_axis_size = self.n_runs
+            
             
         if self.cached_advi_scan:
             scan_fn = self.cached_advi_scan
@@ -328,7 +344,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
             scan_fn = vectorise_scan(self.advi_step,
                                      carry_axes=advi_state_axes,
                                      pmap_data_axes=1,
-                                     batch_axis_size=self.L,
+                                     batch_axis_size=batch_axis_size,
                                      vmap_batch_size=self.pconfig.vmap_batch_size,
                                      vectorisation=self.pconfig.vectorisation,
                                      n_devices=self.pconfig.num_workers,
@@ -337,7 +353,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
             self.cached_advi_scan = scan_fn
         
         last_state, elbo = parallel_run(scan_fn, (init_state, keys),
-            batch_axis_size=self.L,
+            batch_axis_size=batch_axis_size,
             vectorisation=self.pconfig.vectorisation,
             n_devices=self.pconfig.num_workers
         )
@@ -345,13 +361,23 @@ class ADVI(Generic[OPTIMIZER_STATE]):
         return last_state, elbo
 
     def run(self, rng_key: PRNGKey, *, n_iter: int):
-        init_state = ADVIState(jnp.array(0,int), self.optimizer.init_fn(self.guide.get_params()))
+        p = self.guide.get_params()
+        assert len(p.shape) == 1
+        n_params = p.shape[0]
+        if self.n_runs > 1:
+            p = p.reshape(1,n_params) + jax.random.normal(rng_key, (self.n_runs, n_params)) # jitter start
+        init_state = ADVIState(jnp.array(0,int), self.optimizer.init_fn(p))
         return self.continue_run(rng_key, init_state, n_iter=n_iter)
         
-    def get_updated_guide(self, state: ADVIState[OPTIMIZER_STATE]) -> Guide:
+    def get_updated_guide(self, state: ADVIState[OPTIMIZER_STATE], run: int | None) -> Guide:
         p = self.optimizer.get_params_fn(state.optimizer_state)
-        if self.vectorisation == "psum":
-            p = p[0,...] # params are identical along batched axis
+        if run is not None:
+            assert self.n_runs > 1
+            p = p[run,...]
+        else:
+            assert self.n_runs == 1
+            if self.vectorisation == "psum":
+                p = p[0,...] # params are identical along batched axis
         self.guide.update_params(p)
         return self.guide
    
