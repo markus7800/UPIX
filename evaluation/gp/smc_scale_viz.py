@@ -12,7 +12,6 @@ if __name__ == "__main__":
     smc_dcc_obj = SMCDCCConfig2(m, verbose=2,
         smc_collect_inference_info=True,
         parallelisation = get_parallelisation_config(args),
-        smc_n_particles = args.n_particles,
         disable_progress=args.no_progress,
         slp_max_n_leaf=3,
     )
@@ -29,7 +28,7 @@ if __name__ == "__main__":
         
     
     n_particles_to_log_Zs: Dict[str,jax.Array] = dict()
-    repetitions = 3
+    repetitions = 10
     
     for smc_n_particles in [2**e for e in range(0,15+1)]:
         log_Zs = []
@@ -57,16 +56,16 @@ if __name__ == "__main__":
             # print(f"log_Z={log_Z.item():.4f}")
             log_Zs.append(log_Z)
             
-            if seed == 0:
-                weights = jax.lax.exp(last_state.log_particle_weights - log_Z)
-                weights = weights / weights.sum()
-                weighted_samples = SampleValues((last_state.particles, weights), smc_n_particles)
-                plot_smc_posterior(weighted_samples, 100, f"n_particles={smc_n_particles} log_Z={log_Z.item():.4f}")
+            # if seed == 0:
+            #     weights = jax.lax.exp(last_state.log_particle_weights - log_Z)
+            #     weights = weights / weights.sum()
+            #     weighted_samples = SampleValues((last_state.particles, weights), smc_n_particles)
+            #     plot_smc_posterior(weighted_samples, 100, f"n_particles={smc_n_particles} log_Z={log_Z.item():.4f}")
         
         log_Zs = jnp.vstack(log_Zs).reshape(-1)
         print(f"{smc_n_particles=} log_Z est: {log_Zs.mean().item():.4f} +/- {log_Zs.std().item()}")
         n_particles_to_log_Zs[f"{smc_n_particles:_}"] = log_Zs
-    plt.show()
+    # plt.show()
     
     fig, ax = plt.subplots()
     ax.boxplot(n_particles_to_log_Zs.values()) # type: ignore

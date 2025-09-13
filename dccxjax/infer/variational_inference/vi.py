@@ -227,17 +227,21 @@ class ADVIState(NamedTuple, Generic[OPTIMIZER_STATE]):
     optimizer_state: OPTIMIZER_STATE
 
 def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE], L: int, vectorisation: str, vmap_batch_size: int):
-    assert vectorisation in ("vmap", "smap", "psum")
+    assert vectorisation in ("none", "vmap", "smap", "psum")
     # log_prob_fn = gibbs_model.tempered_log_prob(jnp.array(1.,float), {})
     log_prob_fn = slp.log_prob
     def elbo_fn(params: jax.Array, rng_key: PRNGKey) -> FloatArray:
         guide.update_params(params)
-        if L == 1 and vectorisation == "vmap":
+        if L == 1 and vectorisation == ("none","vmap"):
             X, lq = guide.sample_and_log_prob(rng_key)
             lp = log_prob_fn(X)
             elbo = lp - lq
         else:
-            if vectorisation == "vmap":
+            if vectorisation == "none":
+                X, lq = jax.lax.map(guide.sample_and_log_prob, jax.random.split(rng_key, L))
+                lp = jax.lax.map(log_prob_fn, X)
+                elbo = (lp - lq).sum() / L
+            elif vectorisation == "vmap":
                 if vmap_batch_size > 0:
                     X, lq = batched_vmap(guide.sample_and_log_prob, batch_size=vmap_batch_size)(jax.random.split(rng_key, L))
                 else:

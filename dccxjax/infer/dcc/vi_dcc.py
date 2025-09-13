@@ -109,7 +109,7 @@ class VIDCC(AbstractDCC[VIDCCResult]):
         if len(inference_results) > 0:
             last_result = inference_results[-1]
             assert isinstance(last_result, ADVIInferenceResult)
-            best_run = int(jnp.argmax(last_result.elbo[-1,:]).item()) if self.advi_n_runs > 1 else None
+            best_run = int(jnp.nanargmax(last_result.elbo[-1,:]).item()) if self.advi_n_runs > 1 else None
             guide = self.get_ADVI(slp).get_updated_guide(last_result.last_state, best_run)
             def _post_info(result: LogWeightEstimate):
                 assert isinstance(result, LogWeightEstimateFromADVI)
@@ -175,7 +175,7 @@ class VIDCC(AbstractDCC[VIDCCResult]):
         for slp, inference_result in inference_results.items():
             assert isinstance(inference_result, ADVIInferenceResult)
             advi = self.get_ADVI(slp)
-            best_run = int(jnp.argmax(inference_result.elbo[-1,:]).item()) if self.advi_n_runs > 1 else None
+            best_run = int(jnp.nanargmax(inference_result.elbo[-1,:]).item()) if self.advi_n_runs > 1 else None
             guide = advi.get_updated_guide(inference_result.last_state, best_run)
             slp_guides[slp] = guide
         return slp_guides
