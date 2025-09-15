@@ -61,7 +61,9 @@ if __name__ == "__main__":
         plot_results(result)
         
         
+    K = int(args.n_runs) * int(args.L)
     workload = {
+        "K": K,
         "L": args.L,
         "n_runs": args.n_runs,
         "n_iter": args.n_iter,
@@ -85,7 +87,7 @@ if __name__ == "__main__":
     }
     
     if not args.no_save:
-        prefix = f"nruns_{args.n_runs:07d}_L_{args.L}_nslps_{len(result.get_slps())}_niter_{args.n_iter}_"
+        prefix = f"K_{K:07d}_nruns_{args.n_runs}_L_{args.L}_nslps_{len(result.get_slps())}_niter_{args.n_iter}_"
         write_json_result(json_result, "gp", "vi", "scale", prefix=prefix)
 
 

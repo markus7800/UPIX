@@ -9,6 +9,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("folder")
+parser.add_argument("--comp", action="store_true")
 args = parser.parse_args()
 
 PATH = pathlib.Path(args.folder)
@@ -19,7 +20,7 @@ if PATH.name == "pedestrian":
     X_LABEL = "Number of HMC chains"
 
 elif PATH.parent.name == "gp" and PATH.name == "vi":
-    SCALE_COL = "L"
+    SCALE_COL = "n_runs"
     TITLE = "Gaussian Process Model"
     X_LABEL = "Number of samples per ADVI step L"
     
@@ -137,50 +138,51 @@ for (platform, kind, n_devices), group in df.groupby(["platform", "kind", "num_w
              marker=markers[(platform, n_devices)],
     )
     
+COMP_NAME = ""
+if args.comp:
+    if PATH.name == "pedestrian":
+        COMP_NAME = "NPDHMC"
+        comp_df = df_from_json_dir(PATH.joinpath("nonparametric"), ["workload", "timings", "environment_info"], [])
+        comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "inference_time"]]
+        comp_df["METRIC"] = comp_df["inference_time"]
+        comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
 
-if PATH.name == "pedestrian":
-    COMP_NAME = "NPDHMC"
-    comp_df = df_from_json_dir(PATH.joinpath("nonparametric"), ["workload", "timings", "environment_info"], [])
-    comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "inference_time"]]
-    comp_df["METRIC"] = comp_df["inference_time"]
-    comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
+    elif PATH.parent.name == "gp" and PATH.name == "vi":
+        COMP_NAME = "SDVI"
+        comp_df = df_from_json_dir(PATH.joinpath("..", "sdvi"), ["workload", "timings", "environment_info"], [])
+        comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "inference_time"]]
+        comp_df["METRIC"] = comp_df["inference_time"]
+        comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
+        
+    elif PATH.parent.name == "gp" and PATH.name == "smc":
+        COMP_NAME = "AutoGP"
+        comp_df = df_from_json_dir(PATH.joinpath("..", "autogp"), ["workload", "timings", "environment_info"], [])
+        comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "wall_time", "inference_time", "compilation_time"]]
+        comp_df["METRIC"] = comp_df["wall_time"]
+        comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
+        
+    elif PATH.name == "gmm":
+        COMP_NAME = "Gen RJMCMC"
+        comp_df = df_from_json_dir(PATH.joinpath("rjmcmc"), ["workload", "timings", "environment_info"], [])
+        comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "wall_time", "inference_time", "compilation_time"]]
+        comp_df["METRIC"] = comp_df["wall_time"]
+        comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
+        
+    else:
+        assert(False)
+        
+    comp_df["kind"] = "COMP"
+    comp_df = comp_df.set_index(["platform", "kind", "num_workers", SCALE_COL], verify_integrity=True)
+    comp_df = comp_df.sort_index()
+    comp_df = comp_df.reset_index()
 
-elif PATH.parent.name == "gp" and PATH.name == "vi":
-    COMP_NAME = "SDVI"
-    comp_df = df_from_json_dir(PATH.joinpath("..", "sdvi"), ["workload", "timings", "environment_info"], [])
-    comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "inference_time"]]
-    comp_df["METRIC"] = comp_df["inference_time"]
-    comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
-    
-elif PATH.parent.name == "gp" and PATH.name == "smc":
-    COMP_NAME = "AutoGP"
-    comp_df = df_from_json_dir(PATH.joinpath("..", "autogp"), ["workload", "timings", "environment_info"], [])
-    comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "wall_time", "inference_time", "compilation_time"]]
-    comp_df["METRIC"] = comp_df["wall_time"]
-    comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
-    
-elif PATH.name == "gmm":
-    COMP_NAME = "Gen RJMCMC"
-    comp_df = df_from_json_dir(PATH.joinpath("rjmcmc"), ["workload", "timings", "environment_info"], [])
-    comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "wall_time", "inference_time", "compilation_time"]]
-    comp_df["METRIC"] = comp_df["wall_time"]
-    comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
-    
-else:
-    assert(False)
-    
-comp_df["kind"] = "COMP"
-comp_df = comp_df.set_index(["platform", "kind", "num_workers", SCALE_COL], verify_integrity=True)
-comp_df = comp_df.sort_index()
-comp_df = comp_df.reset_index()
-
-for (platform, kind, n_devices), group in comp_df.groupby(["platform", "kind", "num_workers"]):
-    series_count += 1
-    plt.plot(group[SCALE_COL], group["METRIC"],
-            # label=f"{n_devices} {platform} {kind}", 
-            c=get_color(kind, n_devices),
-            marker=markers[(platform, n_devices)],
-    )
+    for (platform, kind, n_devices), group in comp_df.groupby(["platform", "kind", "num_workers"]):
+        series_count += 1
+        plt.plot(group[SCALE_COL], group["METRIC"],
+                # label=f"{n_devices} {platform} {kind}", 
+                c=get_color(kind, n_devices),
+                marker=markers[(platform, n_devices)],
+        )
     
 from matplotlib.lines import Line2D
 
