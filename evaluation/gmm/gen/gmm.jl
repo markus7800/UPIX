@@ -89,7 +89,7 @@ function run_inference(seed::Int, N::Int)
         Ks[i] = k
         mcmc_tr = mcmc_kernel(mcmc_tr)
     end
-    return Float64[sum(Ks .== i) / N for i in 1:maximum(Ks)]
+    return Int[sum(Ks .== i) for i in 1:maximum(Ks)]
 end
 
 
@@ -104,18 +104,20 @@ function main()
         nthreads = Threads.nthreads()
         println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, nthreads=$nthreads")
         N = n_samples_per_chain
-        result = Vector{Vector{Float64}}(undef, n_chains)
+        result = Vector{Vector{Int}}(undef, n_chains)
 
         Threads.@threads for i in 1:n_chains
             result[i] = run_inference(i, N)
         end
         max_k = maximum(length(r) for r in result)
-        weights = zeros(max_k)
+        cumulative_result = zeros(Int, max_k)
         for r in result
-            for (k, k_frac) in enumerate(r)
-                weights[k] += k_frac / n_chains
+            for (k, k_sum) in enumerate(r)
+                cumulative_result[k] += k_sum
             end
         end
+        display(cumulative_result)
+        weights = cumulative_result ./ sum(cumulative_result)
         display(weights)
     end
     Base.cumulative_compile_timing(false);
@@ -144,6 +146,9 @@ function main()
     "cpu-brand": "$(Sys.cpu_info()[1].model)",
     "cpu_count": $(Hwloc.num_virtual_cores()),
     "threads": $nthreads
+  },
+  "result": {
+    "counts": $(repr(cumulative_result))
   }
 }
 """
@@ -153,3 +158,4 @@ function main()
     end
 end
 main()
+
