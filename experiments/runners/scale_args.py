@@ -8,7 +8,6 @@ def get_scale_args():
     parser.add_argument("minpow", type=int)
     parser.add_argument("maxpow", type=int)
     parser.add_argument("parallelisation")
-    parser.add_argument("vectorisation")
     parser.add_argument("--no_progress", action="store_true")
     parser.add_argument("--no_save", action="store_true")
     args = parser.parse_args()
@@ -26,6 +25,5 @@ def get_scale_args():
     minpow = int(args.minpow)
     maxpow = int(args.maxpow)
     parallelisation = str(args.parallelisation)
-    vectorisation = str(args.vectorisation)
     
-    return platform, ndevices, minpow, maxpow, parallelisation, vectorisation, flags
+    return platform, ndevices, minpow, maxpow, parallelisation, flags
