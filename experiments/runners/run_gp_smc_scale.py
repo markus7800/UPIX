@@ -28,6 +28,8 @@ if platform == "cuda":
     check_cmd = f"uv run --frozen -p python3.13 --extra=cuda experiments/runners/check_environ.py gpu {ndevices}"
     subprocess.run(check_cmd, shell=True, check=True)
     
+    assert parallelisation in ("sequential", "jax_devices")
+
     if parallelisation == "sequential":
         vectorisation = "smap_local"
     else:
