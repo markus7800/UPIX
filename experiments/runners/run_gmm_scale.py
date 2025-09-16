@@ -34,7 +34,7 @@ if platform == "cuda":
     assert parallelisation in ("sequential", "jax_devices")
 
     if parallelisation == "sequential":
-        vectorisation = "pmap"
+        vectorisation = "smap_local"
         # smap_local uses less memory than pmap, but is slighlty slower
     else:
         vectorisation="vmap_global"
