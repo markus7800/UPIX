@@ -1,6 +1,7 @@
 from run_scale_smc import *
 from dccxjax.infer import SMC, ReweightingType, StratifiedResampling, ResampleType, ResampleTime
 from smc_plots import plot_smc_posterior
+import pickle
 
 if __name__ == "__main__":
     m = gaussian_process(xs, ys)
@@ -66,6 +67,10 @@ if __name__ == "__main__":
         print(f"{smc_n_particles=} log_Z est: {log_Zs.mean().item():.4f} +/- {log_Zs.std().item()}")
         n_particles_to_log_Zs[f"{smc_n_particles:_}"] = log_Zs
     # plt.show()
+    
+    with open("viz_gp_smc_particle_scale_data.pkl", "wb") as f:
+        pickle.dump(n_particles_to_log_Zs, f)
+    
     
     fig, ax = plt.subplots()
     ax.boxplot(n_particles_to_log_Zs.values()) # type: ignore

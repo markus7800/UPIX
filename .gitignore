@@ -16,3 +16,4 @@ tmp*
 experiments/data
 .vscode
 Manifest.toml
+*.pkl

@@ -2,6 +2,7 @@ from run_scale_vi import *
 from dccxjax.infer import ADVI
 from vi_plots import plot_guide_posterior
 from dccxjax.parallelisation import VectorisationType
+import pickle
 
 if __name__ == "__main__":
     m = gaussian_process(xs, ys)
@@ -76,6 +77,8 @@ if __name__ == "__main__":
 
         
     K_to_elbos: Dict[str,jax.Array] = dict()
+    repetitions = 10
+    
     max_L = 8
     for K in [2**e for e in range(0,13+1)]:
         if K // max_L == 0:
@@ -87,7 +90,7 @@ if __name__ == "__main__":
         print(f"{L=} {n_runs=}")
         set_local_global(n_runs)
         elbos = []
-        for seed in range(10):
+        for seed in range(repetitions):
             advi = ADVI(slp, vi_dcc_obj.get_guide(slp), Adam(0.005), L, n_runs, pconfig=vi_dcc_obj.pconfig,
                         show_progress=True,
                         shared_progressbar=None)
@@ -110,6 +113,9 @@ if __name__ == "__main__":
         K_to_elbos[f"{L} x {n_runs:,}"] = elbos
     
     # plt.show()
+    
+    with open("viz_gp_vi_elbo_scale_data.pkl", "wb") as f:
+        pickle.dump(K_to_elbos, f)
     
     fig, ax = plt.subplots()
     ax.boxplot(K_to_elbos.values()) # type: ignore

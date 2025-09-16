@@ -2,9 +2,10 @@ import sys
 sys.path.append("evaluation")
 from parse_args import *
 parser = get_arg_parser()
-parser.add_argument("n_slps", help="number of slps to evaluate", type=int)
-parser.add_argument("n_chains", help="number of chains to run", type=int)
-parser.add_argument("n_samples_per_chain", help="number of sampler per chain to run", type=int)
+if __name__ == "__main__":
+    parser.add_argument("n_slps", help="number of slps to evaluate", type=int)
+    parser.add_argument("n_chains", help="number of chains to run", type=int)
+    parser.add_argument("n_samples_per_chain", help="number of sampler per chain to run", type=int)
 args = parser.parse_args()
 setup_devices_from_args(args)
 
