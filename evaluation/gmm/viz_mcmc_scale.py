@@ -70,7 +70,6 @@ with open("viz_gmm_result.txt", "w") as f:
         
         n_chains_to_W1_distance[n_chains] = jnp.vstack(W1_distances).reshape(-1)
         n_chains_to_infty_distance[n_chains] = jnp.vstack(infty_distances).reshape(-1)
-        break
     
 
 with open("viz_gmm_mcmc_scale_data.pkl", "wb") as f:
