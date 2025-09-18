@@ -35,38 +35,42 @@ n_chains_to_infty_distance: Dict[int,jax.Array] = dict()
 
 repetitions = 10
 
-for n_chains in [2**n for n in range(18+1)]:
-    W1_distances = []
-    infty_distances = []
-    for seed in range(repetitions):
-        dcc_obj = StaticDCCConfig(m, verbose=2,
-            mcmc_n_chains=n_chains,
-            mcmc_n_samples_per_chain=n_samples_per_chain,
-            mcmc_collect_for_all_traces=False,
-            parallelisation=get_parallelisation_config(args),
-            disable_progress=args.no_progress
-        )
-        result = dcc_obj.run(jax.random.key(seed))
-        result.pprint(sortkey="slp")
-        lps = jnp.array([log_weight for _, log_weight in result.get_log_weights_sorted("slp")])
-        lps = lps - jax.scipy.special.logsumexp(lps)
-        ps = jax.lax.exp(lps)
-        ps = ps / ps.sum()
-        ps = jax.lax.concatenate((ps, jnp.zeros((len(gt_ps)-len(ps),))), 0)
-        cdf_est = jnp.cumsum(ps)
-        for i in range(len(ps)):
-            print(f"{i:2d}: {ps[i]:.8f} - {gt_ps[i]:.8f} = {ps[i] - gt_ps[i]:.8f}")
+with open("viz_gmm_result.txt", "w") as f:
+    for n_chains in [2**n for n in range(18+1)]:
+        W1_distances = []
+        infty_distances = []
+        for seed in range(repetitions):
+            dcc_obj = StaticDCCConfig(m, verbose=2,
+                mcmc_n_chains=n_chains,
+                mcmc_n_samples_per_chain=n_samples_per_chain,
+                mcmc_collect_for_all_traces=False,
+                parallelisation=get_parallelisation_config(args),
+                disable_progress=args.no_progress
+            )
+            result = dcc_obj.run(jax.random.key(seed))
+            result.pprint(sortkey="slp")
+            lps = jnp.array([log_weight for _, log_weight in result.get_log_weights_sorted("slp")])
+            lps = lps - jax.scipy.special.logsumexp(lps)
+            ps = jax.lax.exp(lps)
+            ps = ps / ps.sum()
+            ps = jax.lax.concatenate((ps, jnp.zeros((len(gt_ps)-len(ps),))), 0)
+            cdf_est = jnp.cumsum(ps)
+            for i in range(len(ps)):
+                print(f"{i:2d}: {ps[i]:.8f} - {gt_ps[i]:.8f} = {ps[i] - gt_ps[i]:.8f}")
 
-        W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf))
-        infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
-        
-        print(f"W1_distance={W1_distance.item():.8f} infty_distance={infty_distance.item():.8f}")
+            W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf))
+            infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
             
-        W1_distances.append(W1_distance)
-        infty_distances.append(infty_distance)
-    
-    n_chains_to_W1_distance[n_chains] = jnp.vstack(W1_distances).reshape(-1)
-    n_chains_to_infty_distance[n_chains] = jnp.vstack(infty_distances).reshape(-1)
+            print(f"W1_distance={W1_distance.item():.8f} infty_distance={infty_distance.item():.8f}")
+            f.write(f"n_chains={n_chains} seed={seed} W1_distance={W1_distance.item()} infty_distance={infty_distance.item()}\n")
+            f.flush()
+                
+            W1_distances.append(W1_distance)
+            infty_distances.append(infty_distance)
+        
+        n_chains_to_W1_distance[n_chains] = jnp.vstack(W1_distances).reshape(-1)
+        n_chains_to_infty_distance[n_chains] = jnp.vstack(infty_distances).reshape(-1)
+        break
     
 
 with open("viz_gmm_mcmc_scale_data.pkl", "wb") as f:
