@@ -28,7 +28,7 @@ if __name__ == "__main__":
             slp = _slp
         
     
-    n_particles_to_log_Zs: Dict[str,jax.Array] = dict()
+    n_particles_to_log_Zs: Dict[int,jax.Array] = dict()
     repetitions = 10
     
     for smc_n_particles in [2**e for e in range(0,15+1)]:
@@ -65,15 +65,9 @@ if __name__ == "__main__":
         
         log_Zs = jnp.vstack(log_Zs).reshape(-1)
         print(f"{smc_n_particles=} log_Z est: {log_Zs.mean().item():.4f} +/- {log_Zs.std().item()}")
-        n_particles_to_log_Zs[f"{smc_n_particles:_}"] = log_Zs
+        n_particles_to_log_Zs[smc_n_particles] = log_Zs
     # plt.show()
     
     with open("viz_gp_smc_particle_scale_data.pkl", "wb") as f:
         pickle.dump(n_particles_to_log_Zs, f)
-    
-    
-    fig, ax = plt.subplots()
-    ax.boxplot(n_particles_to_log_Zs.values()) # type: ignore
-    ax.set_xticklabels(n_particles_to_log_Zs.keys())
-    plt.show()
     

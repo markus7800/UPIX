@@ -76,7 +76,7 @@ if __name__ == "__main__":
                 vi_dcc_obj.pconfig.vectorisation = VectorisationType.LocalSMAP
 
         
-    K_to_elbos: Dict[str,jax.Array] = dict()
+    K_to_elbos: Dict[Tuple[int,int],jax.Array] = dict()
     repetitions = 10
     
     max_L = 8
@@ -110,15 +110,11 @@ if __name__ == "__main__":
 
         elbos = jnp.vstack(elbos).reshape(-1)
         print(f"{K=} elbo est: {elbos.mean().item():.4f} +/- {elbos.std().item()}")
-        K_to_elbos[f"{L} x {n_runs:,}"] = elbos
+        K_to_elbos[(n_runs, L)] = elbos
     
     # plt.show()
     
     with open("viz_gp_vi_elbo_scale_data.pkl", "wb") as f:
         pickle.dump(K_to_elbos, f)
     
-    fig, ax = plt.subplots()
-    ax.boxplot(K_to_elbos.values()) # type: ignore
-    ax.set_xticklabels(K_to_elbos.keys())
-    plt.show()
     

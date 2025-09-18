@@ -7,16 +7,31 @@ gt_cluster_visits = jnp.array([687, 574, 119783, 33258676, 46000324, 16768787, 3
 gt_ps = gt_cluster_visits / gt_cluster_visits.sum()
 gt_cdf = jnp.cumsum(gt_ps)
 
-n_slps = 10
-n_samples_per_chain = 2024
+# for i in range(len(gt_ps)):
+#     print(f"{i+1:2d} {gt_ps[i]:.8f}")
+#  1 0.00000687
+#  2 0.00000574
+#  3 0.00119783
+#  4 0.33258677
+#  5 0.46000323
+#  6 0.16768786
+#  7 0.03302321
+#  8 0.00485045
+#  9 0.00057502
+# 10 0.00005806
+# 11 0.00000457
+# 12 0.00000038
+
+n_slps = 11
+n_samples_per_chain = 2048
 args.n_slps = n_slps
 
 m = gmm(ys)
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_K)
 
-n_chains_to_W1_distance: Dict[str,jax.Array] = dict()
-n_chains_to_infty_distance: Dict[str,jax.Array] = dict()
+n_chains_to_W1_distance: Dict[int,jax.Array] = dict()
+n_chains_to_infty_distance: Dict[int,jax.Array] = dict()
 
 repetitions = 10
 
@@ -38,7 +53,9 @@ for n_chains in [2**n for n in range(18+1)]:
         ps = jax.lax.exp(lps)
         ps = ps / ps.sum()
         cdf_est = jnp.cumsum(ps)
-        print(ps, gt_ps)
+        for i in range(len(ps)):
+            print(f"{i:2d}: {ps[i]:.8f} - {gt_ps[i]:.8f} = {ps[i] - gt_ps[i]:.8f}")
+        # print(ps, gt_ps)
         
         W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf[:cdf_est.size]))
         infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf[:cdf_est.size]))
@@ -46,24 +63,10 @@ for n_chains in [2**n for n in range(18+1)]:
         W1_distances.append(W1_distance)
         infty_distances.append(infty_distance)
     
-    n_chains_to_W1_distance[f"{n_chains:,}"] = jnp.vstack(W1_distances).reshape(-1)
-    n_chains_to_infty_distance[f"{n_chains:,}"] = jnp.vstack(infty_distances).reshape(-1)
+    n_chains_to_W1_distance[n_chains] = jnp.vstack(W1_distances).reshape(-1)
+    n_chains_to_infty_distance[n_chains] = jnp.vstack(infty_distances).reshape(-1)
     
 
 with open("viz_gmm_mcmc_scale_data.pkl", "wb") as f:
     pickle.dump((n_chains_to_W1_distance, n_chains_to_infty_distance), f)
         
-        
-
-fig, ax = plt.subplots()
-plt.title("W1 distance")
-ax.boxplot(n_chains_to_W1_distance.values()) # type: ignore
-ax.set_xticklabels(n_chains_to_W1_distance.keys())
-
-fig, ax = plt.subplots()
-plt.title("Infty distance")
-ax.boxplot(n_chains_to_infty_distance.values()) # type: ignore
-ax.set_xticklabels(n_chains_to_infty_distance.keys())
-plt.show()
-    
-

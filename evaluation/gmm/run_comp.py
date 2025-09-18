@@ -26,5 +26,5 @@ if __name__ == "__main__":
     )
 
     # takes ~185s for 10 * 25_000 * 11 samples
-    result = timed(dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(dcc_obj.run)(jax.random.key(0))
     result.pprint(sortkey="slp")
