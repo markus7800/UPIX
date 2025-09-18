@@ -52,14 +52,16 @@ for n_chains in [2**n for n in range(18+1)]:
         lps = lps - jax.scipy.special.logsumexp(lps)
         ps = jax.lax.exp(lps)
         ps = ps / ps.sum()
+        ps = jax.lax.concatenate((ps, jnp.zeros((len(gt_ps)-len(ps),))), 0)
         cdf_est = jnp.cumsum(ps)
         for i in range(len(ps)):
             print(f"{i:2d}: {ps[i]:.8f} - {gt_ps[i]:.8f} = {ps[i] - gt_ps[i]:.8f}")
-        # print(ps, gt_ps)
+
+        W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf))
+        infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
         
-        W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf[:cdf_est.size]))
-        infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf[:cdf_est.size]))
-        
+        print(f"W1_distance={W1_distance.item():.8f} infty_distance={infty_distance.item():.8f}")
+            
         W1_distances.append(W1_distance)
         infty_distances.append(infty_distance)
     
