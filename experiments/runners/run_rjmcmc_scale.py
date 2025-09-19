@@ -22,6 +22,9 @@ for n_iter in [2048]:
         print('# CMD: ' + cmd)
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
-        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
+        elapsed = time.monotonic()-t0
+        print(f"# Finished CMD in {elapsed:.3f}s")
+        if elapsed > 5000:
+            break
         
 print(f"\n# Runner finished in {time.monotonic() - RUNNER_T0:.3f}s")

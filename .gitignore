@@ -17,3 +17,4 @@ experiments/data
 .vscode
 Manifest.toml
 *.pkl
+.DS_Store
