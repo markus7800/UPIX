@@ -317,9 +317,7 @@ class ADVI(Generic[OPTIMIZER_STATE]):
         else:
             self.vectorisation = "none"
             assert pconfig.vectorisation in (VectorisationType.GlobalVMAP, VectorisationType.GlobalSMAP, VectorisationType.PMAP)
-            self.advi_step = make_advi_step(slp, guide, optimizer, L, "vmap", 1)
-            
-
+            self.advi_step = make_advi_step(slp, guide, optimizer, L, "vmap", 0)
 
         self.cached_advi_scan: Optional[Callable[[ADVIState[OPTIMIZER_STATE],PRNGKey],Tuple[ADVIState[OPTIMIZER_STATE],FloatArray]]] = None
 
