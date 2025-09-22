@@ -10,14 +10,15 @@ method = "hmc"
 # method = ("npladhmc-persistent", config)
 
 runs = []
-num_chains = 10
+num_chains = 8
 for i in range(num_chains):
     with open(file_template.format(i=i), "rb") as f:
         runs.append(pickle.load(f))
+        print(len(runs[i]["hmc"]["samples"]))
 
 # print(runs)
 if method == "hmc":
-    thinned_runs = thin_runs([method], runs)
+    thinned_runs = thin_runs([method], runs) # does not thin hmc samples, but restructures
     chains = collect_chains([method], thinned_runs)
     values = collect_values([method], thinned_runs)
     print_running_time([method], runs, thinned_runs)
@@ -33,53 +34,36 @@ else:
 
 import matplotlib.pyplot as plt
 import numpy as np
-gt_xs = np.load("../gt_xs.npy")
-gt_cdf = np.load("../gt_cdf.npy")
-gt_pdf = np.load("../gt_pdf.npy")
+gt_xs = np.load("../gt_xs-100.npy")
+gt_cdf = np.load("../gt_cdf-100-1_000_000_000_000.npy")
+gt_pdf = np.load("../gt_pdf_est-100-1_000_000_000_000.npy")
 
 hmc_values = np.array(values[method])
+print(f"{hmc_values.shape=}")
 
 cdf_est = []
 for x in gt_xs:
     cdf_est.append(np.mean(hmc_values < x))
 cdf_est = np.array(cdf_est)
 
-W1_distance = np.trapezoid(np.abs(cdf_est - gt_cdf)) # wasserstein distance
+W1_distance = np.trapz(np.abs(cdf_est - gt_cdf)) # wasserstein distance
 infty_distance = np.max(np.abs(cdf_est - gt_cdf))
 title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
 print(title)
 plt.plot(gt_xs, gt_cdf, label="ground truth")
 plt.plot(gt_xs, cdf_est, label="estimated cdf")
-plt.title(title)
+# plt.title(title)
 plt.legend()
-plt.show()
+# plt.show()
 
-# Plot the data
-import pandas
-import seaborn as sns
-
-data = (
-    [("nonparametric-hmc", v) for v in values[method]]
-)
-x_label = "starting point"
-dataframe = pandas.DataFrame(data, columns=["method", x_label])
-print(dataframe)
-plot = sns.displot(
-    data=dataframe,
-    x=x_label,
-    hue="method",
-    kind="kde",
-    common_norm=False,
-    facet_kws={"legend_out": False},
-    palette=palette,
-    aspect=1,
-    height=4,
-)
-plot.set_ylabels(label="posterior density")
-plt.plot(gt_xs, gt_pdf, color="tab:orange", label="ground truth")
-plt.title("Nonparamteric HMC")
+import scipy
+plt.figure(figsize=(5,2.5))
+plt.hist(hmc_values, density=True, bins=100, alpha=0.5)
+plt.plot(gt_xs, gt_pdf, label="ground truth")
+kde = scipy.stats.gaussian_kde(hmc_values)
+plt.plot(gt_xs, kde(gt_xs), color="tab:blue", label="NP-DHMC")
+plt.ylim(0,1.4)
 plt.legend()
 plt.tight_layout()
 plt.savefig("result_nonparametric-hmc.pdf")
-plt.show()
-
+# plt.show()

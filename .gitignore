@@ -4,6 +4,7 @@ __pycache__
 old_evaluation/pedestrian/nonparametric-hmc
 evaluation/pedestrian/nonparametric-hmc/lookahead_samples
 evaluation/pedestrian/nonparametric-hmc/samples_produced
+evaluation/pedestrian/nonparametric-hmc/experiments
 evaluation/gp/sdvi/experiments
 *.pdf
 *.bin

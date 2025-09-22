@@ -20,7 +20,7 @@ if PATH.name == "pedestrian":
     X_LABEL = "Number of HMC chains"
 
 elif PATH.parent.name == "gp" and PATH.name == "vi":
-    SCALE_COL = "n_runs"
+    SCALE_COL = "n_runs*L"
     TITLE = "Gaussian Process Model"
     X_LABEL = "Number of samples per ADVI step L"
     
@@ -43,6 +43,7 @@ def df_from_json_dir(dir, keep_info_subdicts: list[str], discard_names: list[str
     for dirpath, _, files in os.walk(dir):
         for file in files:
             if file.endswith(".json"):
+                # print(dirpath, file)
                 with open(pathlib.Path(dirpath, file), "r") as f:
                     jdict = json.load(f)
                     df_dict = reduce(lambda x, y: x | y, map(lambda x: jdict[x], keep_info_subdicts))
@@ -58,6 +59,9 @@ if PATH.name == "gmm":
 df["kind"] = df["gpu-brand"].map(lambda x: x[0][len("GPU 0: "):])
 df.loc[df["kind"] == "NVIDIA A100-SXM4-40GB", "kind"] = "NVIDIA A100S"
 df.loc[df["platform"] == "cpu", "kind"] = "CPU"
+    
+if PATH.parent.name == "gp" and PATH.name == "vi":
+    df[SCALE_COL] = df["n_runs"] * df["L"]
     
 df = df[["platform", "kind", "num_workers", SCALE_COL, "total_time", "inference_time", "jax_total_jit_time", "n_available_devices"]]
 df = df.set_index(["platform", "kind", "num_workers", SCALE_COL], verify_integrity=True)
@@ -150,8 +154,10 @@ if args.comp:
     elif PATH.parent.name == "gp" and PATH.name == "vi":
         COMP_NAME = "SDVI"
         comp_df = df_from_json_dir(PATH.joinpath("..", "sdvi"), ["workload", "timings", "environment_info"], [])
-        comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "inference_time"]]
         comp_df["METRIC"] = comp_df["inference_time"]
+        comp_df["n_runs"] = 1
+        comp_df[SCALE_COL] = comp_df["n_runs"] * comp_df["L"]
+        comp_df = comp_df[["platform", "cpu_count", SCALE_COL, "inference_time", "METRIC"]]
         comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
         
     elif PATH.parent.name == "gp" and PATH.name == "smc":

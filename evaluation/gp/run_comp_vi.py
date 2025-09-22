@@ -20,12 +20,12 @@ if __name__ == "__main__":
     m = gaussian_process(xs, ys)
     m.set_slp_formatter(lambda slp: str(get_gp_kernel(slp.decision_representative)))
     m.set_slp_sort_key(lambda slp: get_gp_kernel(slp.decision_representative).size())
-    m.set_equivalence_map(equivalence_map)
+    # m.set_equivalence_map(equivalence_map)
     
     vi_dcc_obj = VIConfig(m, verbose=2,
         init_n_samples=1_000,
         advi_L=1,
-        advi_n_runs=1,
+        advi_n_runs=1, # 8 would work better
         advi_optimizer=Adam(0.005),
         elbo_estimate_n_samples=100,
         successive_halving=SuccessiveHalving(1_000_000, 10),

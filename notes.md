@@ -31,3 +31,16 @@ uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonp
 uv run  --frozen --python=python3.13 --extra=cpu --with=pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local --cpu -omp 1 -num_workers=...
 
 uv run  --frozen --python=python3.13 --extra=cuda --with=pandas evaluation/gp/run_scale_vi.py sequential smap_local 1 1 1000 -host_device_count 64 --cpu
+
+
+
+# example section
+
+cd evaluation/pedestrian/nonparametric-hmc
+uv run -p python3.10 --no-project --with-requirements=requirements.txt pedestrian.py NP-DHMC 8 1000 100 -n_processes 8  --store_samples
+uv run -p python3.10 --no-project --with-requirements=requirements.txt check_results.py
+
+uv run evaluation/pedestrian/run_comp.py sequential pmap --show_plots -host_device_count 8
+
+bash evaluation/gp/sdvi/run_comp.sh 10
+uv run -p python3.13 --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local

@@ -67,7 +67,7 @@ if __name__ == "__main__":
                 parallelisation=get_parallelisation_config(args),
                 init_n_samples=250,
                 init_estimate_weight_n_samples=2**20, # ~10**6
-                mcmc_n_chains=16,
+                mcmc_n_chains=8,
                 mcmc_n_samples_per_chain=25_000,
                 estimate_weight_n_samples=2**23, # ~10**7
                 max_iterations=1,
@@ -130,6 +130,22 @@ if __name__ == "__main__":
         fig = plt.gcf()
         ax = fig.axes[0]
         ax.plot(gt_xs, gt_pdf)
+        plt.show()
+        
+        
+        start_weighted_samples, _ = result.get_samples_for_address("start", sample_ixs=slice(1000,None)) # burn-in
+        assert start_weighted_samples is not None
+        start_samples, start_weights = start_weighted_samples.unstack().get()
+        
+        plt.figure(figsize=(5,2.5))
+        plt.hist(start_samples, weights=start_weights, density=True, bins=100, alpha=0.5)
+        plt.plot(gt_xs, gt_pdf, label="ground truth")
+        print(start_samples.shape, start_weights.shape)
+        kde = jax.scipy.stats.gaussian_kde(start_samples, weights=start_weights)
+        plt.plot(gt_xs, kde(gt_xs), color="tab:blue", label="MCMC-DCC")
+        plt.ylim(0,1.4)
+        plt.legend()
+        plt.tight_layout()
         plt.savefig("evaluation/pedestrian/result_dccxjax.pdf")
         plt.show()
 
