@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import jax.numpy as jnp
-
+import numpy as np
 # df_airline = pd.read_csv("evaluation/gp/airline.csv", header=None)
 
 # df_tsdl_161 = pd.read_csv("evaluation/gp/tsdl.161.csv", header=None)
@@ -44,20 +44,23 @@ def get_data_autogp():
 
     a = 1 - 0
     b = xs.max() - xs.min()
-    slope = a / b
-    intercept = -slope * xs.min() + 0
-    xs = slope * xs + intercept
-    xs_val = slope * xs_val + intercept
+    slope_xs = a / b
+    intercept_xs = -slope_xs * xs.min() + 0
+    xs = slope_xs * xs + intercept_xs
+    xs_val = slope_xs * xs_val + intercept_xs
+    rescale_x = lambda x: pd.to_datetime((np.array(x) - intercept_xs) / slope_xs)
 
     a = ys.max() - ys.min()
-    slope = 1 / a
-    intercept = -ys.mean() / a
-    ys = slope * ys + intercept
-    ys_val = slope * ys_val + intercept
+    slope_ys = 1 / a
+    intercept_ys = -ys.mean() / a
+    ys = slope_ys * ys + intercept_ys
+    ys_val = slope_ys * ys_val + intercept_ys
+    rescale_y = lambda x: (np.array(x) - intercept_ys) / slope_ys
 
-    return jnp.array(xs), jnp.array(xs_val), jnp.array(ys), jnp.array(ys_val)
 
-xs_autogp, xs_val_autogp, ys_autogp, ys_val_autogp = get_data_autogp()
+    return jnp.array(xs), jnp.array(xs_val), jnp.array(ys), jnp.array(ys_val), rescale_x, rescale_y
+
+xs_autogp, xs_val_autogp, ys_autogp, ys_val_autogp, rescale_x_autogp, rescale_y_autogp = get_data_autogp()
 
 # plt.scatter(xs, ys, s=2)
 # plt.scatter(xs_val, ys_val, s=2)

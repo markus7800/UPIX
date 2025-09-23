@@ -44,3 +44,7 @@ uv run evaluation/pedestrian/run_comp.py sequential pmap --show_plots -host_devi
 
 bash evaluation/gp/sdvi/run_comp.sh 10
 uv run -p python3.13 --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local
+
+uv run --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -host_device_count 10 --show_plots
+
+uv run  evaluation/urn/run_comp.py sequential vmap_local 20 --show_plots

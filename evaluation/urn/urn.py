@@ -49,7 +49,7 @@ class Config(ExactDCC):
     def get_query_variables(self, slp: SLP) -> List[str]:
         return []
     
-    def get_factors(self, slp: SLP, supports: Dict[str, Optional[IntArray]]) -> List[Factor]:        
+    def get_factors(self, slp: SLP, supports: Dict[str, Optional[IntArray]]) -> List[Factor]:
         N = int(slp.decision_representative["N"].item())
         selectors: List[VariableSelector] = []
         selectors.append(SingleVariable("N"))

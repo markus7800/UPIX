@@ -44,7 +44,7 @@ function main()
     Base.cumulative_compile_timing(true)
     t0_comp = Base.cumulative_compile_time_ns()
 
-    AutoGP.fit_smc!(model; schedule=AutoGP.Schedule.linear_schedule(n_train, .10), n_mcmc=75, n_hmc=10, verbose=true);
+    AutoGP.fit_smc!(model; schedule=AutoGP.Schedule.linear_schedule(n_train, .10), n_mcmc=75, n_hmc=10, verbose=false);
     
     Base.cumulative_compile_timing(false);
     t1_comp = Base.cumulative_compile_time_ns()
@@ -52,6 +52,7 @@ function main()
 
     comp_time = (t1_comp[1] - t0_comp[1]) / 10^9 # second is re-compile time
     wall_time = (t1 - t0) / 10^9
+    println("wall_time = $wall_time")
 
     weights = AutoGP.particle_weights(model)
     kernels = AutoGP.covariance_kernels(model)

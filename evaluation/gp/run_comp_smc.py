@@ -30,8 +30,8 @@ if __name__ == "__main__":
         smc_collect_inference_info=True,
         max_iterations = 5,
         n_lmh_update_samples = 250,
-        max_active_slps = 3,
-        max_new_active_slps = 3,
+        max_active_slps = 5,
+        max_new_active_slps = 5,
         one_inference_run_per_slp = True,
         parallelisation = get_parallelisation_config(args),
         disable_progress=args.no_progress

@@ -31,7 +31,7 @@ if __name__ == "__main__":
         N_max = args.n_slps
     )
 
-    result = timed(config.run)(jax.random.key(0))
+    result, timings = timed(config.run)(jax.random.key(0))
     result.pprint(sortkey="slp")
 
     gt = jnp.load("evaluation/urn/gt_ps.npy")
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     print(gt[:len(ps)])
 
     if args.show_plots:
-        err = jnp.abs(ps - gt[:len(ps)])
+        err = jnp.abs(jnp.hstack((ps, jnp.zeros((len(gt)-len(ps),)))) - gt)
         plt.plot(err)
         plt.show()
 

@@ -12,7 +12,7 @@ import logging
 setup_logging(logging.WARN)
 
 from data import *
-xs, xs_val, ys, ys_val = get_data_autogp()
+xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_autogp()
 
 
 def normalise(a: jax.Array): return a / a.sum()
