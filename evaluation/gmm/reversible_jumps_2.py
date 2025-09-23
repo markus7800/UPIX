@@ -41,8 +41,8 @@ def get_split_params(w, mu, var, u1, u2, u3):
     return SplitParams(w1, mu1, var1, w2, mu2, var2)
 
 @model
-def aux(model_trace: Trace, ys: jax.Array):
-    K = model_trace["K"]
+def aux(model_trace: Trace):
+    K = int(branching(model_trace["K"]))
     split = sample("split", dist.Bernoulli(jax.lax.select(K == 0, 1., 0.5)))
     if split == 1:
         split_aux(model_trace, K, ys)
@@ -243,32 +243,32 @@ m.set_slp_sort_key(find_K)
 # print("round_trip_aux_trace:", round_trip_aux_trace)
 
 
-from dccxjax.core.branching_tracer import trace_branching, retrace_branching
+# from dccxjax.core.branching_tracer import trace_branching, retrace_branching
 
-def get_index(trace: Trace):
-    return trace["K"]
-def rjmcmc_move(m: Model, K: int, ys: jax.Array):
-    model_trace, lp = m.generate(jax.random.key(0), {"K": jnp.array(K,int)})
-    tt = TraceTansformation(involution)
+# def get_index(trace: Trace):
+#     return trace["K"]
+# def rjmcmc_move(m: Model, K: int, ys: jax.Array):
+#     model_trace, lp = m.generate(jax.random.key(0), {"K": jnp.array(K,int)})
+#     tt = TraceTansformation(involution)
     
-    def _move(model_trace: Trace, lp: FloatArray, key: PRNGKey):
-        generate_key, accept_key = jax.random.split(key)
-        aux_model = aux(model_trace, ys)
-        aux_trace, aux_lp_forward = aux_model.generate(generate_key)
-        with tt:
-            new_model_trace, new_aux_trace = tt.apply(model_trace, aux_trace)
-            j = tt.jacobian(model_trace, aux_trace)
-        logabsdetJ = jnp.linalg.slogdet(j).logabsdet
-        aux_lp_backward = aux_model.log_prob(new_aux_trace)
+#     def _move(model_trace: Trace, lp: FloatArray, key: PRNGKey):
+#         generate_key, accept_key = jax.random.split(key)
+#         aux_model = aux(model_trace)
+#         aux_trace, aux_lp_forward = aux_model.generate(generate_key)
+#         with tt:
+#             new_model_trace, new_aux_trace = tt.apply(model_trace, aux_trace)
+#             j = tt.jacobian(model_trace, aux_trace)
+#         logabsdetJ = jnp.linalg.slogdet(j).logabsdet
+#         aux_lp_backward = aux_model.log_prob(new_aux_trace)
         
-        log_alpha = m.log_prob(new_model_trace) - lp + aux_lp_backward - aux_lp_forward + logabsdetJ
-        accept = jax.lax.log(jax.random.uniform(accept_key)) < log_alpha
-        return jax.lax.select(accept, get_index(new_model_trace), get_index(model_trace))
+#         log_alpha = m.log_prob(new_model_trace) - lp + aux_lp_backward - aux_lp_forward + logabsdetJ
+#         accept = jax.lax.log(jax.random.uniform(accept_key)) < log_alpha
+#         return jax.lax.select(accept, get_index(new_model_trace), get_index(model_trace))
 
         
-    ret, decisions = trace_branching(_move, model_trace, lp, jax.random.key(0))
-    print(decisions.to_human_readable())
-    jitted_move = jax.jit(retrace_branching(_move, decisions))
-    print(jitted_move(model_trace, lp, jax.random.key(0)))
+#     ret, decisions = trace_branching(_move, model_trace, lp, jax.random.key(0))
+#     print(decisions.to_human_readable())
+#     jitted_move = jax.jit(retrace_branching(_move, decisions))
+#     print(jitted_move(model_trace, lp, jax.random.key(0)))
     
-rjmcmc_move(m, 3, ys)
+# rjmcmc_move(m, 3, ys)
