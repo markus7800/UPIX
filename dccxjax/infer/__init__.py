@@ -6,6 +6,7 @@ from .smc import *
 from .variational_inference import *
 from .gibbs_model import *
 from .variable_selector import *
+from .involutive import *
 del dcc
 del exact
 del importance_sampling
@@ -14,3 +15,4 @@ del smc
 del variational_inference
 del gibbs_model
 del variable_selector
+del involutive

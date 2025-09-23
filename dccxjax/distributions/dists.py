@@ -18,9 +18,11 @@ __all__ = [
     "Gamma",
     "InverseGamma",
     "Exponential",
+    "Beta",
     "Dirichlet",
     "SimplexArray",
     "Bernoulli",
+    "MaskedBernoulli",
     "Dirac",
     "Poisson",
     "Categorical",
@@ -28,6 +30,7 @@ __all__ = [
     "DiscreteUniform",
     "TwoSidedTruncatedDistribution",
     "TransformedDistribution",
+    "MixtureSameFamily",
 ]
 
 numpyro_dists.Distribution.set_default_validate_args(True)
@@ -86,6 +89,10 @@ class InverseGamma(Distribution[FloatArray,FloatArrayLike]):
 class Exponential(Distribution[FloatArray,FloatArrayLike]):
     def __init__(self, rate: FloatArrayLike = 1.):
         super().__init__(numpyro_dists.Exponential(rate)) # type: ignore
+        
+class Beta(Distribution[FloatArray,FloatArrayLike]):
+    def __init__(self, concentration1: FloatArrayLike, concentration0: FloatArrayLike):
+        super().__init__(numpyro_dists.Beta(concentration1, concentration0)) # type: ignore
 
 SimplexArray = jax.Array
 
@@ -96,6 +103,26 @@ class Dirichlet(Distribution[SimplexArray,SimplexArray]):
 class Bernoulli(Distribution[IntArray,IntArrayLike]):
     def __init__(self, probs: FloatArrayLike):
         super().__init__(numpyro_dists.BernoulliProbs(probs)) # type: ignore
+        
+class MaskedBernoulli(Distribution[IntArray,IntArrayLike]):
+    def __init__(self, probs: FloatArrayLike, mask: BoolArrayLike):
+        self.numpyro_base = numpyro_dists.BernoulliProbs(probs)
+        self.mask = mask
+    def sample(self, key: PRNGKey, sample_shape=()) -> IntArray:
+        assert sample_shape == ()
+        return self.numpyro_base.sample(key, sample_shape=sample_shape) & self.mask # type: ignore
+    def rsample(self, key: PRNGKey, sample_shape=()) -> IntArray:
+        raise NotImplementedError
+    def log_prob(self, value: IntArray | IntArrayLike) -> FloatArray:
+        return (self.numpyro_base.log_prob(value) * self.mask).sum() # type: ignore
+    def biject_so_support(self) -> Transform[FloatArray, IntArray]:
+        raise NotImplementedError
+    @property
+    def mean(self) -> IntArray:
+        raise NotImplementedError
+    @property
+    def variance(self) -> IntArray:
+        raise NotImplementedError
         
 class Dirac(Distribution[IntArray, IntArrayLike]):
     def __init__(self, v: IntArrayLike) -> None:
@@ -124,3 +151,7 @@ class TwoSidedTruncatedDistribution(Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE]
 class TransformedDistribution(Distribution[TRANSFORM_CODOMAIN,TRANSFORM_CODOMAIN]):
     def __init__(self, base: Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE], transforms: Transform[DIST_SUPPORT, TRANSFORM_CODOMAIN]) -> None:
         super().__init__(numpyro_dists.TransformedDistribution(base.numpyro_base, transforms.numpyro_transform)) # type: ignore
+        
+class MixtureSameFamily(Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE]):
+    def __init__(self, mixing_distribution: Categorical, component_distribution: Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE]) -> None:
+         super().__init__(numpyro_dists.MixtureSameFamily(mixing_distribution.numpyro_base, component_distribution.numpyro_base)) # type: ignore
