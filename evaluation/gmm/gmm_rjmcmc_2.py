@@ -25,9 +25,9 @@ class DCCConfig(RJMCMCDCC[T]):
     
     def get_reversible_jumps(self, slp: SLP) -> List[ReversibleJump]:
         K = find_K(slp)
-        jumps = [ReversibleJump(get_split_move(K), get_split_aux(K, ys), get_merge_move(K+1), get_merge_aux(K+1))]
+        jumps = [ReversibleJump(K, K+1, get_split_move(K), get_split_aux(K, ys), get_merge_move(K+1), get_merge_aux(K+1))]
         if K > 0:
-            jumps.append(ReversibleJump(get_merge_move(K), get_merge_aux(K), get_split_move(K-1), get_split_aux(K-1, ys)))
+            jumps.append(ReversibleJump(K, K-1, get_merge_move(K), get_merge_aux(K), get_split_move(K-1), get_split_aux(K-1, ys)))
         return jumps
     
     
@@ -45,8 +45,8 @@ class DCCConfig(RJMCMCDCC[T]):
         estimate = estimates[0] # we only have one per slp
         assert isinstance(estimate, RJMCMCTransitionProbEstimate)
         K = find_K(last_slp)
-        split_transition_prob = estimate.transition_probs[K+1]
-        if split_transition_prob > 0.01:
+        split_transition_prob = estimate.transition_log_probs[K+1]
+        if split_transition_prob > jnp.log(0.01):
             trace, _ = self.model.generate(rng_key, {"K": jnp.array(K+1,int)})
             slp = slp_from_decision_representative(self.model, trace)
             active_slps.append(slp)

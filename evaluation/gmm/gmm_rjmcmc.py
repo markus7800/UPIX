@@ -14,25 +14,6 @@ from gmm import *
 from gibbs_proposals import *
 from reversible_jumps import *
 
-@jax.tree_util.register_dataclass
-@dataclass
-class RJMCMCTransitionProbEstimate(LogWeightEstimate):
-    transition_log_probs: Dict[Any, FloatArray]
-    n_samples: int
-    def combine_estimates(self, other: LogWeightEstimate) -> "RJMCMCTransitionProbEstimate":
-        assert isinstance(other, RJMCMCTransitionProbEstimate)
-
-        n_combined_samples = self.n_samples + other.n_samples
-        a = self.n_samples / n_combined_samples
-        new_transition_log_probs: Dict[Any, FloatArray] = dict()
-
-        for key in self.transition_log_probs.keys() | other.transition_log_probs.keys():
-            est1 = self.transition_log_probs.get(key, -jnp.inf)
-            est2 = other.transition_log_probs.get(key, -jnp.inf)
-            new_transition_log_probs[key] = jnp.logaddexp(est1 + jax.lax.log(a), est2 + jax.lax.log(1 - a))
-
-        return RJMCMCTransitionProbEstimate(new_transition_log_probs, n_combined_samples)
-
 class DCCConfig(MCMCDCC[T]):
     def __init__(self, model: Model, return_map: Callable[[Trace], T] = lambda trace: trace, *ignore, verbose=0, **config_kwargs) -> None:
         super().__init__(model, return_map, *ignore, verbose=verbose, **config_kwargs)

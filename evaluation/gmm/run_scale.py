@@ -16,6 +16,7 @@ import logging
 setup_logging(logging.WARNING)
 
 from gmm_rjmcmc_2 import *
+from gmm_rjmcmc_2 import get_distance_to_gt
 
 from dccxjax.infer.mcmc.metropolis import MHInfo
 
