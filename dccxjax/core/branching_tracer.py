@@ -68,7 +68,7 @@ class BranchingTracer(jax_core.Tracer):
         return jax_core.full_lower(self.val)
     
 
-def branching(a: jax.typing.ArrayLike):
+def branching(a: jax.typing.ArrayLike) -> Any:
     if isinstance(a, BranchingTracer):
         return a._branching()
     else:

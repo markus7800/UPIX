@@ -41,14 +41,15 @@ def get_split_params(w, mu, var, u1, u2, u3):
     return SplitParams(w1, mu1, var1, w2, mu2, var2)
 
 @model
-def aux(model_trace: Trace, K: int, ys: jax.Array):
-    split = sample("split", dist.Bernoulli(0.5))
+def aux(model_trace: Trace, ys: jax.Array):
+    K = model_trace["K"]
+    split = sample("split", dist.Bernoulli(jax.lax.select(K == 0, 1., 0.5)))
     if split == 1:
         split_aux(model_trace, K, ys)
     else:
         merge_aux(model_trace, K, ys)
 
-def split_aux(model_trace: Trace, K: int, ys: jax.Array):
+def split_aux(model_trace: Trace, K: IntArrayLike, ys: jax.Array):
     j_star = sample("j_star", dist.DiscreteUniform(0,K))
     r1 = sample("r1", dist.DiscreteUniform(0,K+1))
     r2 = sample("r2", dist.DiscreteUniform(0,K))
@@ -72,7 +73,9 @@ def split_aux(model_trace: Trace, K: int, ys: jax.Array):
     to_first = sample("to_first", dist.MaskedBernoulli(jnp.exp(log_p - jnp.logaddexp(log_p, log_q)), (zs == j_star)))
     
 
-def split_involution(K: int, old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
+def split_involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
+    K = int(branching(old_model_trace["K"]))
+    
     r1 = read_discrete(old_aux_trace, "r1")
     r2 = read_discrete(old_aux_trace, "r2")
     j_star = read_discrete(old_aux_trace, "j_star")
@@ -96,7 +99,7 @@ def split_involution(K: int, old_model_trace: Trace, old_aux_trace: Trace, new_m
     w_new = jnp.zeros((K+1,))
     mus_new = jnp.zeros((K+1,))
     vars_new = jnp.zeros((K+1,))
-    
+
     ixs = split_idx(jnp.arange(0,K+1-1),j_star,j1,j2)
     w_new = w_new.at[ixs].set(read_continuous(old_model_trace, "w"))
     mus_new = mus_new.at[ixs].set(read_continuous(old_model_trace, "mus"))
@@ -116,6 +119,7 @@ def split_involution(K: int, old_model_trace: Trace, old_aux_trace: Trace, new_m
     zs_new = jnp.where((zs == j_star) & ~to_first, j2, zs_new)
 
     write_discrete(new_model_trace, "K", K)
+    write_continuous(new_model_trace, "w", w_new)
     write_continuous(new_model_trace, "mus", mus_new)
     write_continuous(new_model_trace, "vars", vars_new)
     write_discrete(new_model_trace, "zs", zs_new)
@@ -123,27 +127,28 @@ def split_involution(K: int, old_model_trace: Trace, old_aux_trace: Trace, new_m
     write_discrete(new_aux_trace, "j_star", j_star)
     write_discrete(new_aux_trace, "r1", r1)
     write_discrete(new_aux_trace, "r2", r2)
-    write_discrete(new_aux_trace, "split", 0)
 
 
-def merge_aux(model_trace: Trace, K: int, ys: jax.Array):
+def merge_aux(model_trace: Trace, K: IntArrayLike, ys: jax.Array):
     sample("j_star", dist.DiscreteUniform(0,K-1))
     sample("r1", dist.DiscreteUniform(0,K))
     sample("r2",dist.DiscreteUniform(0,K-1))
     
-def merge_involution(K: int, old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
+def merge_involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
+    K = int(branching(old_model_trace["K"]))
+    
     r1 = read_discrete(old_aux_trace, "r1")
     r2 = read_discrete(old_aux_trace, "r2")
     j_star = read_discrete(old_aux_trace, "j_star")
     
     j1, j2 = r1, r2 + (r2 >= r1)
 
-    w = read_continuous(old_model_trace, "w")[j_star]
-    mus = read_continuous(old_model_trace, "mus")[j_star]
-    vars = read_continuous(old_model_trace, "vars")[j_star]
+    ws = read_continuous(old_model_trace, "w")
+    mus = read_continuous(old_model_trace, "mus")
+    vars = read_continuous(old_model_trace, "vars")
     zs = read_discrete(old_model_trace, "zs")
     
-    w1, w2 = w[j1], w[j2]
+    w1, w2 = ws[j1], ws[j2]
     mu1, mu2 = mus[j1], mus[j2]
     var1, var2 = vars[j1], vars[j2]
     
@@ -163,7 +168,7 @@ def merge_involution(K: int, old_model_trace: Trace, old_aux_trace: Trace, new_m
     vars_new = jnp.zeros((K+1,))
     
     ixs = merge_idx(jnp.arange(0,K+1+1), j_star, j1, j2)
-    w_new = w_new.at[ixs].set(w)
+    w_new = w_new.at[ixs].set(ws)
     mus_new = mus_new.at[ixs].set(mus)
     vars_new = vars_new.at[ixs].set(vars)
 
@@ -177,6 +182,7 @@ def merge_involution(K: int, old_model_trace: Trace, old_aux_trace: Trace, new_m
     to_first = (zs == j1).astype(int)
 
     write_discrete(new_model_trace, "K", K)
+    write_continuous(new_model_trace, "w", w_new)
     write_continuous(new_model_trace, "mus", mus_new)
     write_continuous(new_model_trace, "vars", vars_new)
     write_discrete(new_model_trace, "zs", zs_new)
@@ -188,15 +194,17 @@ def merge_involution(K: int, old_model_trace: Trace, old_aux_trace: Trace, new_m
     write_continuous(new_aux_trace, "u2", u2)
     write_continuous(new_aux_trace, "u3", u3)
     write_discrete(new_aux_trace, "to_first", to_first)
-    write_discrete(new_aux_trace, "split", 1)
     
     
-def involution(K: int, old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
+def involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
     split = read_discrete(old_aux_trace, "split")
     if split == 1:
-        split_involution(K, old_model_trace, old_aux_trace, new_model_trace, new_aux_trace)
+        split_involution(old_model_trace, old_aux_trace, new_model_trace, new_aux_trace)
+        write_discrete(new_aux_trace, "split", 0)
     else:
-        merge_involution(K, old_model_trace, old_aux_trace, new_model_trace, new_aux_trace)
+        merge_involution(old_model_trace, old_aux_trace, new_model_trace, new_aux_trace)
+        write_discrete(new_aux_trace, "split", 1)
+
         
         
 from gmm import *
@@ -205,24 +213,62 @@ m = gmm(ys)
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_K)
 
-K_test = 3
+# K_test = 3
 
-model_trace, _ = m.generate(jax.random.key(0), {"K": jnp.array(K_test,int)})
-slp = slp_from_decision_representative(m, model_trace)
+# model_trace, _ = m.generate(jax.random.key(0), {"K": jnp.array(K_test,int)})
+# slp = slp_from_decision_representative(m, model_trace)
 
-aux_model = aux(model_trace, K_test, ys)
-aux_trace, aux_lp = aux_model.generate(jax.random.key(0))
+# aux_model = aux(model_trace, ys)
+# aux_trace, aux_lp = aux_model.generate(jax.random.key(0))
 
-print("model_trace:", model_trace)
-print("aux_trace:", aux_trace, aux_lp)
+# print("model_trace:", model_trace)
+# print("aux_trace:", aux_trace, aux_lp)
+# tt = TraceTansformation(involution)
 
-def f(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
-    return involution(K_test, old_model_trace, old_aux_trace, new_model_trace, new_aux_trace)
-tt = TraceTansformation(f)
+# with tt:
+#     new_model_trace, new_aux_trace = tt.apply(model_trace, aux_trace)
+#     j = tt.jacobian(model_trace, aux_trace)
+#     print(j.shape, jnp.linalg.slogdet(j).logabsdet)
+# print("new_model_trace:", new_model_trace)
+# print("new_aux_trace:", new_aux_trace)
 
-with tt:
-    new_model_trace, new_aux_trace = tt.apply(model_trace, aux_trace)
-    j = tt.jacobian(model_trace, aux_trace)
-    print(j.shape, jnp.linalg.slogdet(j))
-print("new_model_trace:", new_model_trace)
-print("new_aux_trace:", new_aux_trace)
+# # round trip
+
+# with tt:
+#     round_trip_model_trace, round_trip_aux_trace = tt.apply(new_model_trace, new_aux_trace)
+#     j = tt.jacobian(new_model_trace, new_aux_trace)
+#     print(j.shape, jnp.linalg.slogdet(j).logabsdet)
+
+# print("round_trip_model_trace:", round_trip_model_trace)
+# print("round_trip_aux_trace:", round_trip_aux_trace)
+
+
+from dccxjax.core.branching_tracer import trace_branching, retrace_branching
+
+def get_index(trace: Trace):
+    return trace["K"]
+def rjmcmc_move(m: Model, K: int, ys: jax.Array):
+    model_trace, lp = m.generate(jax.random.key(0), {"K": jnp.array(K,int)})
+    tt = TraceTansformation(involution)
+    
+    def _move(model_trace: Trace, lp: FloatArray, key: PRNGKey):
+        generate_key, accept_key = jax.random.split(key)
+        aux_model = aux(model_trace, ys)
+        aux_trace, aux_lp_forward = aux_model.generate(generate_key)
+        with tt:
+            new_model_trace, new_aux_trace = tt.apply(model_trace, aux_trace)
+            j = tt.jacobian(model_trace, aux_trace)
+        logabsdetJ = jnp.linalg.slogdet(j).logabsdet
+        aux_lp_backward = aux_model.log_prob(new_aux_trace)
+        
+        log_alpha = m.log_prob(new_model_trace) - lp + aux_lp_backward - aux_lp_forward + logabsdetJ
+        accept = jax.lax.log(jax.random.uniform(accept_key)) < log_alpha
+        return jax.lax.select(accept, get_index(new_model_trace), get_index(model_trace))
+
+        
+    ret, decisions = trace_branching(_move, model_trace, lp, jax.random.key(0))
+    print(decisions.to_human_readable())
+    jitted_move = jax.jit(retrace_branching(_move, decisions))
+    print(jitted_move(model_trace, lp, jax.random.key(0)))
+    
+rjmcmc_move(m, 3, ys)

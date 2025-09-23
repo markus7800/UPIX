@@ -41,6 +41,7 @@ class TraceTansformation:
         diff_aux_trace: Trace = {addr: aux_trace[addr] for addr in aux_trace.keys() if addr in self.continuous_reads}
         no_diff_aux_trace: Trace = {addr: aux_trace[addr] for addr in aux_trace.keys() if addr not in self.continuous_reads}
         diff_X, unravel_fn = ravel_pytree((diff_model_trace, diff_aux_trace))
+        # print(self.continuous_reads, self.continuous_writes)
         def flat_diff_transform(X):
             _mtr, _atr = unravel_fn(X)
             model_tr = _mtr | no_diff_model_trace
@@ -97,4 +98,3 @@ def copy_at_address(old_trace: Trace, new_trace: Trace, address: str):
     ctx = TRACE_TRANSFORM_CONTEXT.get()
     assert ctx is not None
     new_trace[address] = old_trace[address]
-    

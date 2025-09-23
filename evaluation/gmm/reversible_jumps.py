@@ -44,8 +44,8 @@ def split_randomness(rng_key: PRNGKey, X: Trace, K: int, ys: jax.Array):
     u1 = numpyro_dists.Beta(2.,2.).sample(u1_key)
 
     t = numpyro_dists.transforms.AffineTransform(jnp.array([0.,0.],float),jnp.array([1.,-1.],float))
-    td = numpyro_dists.TransformedDistribution(numpyro_dists.Beta(jnp.array([2.,2.],float),jnp.array([2.,2.],float)), t)
-    u2_dist = numpyro_dists.MixtureSameFamily(numpyro_dists.CategoricalProbs(jnp.array([0.5,0.5],float)), td)
+    td = numpyro_dists.TransformedDistribution(numpyro_dists.Beta(jnp.array([2.,2.],float),jnp.array([2.,2.],float)), t) # type: ignore
+    u2_dist = numpyro_dists.MixtureSameFamily(numpyro_dists.CategoricalProbs(jnp.array([0.5,0.5],float)), td) # type: ignore
 
     # u2_dist = numpyro_dists.Beta(2.,2.) # original version of Matheos
     u2 = u2_dist.sample(u2_key)
@@ -78,8 +78,8 @@ def split_randomness_logQ(aux: SplitAux, sp: SplitParams, X: Trace, K: int, ys: 
     logQ += numpyro_dists.Beta(2.,2.).log_prob(aux.u1)
 
     t = numpyro_dists.transforms.AffineTransform(jnp.array([0.,0.],float),jnp.array([1.,-1.],float))
-    td = numpyro_dists.TransformedDistribution(numpyro_dists.Beta(jnp.array([2.,2.],float),jnp.array([2.,2.],float)), t)
-    u2_dist = numpyro_dists.MixtureSameFamily(numpyro_dists.CategoricalProbs(jnp.array([0.5,0.5],float)), td)
+    td = numpyro_dists.TransformedDistribution(numpyro_dists.Beta(jnp.array([2.,2.],float),jnp.array([2.,2.],float)), t) # type: ignore
+    u2_dist = numpyro_dists.MixtureSameFamily(numpyro_dists.CategoricalProbs(jnp.array([0.5,0.5],float)), td) # type: ignore
 
     # u2_dist = numpyro_dists.Beta(2.,2.)  # original version of Matheos, u2 can be negative from reverse split params of merge!
     logQ += u2_dist.log_prob(aux.u2)
