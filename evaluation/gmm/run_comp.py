@@ -25,7 +25,6 @@ if __name__ == "__main__":
         parallelisation=get_parallelisation_config(args)
     )
 
-    # takes ~185s for 10 * 25_000 * 11 samples
     result, timings = timed(dcc_obj.run)(jax.random.key(0))
     result.pprint(sortkey="slp")
     

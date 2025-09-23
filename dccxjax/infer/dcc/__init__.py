@@ -4,6 +4,7 @@ from .cpu_multiprocess import *
 from .exact_dcc import *
 from .mc_dcc import *
 from .mcmc_dcc import *
+from .rjmcmc_dcc import *
 from .smc_dcc import *
 from .vi_dcc import *
 
@@ -13,5 +14,6 @@ del cpu_multiprocess
 del exact_dcc
 del mc_dcc
 del mcmc_dcc
+del rjmcmc_dcc
 del smc_dcc
 del vi_dcc
