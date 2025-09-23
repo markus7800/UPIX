@@ -15,7 +15,7 @@ from setup_parallelisation import get_parallelisation_config
 import logging
 setup_logging(logging.WARNING)
 
-from gmm_rjmcmc import *
+from gmm_rjmcmc_2 import *
 
 from dccxjax.infer.mcmc.metropolis import MHInfo
 
@@ -75,10 +75,15 @@ if __name__ == "__main__":
         [jnp.vstack([info.accepted/args.n_samples_per_chain for info in r[0].last_state.infos if isinstance(info, MHInfo)])
          for r in dcc_obj.inference_results.values() if isinstance(r[0], MCMCInferenceResult) and r[0].last_state.infos is not None]))
 
+
+    W1_distance, infty_distance = get_distance_to_gt(result)
+
     result_metrics = {
         "result_str": result.sprint(sortkey="slp"),
         "avg_acceptance_rate": avg_acceptance_rate.item(),
-        "pmap_check": str(check_pmap())
+        "pmap_check": str(check_pmap()),
+        "W1": W1_distance.item(),
+        "L_inf": infty_distance.item()
     }
         
     json_result = {

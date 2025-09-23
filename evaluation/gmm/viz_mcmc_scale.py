@@ -49,18 +49,9 @@ with open("viz_gmm_result.txt", "w") as f:
             )
             result = dcc_obj.run(jax.random.key(seed))
             result.pprint(sortkey="slp")
-            lps = jnp.array([log_weight for _, log_weight in result.get_log_weights_sorted("slp")])
-            lps = lps - jax.scipy.special.logsumexp(lps)
-            ps = jax.lax.exp(lps)
-            ps = ps / ps.sum()
-            ps = jax.lax.concatenate((ps, jnp.zeros((len(gt_ps)-len(ps),))), 0)
-            cdf_est = jnp.cumsum(ps)
-            for i in range(len(ps)):
-                print(f"{i:2d}: {ps[i]:.8f} - {gt_ps[i]:.8f} = {ps[i] - gt_ps[i]:.8f}")
-
-            W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf))
-            infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
             
+            W1_distance, infty_distance = get_distance_to_gt(result)
+
             print(f"W1_distance={W1_distance.item():.8f} infty_distance={infty_distance.item():.8f}")
             f.write(f"n_chains={n_chains} seed={seed} W1_distance={W1_distance.item()} infty_distance={infty_distance.item()}\n")
             f.flush()
