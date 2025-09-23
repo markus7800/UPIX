@@ -4,8 +4,8 @@ from dccxjax.core import *
 from dccxjax.infer.involutive import *
 import dccxjax.distributions as dist
 import numpyro.distributions as numpyro_dists
-from typing import NamedTuple
-
+from typing import NamedTuple, Callable
+from functools import partial
 
 class SplitParams(NamedTuple):
     w1: FloatArray
@@ -40,16 +40,7 @@ def get_split_params(w, mu, var, u1, u2, u3):
     # j1 always gets the smaller of mu1, mu2
     return SplitParams(w1, mu1, var1, w2, mu2, var2)
 
-@model
-def aux(model_trace: Trace):
-    K = int(branching(model_trace["K"]))
-    split = sample("split", dist.Bernoulli(jax.lax.select(K == 0, 1., 0.5)))
-    if split == 1:
-        split_aux(model_trace, K, ys)
-    else:
-        merge_aux(model_trace, K, ys)
-
-def split_aux(model_trace: Trace, K: IntArrayLike, ys: jax.Array):
+def split_aux(model_trace: Trace, ys: jax.Array, K: IntArrayLike):
     j_star = sample("j_star", dist.DiscreteUniform(0,K))
     r1 = sample("r1", dist.DiscreteUniform(0,K+1))
     r2 = sample("r2", dist.DiscreteUniform(0,K))
@@ -72,10 +63,10 @@ def split_aux(model_trace: Trace, K: IntArrayLike, ys: jax.Array):
     
     to_first = sample("to_first", dist.MaskedBernoulli(jnp.exp(log_p - jnp.logaddexp(log_p, log_q)), (zs == j_star)))
     
+def get_split_aux(K: int, ys: jax.Array) -> Callable[[Trace],Model]:
+    return model(partial(split_aux, K=K, ys=ys))
 
-def split_involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
-    K = int(branching(old_model_trace["K"]))
-    
+def split_involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace, K: int):
     r1 = read_discrete(old_aux_trace, "r1")
     r2 = read_discrete(old_aux_trace, "r2")
     j_star = read_discrete(old_aux_trace, "j_star")
@@ -128,15 +119,18 @@ def split_involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_tra
     write_discrete(new_aux_trace, "r1", r1)
     write_discrete(new_aux_trace, "r2", r2)
 
-
-def merge_aux(model_trace: Trace, K: IntArrayLike, ys: jax.Array):
+def get_split_move(K: int) -> Callable[[Trace,Trace,Trace,Trace],None]:
+    return partial(split_involution, K=K)
+    
+def merge_aux(model_trace: Trace, K: IntArrayLike):
     sample("j_star", dist.DiscreteUniform(0,K-1))
     sample("r1", dist.DiscreteUniform(0,K))
     sample("r2",dist.DiscreteUniform(0,K-1))
     
-def merge_involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
-    K = int(branching(old_model_trace["K"]))
-    
+def get_merge_aux(K: int) -> Callable[[Trace],Model]:
+    return model(partial(merge_aux, K=K))
+
+def merge_involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace, K: int):    
     r1 = read_discrete(old_aux_trace, "r1")
     r2 = read_discrete(old_aux_trace, "r2")
     j_star = read_discrete(old_aux_trace, "j_star")
@@ -195,30 +189,42 @@ def merge_involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_tra
     write_continuous(new_aux_trace, "u3", u3)
     write_discrete(new_aux_trace, "to_first", to_first)
     
+def get_merge_move(K: int) -> Callable[[Trace,Trace,Trace,Trace],None]:
+    return partial(merge_involution, K=K)
     
-def involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
-    split = read_discrete(old_aux_trace, "split")
-    if split == 1:
-        split_involution(old_model_trace, old_aux_trace, new_model_trace, new_aux_trace)
-        write_discrete(new_aux_trace, "split", 0)
-    else:
-        merge_involution(old_model_trace, old_aux_trace, new_model_trace, new_aux_trace)
-        write_discrete(new_aux_trace, "split", 1)
+# def involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
+#     split = read_discrete(old_aux_trace, "split")
+#     K = int(branching(old_model_trace["K"]))
+#     if split == 1:
+#         split_involution(old_model_trace, old_aux_trace, new_model_trace, new_aux_trace, K)
+#         write_discrete(new_aux_trace, "split", 0)
+#     else:
+#         merge_involution(old_model_trace, old_aux_trace, new_model_trace, new_aux_trace, K)
+#         write_discrete(new_aux_trace, "split", 1)
 
+   
+# @model
+# def aux(model_trace: Trace):
+#     K = int(branching(model_trace["K"]))
+#     split = sample("split", dist.Bernoulli(jax.lax.select(K == 0, 1., 0.5)))
+#     if split == 1:
+#         split_aux(model_trace, ys, K)
+#     else:
+#         merge_aux(model_trace, K)
+     
         
-        
-from gmm import *
+# from gmm import *
 
-m = gmm(ys)
-m.set_slp_formatter(formatter)
-m.set_slp_sort_key(find_K)
+# m = gmm(ys)
+# m.set_slp_formatter(formatter)
+# m.set_slp_sort_key(find_K)
 
 # K_test = 3
 
 # model_trace, _ = m.generate(jax.random.key(0), {"K": jnp.array(K_test,int)})
 # slp = slp_from_decision_representative(m, model_trace)
 
-# aux_model = aux(model_trace, ys)
+# aux_model = aux(model_trace)
 # aux_trace, aux_lp = aux_model.generate(jax.random.key(0))
 
 # print("model_trace:", model_trace)
@@ -241,34 +247,3 @@ m.set_slp_sort_key(find_K)
 
 # print("round_trip_model_trace:", round_trip_model_trace)
 # print("round_trip_aux_trace:", round_trip_aux_trace)
-
-
-# from dccxjax.core.branching_tracer import trace_branching, retrace_branching
-
-# def get_index(trace: Trace):
-#     return trace["K"]
-# def rjmcmc_move(m: Model, K: int, ys: jax.Array):
-#     model_trace, lp = m.generate(jax.random.key(0), {"K": jnp.array(K,int)})
-#     tt = TraceTansformation(involution)
-    
-#     def _move(model_trace: Trace, lp: FloatArray, key: PRNGKey):
-#         generate_key, accept_key = jax.random.split(key)
-#         aux_model = aux(model_trace)
-#         aux_trace, aux_lp_forward = aux_model.generate(generate_key)
-#         with tt:
-#             new_model_trace, new_aux_trace = tt.apply(model_trace, aux_trace)
-#             j = tt.jacobian(model_trace, aux_trace)
-#         logabsdetJ = jnp.linalg.slogdet(j).logabsdet
-#         aux_lp_backward = aux_model.log_prob(new_aux_trace)
-        
-#         log_alpha = m.log_prob(new_model_trace) - lp + aux_lp_backward - aux_lp_forward + logabsdetJ
-#         accept = jax.lax.log(jax.random.uniform(accept_key)) < log_alpha
-#         return jax.lax.select(accept, get_index(new_model_trace), get_index(model_trace))
-
-        
-#     ret, decisions = trace_branching(_move, model_trace, lp, jax.random.key(0))
-#     print(decisions.to_human_readable())
-#     jitted_move = jax.jit(retrace_branching(_move, decisions))
-#     print(jitted_move(model_trace, lp, jax.random.key(0)))
-    
-# rjmcmc_move(m, 3, ys)
