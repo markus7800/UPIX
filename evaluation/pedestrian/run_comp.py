@@ -125,12 +125,6 @@ if __name__ == "__main__":
             plot_histogram_by_slp(result, "step_1")
             plot_histogram_by_slp(result, "step_2")
         plt.show()
-
-        plot_histogram(result, "start")
-        fig = plt.gcf()
-        ax = fig.axes[0]
-        ax.plot(gt_xs, gt_pdf)
-        plt.show()
         
         
         start_weighted_samples, _ = result.get_samples_for_address("start", sample_ixs=slice(1000,None)) # burn-in
@@ -166,9 +160,10 @@ if __name__ == "__main__":
     title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
     print(title)
 
-    plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
-    plt.title(title)
-    plt.show()
+    if args.show_plots:
+        plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
+        plt.title(title)
+        plt.show()
     
     
     workload = {
