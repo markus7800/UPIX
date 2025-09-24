@@ -11,7 +11,7 @@ from setup_parallelisation import get_parallelisation_config
 import logging
 setup_logging(logging.WARNING)
 
-from gmm_rjmcmc_2 import *
+from gmm_rjmcmc import *
 
 if __name__ == "__main__":
     m = gmm(ys)
