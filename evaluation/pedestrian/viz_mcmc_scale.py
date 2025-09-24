@@ -53,7 +53,7 @@ for n_chains in [2**n for n in range(20+1)]:
         start_samples, start_weights = start_weighted_samples.get()
 
         cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)
-        W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf))
+        W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf), gt_xs)
         infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
         
         W1_distances.append(W1_distance)

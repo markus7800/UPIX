@@ -19,7 +19,7 @@ if __name__ == "__main__":
     m.set_slp_sort_key(find_K)
 
     dcc_obj = DCCConfig(m, verbose=2,
-        mcmc_n_chains=16,
+        mcmc_n_chains=8,
         mcmc_n_samples_per_chain=25_000,
         mcmc_collect_for_all_traces=True,
         parallelisation=get_parallelisation_config(args)

@@ -7,6 +7,7 @@ using UUIDs
 using Dates
 using Hwloc
 using Printf
+using Trapz
 global_logger(TerminalLogger(right_justify=120))
 
 include("dirichlet.jl")
@@ -98,34 +99,45 @@ function main()
     Base.cumulative_compile_timing(true)
     t0_comp = Base.cumulative_compile_time_ns()
     run_inference(0, 100) # run short chain to compile on main thread
-    begin
-        n_chains = parse(Int, ARGS[1])
-        n_samples_per_chain = parse(Int, ARGS[2])
-        nthreads = Threads.nthreads()
-        println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, nthreads=$nthreads")
-        N = n_samples_per_chain
-        result = Vector{Vector{Int}}(undef, n_chains)
 
-        Threads.@threads for i in 1:n_chains
-            result[i] = run_inference(i, N)
-        end
-        max_k = maximum(length(r) for r in result)
-        cumulative_result = zeros(Int, max_k)
-        for r in result
-            for (k, k_sum) in enumerate(r)
-                cumulative_result[k] += k_sum
-            end
-        end
-        display(cumulative_result)
-        weights = cumulative_result ./ sum(cumulative_result)
-        display(weights)
+    n_chains = parse(Int, ARGS[1])
+    n_samples_per_chain = parse(Int, ARGS[2])
+    nthreads = Threads.nthreads()
+    println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, nthreads=$nthreads")
+    N = n_samples_per_chain
+    result = Vector{Vector{Int}}(undef, n_chains)
+
+    Threads.@threads for i in 1:n_chains
+        result[i] = run_inference(i, N)
     end
+    max_k = maximum(length(r) for r in result)
+    cumulative_result = zeros(Int, max_k)
+    for r in result
+        for (k, k_sum) in enumerate(r)
+            cumulative_result[k] += k_sum
+        end
+    end
+    display(cumulative_result)
+    weights = cumulative_result ./ sum(cumulative_result)
+    display(weights)
+
     Base.cumulative_compile_timing(false);
     t1_comp = Base.cumulative_compile_time_ns()
     t1 = time_ns()
 
     comp_time = (t1_comp[1] - t0_comp[1]) / 10^9 # second is re-compile time
     wall_time = (t1 - t0) / 10^9
+
+
+    gt_cluster_visits = [687, 574, 119783, 33258676, 46000324, 16768787, 3302321, 485045, 57502, 5806, 457, 38]
+    gt_ps = gt_cluster_visits / sum(gt_cluster_visits)
+    gt_cdf = cumsum(gt_ps)
+    weights = vcat(weights, zeros(length(gt_ps) - length(weights)))
+    cdf_est = cumsum(weights)
+
+    W1_distance = trapz(1:length(cdf_est), abs.(cdf_est .- gt_cdf))
+    infty_distance = maximum(abs.(cdf_est .- gt_cdf))
+    println("W1_distance=$W1_distance infty_distance=$infty_distance comp_time=$comp_time wall_time=$wall_time")
 
     id = string(uuid4())
     date = string(Dates.format(now(), "yyyy-mm-dd_HH-MM"))

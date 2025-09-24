@@ -48,3 +48,8 @@ uv run -p python3.13 --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess
 uv run --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -host_device_count 10 --show_plots
 
 uv run  evaluation/urn/run_comp.py sequential vmap_local 20 --show_plots
+
+
+uv run evaluation/gmm/run_comp.py sequential pmap -host_device_count 8
+
+julia -t 8 --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl 8 25000

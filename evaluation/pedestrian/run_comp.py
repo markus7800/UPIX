@@ -161,7 +161,7 @@ if __name__ == "__main__":
         return jax.lax.map(_cdf_estimate, qs)
 
     cdf_est = cdf_estimate(start_samples, start_weights, gt_xs)
-    W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf)) # wasserstein distance
+    W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf), gt_xs) # wasserstein distance
     infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
     title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
     print(title)
