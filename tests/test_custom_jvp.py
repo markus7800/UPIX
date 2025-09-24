@@ -1,7 +1,7 @@
 
-from dccxjax.all import *
-from dccxjax.core.branching_tracer import trace_branching, retrace_branching, BranchingDecisions
-import dccxjax.distributions as dist
+from upix.all import *
+from upix.core.branching_tracer import trace_branching, retrace_branching, BranchingDecisions
+import upix.distributions as dist
 import jax
 import jax.numpy as jnp
 

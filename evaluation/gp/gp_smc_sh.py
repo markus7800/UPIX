@@ -1,8 +1,8 @@
 from typing import List
 import jax
-from dccxjax.core import *
-from dccxjax.infer import SMCDCC, T, MCMCRegime, MCMCStep, MCMCSteps, RW, HMC, PredicateSelector, SuffixSelector, InferenceResult, LogWeightEstimate, LogWeightEstimateFromSMC
-from dccxjax.infer import DataAnnealingSchedule, data_annealing_schedule_from_range, TemperetureSchedule, tempering_schedule_from_sigmoid
+from upix.core import *
+from upix.infer import SMCDCC, T, MCMCRegime, MCMCStep, MCMCSteps, RW, HMC, PredicateSelector, SuffixSelector, InferenceResult, LogWeightEstimate, LogWeightEstimateFromSMC
+from upix.infer import DataAnnealingSchedule, data_annealing_schedule_from_range, TemperetureSchedule, tempering_schedule_from_sigmoid
 
 from gp import *
 

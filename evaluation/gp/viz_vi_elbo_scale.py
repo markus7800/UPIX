@@ -1,7 +1,7 @@
 from run_scale_vi import *
-from dccxjax.infer import ADVI
+from upix.infer import ADVI
 from vi_plots import plot_guide_posterior
-from dccxjax.parallelisation import VectorisationType
+from upix.parallelisation import VectorisationType
 import pickle
 
 if __name__ == "__main__":

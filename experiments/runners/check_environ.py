@@ -1,4 +1,4 @@
-from dccxjax.utils import get_environment_info
+from upix.utils import get_environment_info
 import argparse
 
 parser = argparse.ArgumentParser()

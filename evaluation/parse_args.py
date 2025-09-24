@@ -1,7 +1,7 @@
 
 import os
 import argparse
-from dccxjax.backend import set_host_device_count, set_platform
+from upix.backend import set_host_device_count, set_platform
 
 def get_arg_parser():
     parser = argparse.ArgumentParser()

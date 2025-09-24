@@ -1,6 +1,6 @@
 from gp_smc import *
 import matplotlib.pyplot as plt
-from dccxjax.infer.dcc.mc_dcc import MCDCCResult
+from upix.infer.dcc.mc_dcc import MCDCCResult
 
 
 def plot_smc_posterior(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], n, title):

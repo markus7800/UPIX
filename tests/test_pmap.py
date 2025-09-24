@@ -7,10 +7,10 @@ import jax
 # jax.config.update("jax_explain_cache_misses", True)
 
 import jax.numpy as jnp
-from dccxjax.all import *
-import dccxjax.distributions as dist
-from dccxjax.infer.mcmc.mcmc_core import get_mcmc_kernel, CarryStats, map_carry_stats, MCMCState
-from dccxjax.infer.gibbs_model import GibbsModel
+from upix.all import *
+import upix.distributions as dist
+from upix.infer.mcmc.mcmc_core import get_mcmc_kernel, CarryStats, map_carry_stats, MCMCState
+from upix.infer.gibbs_model import GibbsModel
 import time
 
 # from jax._src.mesh_utils import create_device_mesh

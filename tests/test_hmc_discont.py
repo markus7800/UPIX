@@ -1,11 +1,11 @@
 
-from dccxjax.all import *
-import dccxjax.distributions as dist
+from upix.all import *
+import upix.distributions as dist
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
 from time import time
-from dccxjax.core.samplecontext import GenerateCtx
-from dccxjax.core.branching_tracer import retrace_branching
+from upix.core.samplecontext import GenerateCtx
+from upix.core.branching_tracer import retrace_branching
 
 @model
 def normal():

@@ -327,10 +327,10 @@ def sigmoid(z):
 # print(f"Finished AIS in {t1-t0:.3f}s")
 
 
-from dccxjax.all import *
-from dccxjax.infer.ais import *
-from dccxjax.infer.mcmc.mcmc_core import get_mcmc_kernel, MCMCState
-import dccxjax.distributions as dist
+from upix.all import *
+from upix.infer.ais import *
+from upix.infer.mcmc.mcmc_core import get_mcmc_kernel, MCMCState
+import upix.distributions as dist
 
 import logging
 setup_logging(logging.WARN)
@@ -455,7 +455,7 @@ tempering_schedule = tempering_schedule.at[-1].set(1.)
 # plt.show()
 
 
-from dccxjax.infer.smc import *
+from upix.infer.smc import *
 
 n_particles = 1_000_000
 smc_obj = SMC(

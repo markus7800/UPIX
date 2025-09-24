@@ -1,6 +1,6 @@
 
-from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType
-from dccxjax.utils import get_cpu_count
+from upix.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType
+from upix.utils import get_cpu_count
 import jax
 import os
 import psutil

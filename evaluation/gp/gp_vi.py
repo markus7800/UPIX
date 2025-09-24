@@ -1,7 +1,7 @@
 from typing import List
 import jax
-from dccxjax.core import *
-from dccxjax.infer import VIDCC, Guide, PredicateSelector, MeanfieldNormalGuide, InferenceResult, LogWeightEstimateFromADVI, LogWeightEstimate
+from upix.core import *
+from upix.infer import VIDCC, Guide, PredicateSelector, MeanfieldNormalGuide, InferenceResult, LogWeightEstimateFromADVI, LogWeightEstimate
 
 from gp import *
 

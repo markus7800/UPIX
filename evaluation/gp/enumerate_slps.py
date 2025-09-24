@@ -1,7 +1,7 @@
 
 from typing import Tuple, List
 import itertools
-from dccxjax.core import *
+from upix.core import *
 import jax
 import jax.numpy as jnp
 from tqdm.auto import tqdm

@@ -24,7 +24,7 @@ print(A.__add__)
 print(A.__mul__)
 exit()
 
-from dccxjax.all import *
+from upix.all import *
 import jax._src.core as jax_core
 import jax.numpy as jnp
 import numpy as np

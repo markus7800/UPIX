@@ -1,4 +1,4 @@
-from dccxjax.backend import set_host_device_count
+from upix.backend import set_host_device_count
 set_host_device_count(2)
 
 import jax

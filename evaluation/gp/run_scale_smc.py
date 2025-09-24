@@ -11,10 +11,10 @@ if __name__ == "__main__":
 args = parser.parse_args()
 setup_devices_from_args(args)
 
-from dccxjax.core import *
-from dccxjax.viz import *
+from upix.core import *
+from upix.viz import *
 from setup_parallelisation import get_parallelisation_config
-from dccxjax.infer import InferenceResult, LogWeightEstimate
+from upix.infer import InferenceResult, LogWeightEstimate
 
 from gp_smc import *
 

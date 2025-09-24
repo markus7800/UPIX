@@ -1,5 +1,5 @@
 #%%
-from dccxjax.backend import set_host_device_count, set_platform
+from upix.backend import set_host_device_count, set_platform
 set_host_device_count(10)
 
 import jax
@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import numpyro.distributions as dist
 from typing import Callable
 from time import time
-from dccxjax.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType
-from dccxjax.utils import get_dtype_shape_str_of_tree
+from upix.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType
+from upix.utils import get_dtype_shape_str_of_tree
 
 def make_mh_kernel(k:Callable[[jax.Array],dist.Distribution], log_p:Callable[[jax.Array], jax.Array]):
     @jax.jit
@@ -75,10 +75,10 @@ ps = ps / true_Z
 
 N = 1_000_000
 
-from dccxjax.all import *
-import dccxjax.distributions as dist
-import dccxjax.distributions.constraints as constraints
-from dccxjax.infer.variational_inference.optimizers import Adagrad
+from upix.all import *
+import upix.distributions as dist
+import upix.distributions.constraints as constraints
+from upix.infer.variational_inference.optimizers import Adagrad
 
 @model
 def normal():

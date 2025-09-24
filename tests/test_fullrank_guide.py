@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 import numpyro.distributions as dist
 from typing import Callable
 from time import time
-from dccxjax.all import *
-import dccxjax.distributions as dist
-import dccxjax.distributions.constraints as constraints
-from dccxjax.infer.optimizers import Adagrad
+from upix.all import *
+import upix.distributions as dist
+import upix.distributions.constraints as constraints
+from upix.infer.optimizers import Adagrad
 
 
 @model

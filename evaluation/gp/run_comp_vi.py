@@ -6,12 +6,12 @@ parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
 
-from dccxjax.core import *
-from dccxjax.viz import *
+from upix.core import *
+from upix.viz import *
 from setup_parallelisation import get_parallelisation_config
 
 from gp_vi import *
-from dccxjax.infer.variational_inference.optimizers import Adagrad, SGD, Adam
+from upix.infer.variational_inference.optimizers import Adagrad, SGD, Adam
 from vi_plots import plot_results
 
 RecheiltConfig()

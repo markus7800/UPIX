@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from tqdm.auto import tqdm
 from typing import List, Callable
 from typing import Any, Dict
-from dccxjax.infer.dcc.mc_dcc import MCDCCResult
+from upix.infer.dcc.mc_dcc import MCDCCResult
 
 from gmm import *
 from gibbs_proposals import *

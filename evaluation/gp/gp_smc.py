@@ -1,9 +1,9 @@
 from typing import List, Generic
 import jax
-from dccxjax.core import *
-from dccxjax.infer import SMCDCC, T, MCMCRegime, MCMCStep, MCMCSteps, RW, HMC, PredicateSelector, SuffixSelector
-from dccxjax.infer import DataAnnealingSchedule, data_annealing_schedule_from_range, TemperetureSchedule, tempering_schedule_from_sigmoid
-from dccxjax.parallelisation import parallel_map
+from upix.core import *
+from upix.infer import SMCDCC, T, MCMCRegime, MCMCStep, MCMCSteps, RW, HMC, PredicateSelector, SuffixSelector
+from upix.infer import DataAnnealingSchedule, data_annealing_schedule_from_range, TemperetureSchedule, tempering_schedule_from_sigmoid
+from upix.parallelisation import parallel_map
 
 from gp import *
 

@@ -7,8 +7,8 @@ parser.add_argument("--show_scatter", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
 
-from dccxjax.core import *
-from dccxjax.viz import *
+from upix.core import *
+from upix.viz import *
 from setup_parallelisation import get_parallelisation_config
 
 import logging
@@ -22,9 +22,9 @@ m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_t_max)
 
 
-from dccxjax.infer import MCMCDCC, T, MCMCRegime, MCMCStep, InferenceResult, LogWeightEstimate
-from dccxjax.infer import LogWeightEstimateFromPrior, estimate_log_Z_for_SLP_from_prior
-from dccxjax.infer import AllVariables, DHMC
+from upix.infer import MCMCDCC, T, MCMCRegime, MCMCStep, InferenceResult, LogWeightEstimate
+from upix.infer import LogWeightEstimateFromPrior, estimate_log_Z_for_SLP_from_prior
+from upix.infer import AllVariables, DHMC
 
 class DCCConfig(MCMCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         plt.ylim(0,1.4)
         plt.legend()
         plt.tight_layout()
-        plt.savefig("evaluation/pedestrian/result_dccxjax.pdf")
+        plt.savefig("evaluation/pedestrian/result_upix.pdf")
         plt.show()
 
 

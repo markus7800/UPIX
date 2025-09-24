@@ -2,7 +2,7 @@
 import jax
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
-from dccxjax.all import *
+from upix.all import *
 from typing import TypedDict
 
 class CarryStats(TypedDict, total=False):

@@ -3,7 +3,7 @@
 import math
 import heapq
 from typing import List, Tuple
-from dccxjax.core import SLP
+from upix.core import SLP
 
 class SuccessiveHalving:
     def __init__(self, num_total_iterations: int, num_final_arms: int):

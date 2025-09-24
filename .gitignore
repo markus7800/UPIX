@@ -9,7 +9,7 @@ evaluation/gp/sdvi/experiments
 *.pdf
 *.bin
 tmp.txt
-dccxjax.egg-info
+upix.egg-info
 build
 *.out
 *.err

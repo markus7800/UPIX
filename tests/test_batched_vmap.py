@@ -4,7 +4,7 @@ os.environ["XLA_FLAGS"] = f'--xla_force_host_platform_device_count={N_CPU}'
 
 import jax
 import jax.numpy as jnp
-from dccxjax.jax_utils import *
+from upix.jax_utils import *
 
 X = jnp.arange(6*7*10).reshape((6,7,10))
 

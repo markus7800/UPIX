@@ -1,8 +1,8 @@
 
-from dccxjax.all import *
+from upix.all import *
 import jax
 import jax.numpy as jnp
-import dccxjax.distributions as dist
+import upix.distributions as dist
 from typing import Tuple
 
 class WProposal(TraceProposal):

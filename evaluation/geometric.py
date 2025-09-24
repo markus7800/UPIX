@@ -1,13 +1,13 @@
 #%%
-from dccxjax.all import *
+from upix.all import *
 import jax
 import jax.numpy as jnp
-import dccxjax.distributions as dist
+import upix.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List
 from time import time
-from dccxjax.infer.mcmc.mcmc_core import MCMCState, CarryStats
+from upix.infer.mcmc.mcmc_core import MCMCState, CarryStats
 
 import logging
 setup_logging(logging.WARNING)

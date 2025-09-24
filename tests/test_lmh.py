@@ -1,5 +1,5 @@
-from dccxjax.all import *
-import dccxjax.distributions as dist
+from upix.all import *
+import upix.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 

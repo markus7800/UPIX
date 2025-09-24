@@ -1,8 +1,8 @@
-from dccxjax.core import *
-import dccxjax.distributions as dist
+from upix.core import *
+import upix.distributions as dist
 import jax
 import jax.numpy as jnp
-from dccxjax.infer.exact import *
+from upix.infer.exact import *
 from typing import List
 
 def diamond_rec(s1, N: int):

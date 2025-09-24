@@ -1,5 +1,5 @@
 from gp_vi import *
-from dccxjax.infer.dcc.vi_dcc import VIDCCResult
+from upix.infer.dcc.vi_dcc import VIDCCResult
 
 
 def plot_guide_posterior(g: Guide, n, title):

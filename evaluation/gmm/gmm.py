@@ -1,6 +1,6 @@
-from dccxjax.core import *
-from dccxjax.core import Model
-import dccxjax.distributions as dist
+from upix.core import *
+from upix.core import Model
+import upix.distributions as dist
 import jax
 import jax.numpy as jnp
 

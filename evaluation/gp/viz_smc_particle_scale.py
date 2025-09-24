@@ -1,5 +1,5 @@
 from run_scale_smc import *
-from dccxjax.infer import SMC, ReweightingType, StratifiedResampling, ResampleType, ResampleTime
+from upix.infer import SMC, ReweightingType, StratifiedResampling, ResampleType, ResampleTime
 from smc_plots import plot_smc_posterior
 import pickle
 

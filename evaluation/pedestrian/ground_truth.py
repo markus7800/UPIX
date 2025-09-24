@@ -45,9 +45,9 @@ def pedestrian(rng_key: jax.Array):
     return {"start": start, "lp": likelihood}
 
 
-from dccxjax.parallelisation import *
-from dccxjax.progress_bar import ProgressbarManager
-from dccxjax.parallelisation import VectorisationType
+from upix.parallelisation import *
+from upix.progress_bar import ProgressbarManager
+from upix.parallelisation import VectorisationType
 
 @jax.jit
 def cdf(x, qs, weights: jax.Array):

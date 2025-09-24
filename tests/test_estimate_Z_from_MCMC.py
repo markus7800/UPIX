@@ -1,14 +1,14 @@
-from dccxjax.all import *
+from upix.all import *
 import jax
 import jax.numpy as jnp
-import dccxjax.distributions as dist
+import upix.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List
 from time import time
 
-from dccxjax.infer.mcmc.mcmc_core import InferenceCarry, InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
-from dccxjax.infer.dcc import DCC_Result
+from upix.infer.mcmc.mcmc_core import InferenceCarry, InferenceState, get_inference_regime_mcmc_step_for_slp, add_progress_bar
+from upix.infer.dcc import DCC_Result
 
 import logging
 setup_logging(logging.WARNING)

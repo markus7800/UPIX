@@ -1,6 +1,6 @@
 
-from dccxjax.all import *
-import dccxjax.distributions as dist
+from upix.all import *
+import upix.distributions as dist
 import jax.numpy as jnp
 
 import logging

@@ -1,13 +1,13 @@
-from dccxjax.all import *
-from dccxjax.core import SLP
-import dccxjax.distributions as dist
+from upix.all import *
+from upix.core import SLP
+import upix.distributions as dist
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import jax
 
 import logging
 
-from dccxjax.infer.mcmc import MCMCRegime
+from upix.infer.mcmc import MCMCRegime
 setup_logging(logging.WARNING)
 
 @model

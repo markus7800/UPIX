@@ -3,10 +3,10 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-package-dir = {"dccxjax" = "dccxjax"}
+package-dir = {"upix" = "upix"}
 
 [project]
-name = "dccxjax"
+name = "upix"
 version = "0.0.1"
 requires-python = ">=3.11"
 dependencies = [

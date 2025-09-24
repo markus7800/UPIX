@@ -1,6 +1,6 @@
 
-from dccxjax.core import *
-import dccxjax.distributions as dist
+from upix.core import *
+import upix.distributions as dist
 from typing import List, Dict, Optional
 import jax
 import jax.numpy as jnp
@@ -30,7 +30,7 @@ def _get_n(slp: SLP) -> int:
     return int(slp.decision_representative["N"].item())
 
 
-from dccxjax.infer import ExactDCC, VariableSelector, SingleVariable, PrefixSelector, Factor, compute_factors_optimised
+from upix.infer import ExactDCC, VariableSelector, SingleVariable, PrefixSelector, Factor, compute_factors_optimised
     
 class Config(ExactDCC):
     

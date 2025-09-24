@@ -5,7 +5,7 @@ parser = get_arg_parser()
 args = parser.parse_args()
 setup_devices_from_args(args)
 
-from dccxjax.core import *
+from upix.core import *
 from setup_parallelisation import get_parallelisation_config
 
 import logging

@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 from time import time
 from evaluation.gp.kernels import *
-import dccxjax.distributions as dist
+import upix.distributions as dist
 
 xs = jnp.linspace(0,1,100)
 ts = jax.random.normal(jax.random.key(0), xs.shape)

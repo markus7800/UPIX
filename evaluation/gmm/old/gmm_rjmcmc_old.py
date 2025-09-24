@@ -4,10 +4,10 @@ import jax
 import jax.numpy as jnp
 from tqdm.auto import tqdm
 from typing import List
-from dccxjax.types import _unstack_sample_data
+from upix.types import _unstack_sample_data
 from typing import Any, Dict
 from dataclasses import dataclass
-from dccxjax.parallelisation import VectorisationType, parallel_run, parallel_map
+from upix.parallelisation import VectorisationType, parallel_run, parallel_map
 
 
 from gmm import *

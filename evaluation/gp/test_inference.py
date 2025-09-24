@@ -5,13 +5,13 @@ from data import *
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-from dccxjax.all import *
-import dccxjax.distributions as dist
+from upix.all import *
+import upix.distributions as dist
 import numpyro.distributions as numpyro_dist
 from kernels import *
 from dataclasses import fields
 from tqdm.auto import tqdm
-from dccxjax.core.branching_tracer import retrace_branching
+from upix.core.branching_tracer import retrace_branching
 from time import time
 from data import get_data_autogp
 

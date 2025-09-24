@@ -1,11 +1,11 @@
 #%%
-from dccxjax.all import *
-from dccxjax.core.samplecontext import GenerateCtx
-import dccxjax.distributions as dist
+from upix.all import *
+from upix.core.samplecontext import GenerateCtx
+import upix.distributions as dist
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from typing import List
-from dccxjax.types import PRNGKey
+from upix.types import PRNGKey
 
 import logging
 setup_logging(logging.WARNING)

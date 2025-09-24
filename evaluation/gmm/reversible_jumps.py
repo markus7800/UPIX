@@ -1,8 +1,8 @@
 import jax
 import jax.numpy as jnp
-from dccxjax.core import *
-from dccxjax.infer.involutive import *
-import dccxjax.distributions as dist
+from upix.core import *
+from upix.infer.involutive import *
+import upix.distributions as dist
 import numpyro.distributions as numpyro_dists
 from typing import NamedTuple, Callable
 from functools import partial

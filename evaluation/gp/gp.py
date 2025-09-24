@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-from dccxjax.core import *
-import dccxjax.distributions as dist
+from upix.core import *
+import upix.distributions as dist
 from kernels import *
 from dataclasses import fields
 from tqdm.auto import tqdm

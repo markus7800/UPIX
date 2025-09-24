@@ -1,7 +1,7 @@
-from dccxjax.core import *
+from upix.core import *
 import jax
 import jax.numpy as jnp
-import dccxjax.distributions as dist
+import upix.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List, Dict

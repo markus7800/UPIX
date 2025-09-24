@@ -3,12 +3,12 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from typing import Callable
 from time import time
-from dccxjax.infer.smc import *
+from upix.infer.smc import *
 
-from dccxjax.all import *
-from dccxjax.infer.ais import *
-from dccxjax.infer.mcmc.mcmc_core import get_mcmc_kernel, MCMCState
-import dccxjax.distributions as dist
+from upix.all import *
+from upix.infer.ais import *
+from upix.infer.mcmc.mcmc_core import get_mcmc_kernel, MCMCState
+import upix.distributions as dist
 
 import logging
 setup_logging(logging.DEBUG)

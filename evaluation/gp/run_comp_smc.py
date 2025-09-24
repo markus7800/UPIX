@@ -6,8 +6,8 @@ parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
 
-from dccxjax.core import *
-from dccxjax.viz import *
+from upix.core import *
+from upix.viz import *
 from setup_parallelisation import get_parallelisation_config
 
 from gp_smc import *

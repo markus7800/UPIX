@@ -2,8 +2,8 @@ import jax
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields, field
-from dccxjax.types import FloatArrayLike, FloatArray
-import dccxjax.distributions as dist
+from upix.types import FloatArrayLike, FloatArray
+import upix.distributions as dist
 from typing import List
 
 @dataclass

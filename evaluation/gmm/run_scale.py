@@ -9,7 +9,7 @@ if __name__ == "__main__":
 args = parser.parse_args()
 setup_devices_from_args(args)
 
-from dccxjax.core import *
+from upix.core import *
 from setup_parallelisation import get_parallelisation_config
 
 import logging
@@ -17,7 +17,7 @@ setup_logging(logging.WARNING)
 
 from gmm_rjmcmc import *
 
-from dccxjax.infer.mcmc.metropolis import MHInfo
+from upix.infer.mcmc.metropolis import MHInfo
 
 class StaticDCCConfig(DCCConfig):
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):

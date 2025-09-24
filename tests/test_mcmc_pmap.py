@@ -6,8 +6,8 @@ from parse_args import parse_args_and_setup # type: ignore
 args = parse_args_and_setup()
 
 import jax
-from dccxjax.all import *
-import dccxjax.distributions as dist
+from upix.all import *
+import upix.distributions as dist
 from setup_parallelisation import get_parallelisation_config # type: ignore
 
 # jax.config.update("jax_explain_cache_misses", True)

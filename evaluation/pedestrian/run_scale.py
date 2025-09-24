@@ -10,10 +10,10 @@ if __name__ == "__main__":
 args = parser.parse_args()
 setup_devices_from_args(args)
 
-from dccxjax.core import *
-from dccxjax.viz import *
+from upix.core import *
+from upix.viz import *
 from setup_parallelisation import get_parallelisation_config
-from dccxjax.infer.mcmc.hmc import HMCInfo
+from upix.infer.mcmc.hmc import HMCInfo
 
 import logging
 setup_logging(logging.WARN)
@@ -26,8 +26,8 @@ m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_t_max)
 
 
-from dccxjax.infer import MCMCDCC, T, MCMCRegime, MCMCStep, InferenceResult, LogWeightEstimate, MCMCInferenceResult
-from dccxjax.infer import AllVariables, DHMC
+from upix.infer import MCMCDCC, T, MCMCRegime, MCMCStep, InferenceResult, LogWeightEstimate, MCMCInferenceResult
+from upix.infer import AllVariables, DHMC
 
 class DCCConfig(MCMCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
@@ -131,7 +131,7 @@ if __name__ == "__main__":
         fig = plt.gcf()
         ax = fig.axes[0]
         ax.plot(gt_xs, gt_pdf)
-        plt.savefig("evaluation/pedestrian/result_dccxjax.pdf")
+        plt.savefig("evaluation/pedestrian/result_upix.pdf")
         plt.show()
 
 

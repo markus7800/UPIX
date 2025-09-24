@@ -1,6 +1,6 @@
-from dccxjax.all import *
+from upix.all import *
 import jax
-import dccxjax.distributions as dist
+import upix.distributions as dist
 
 @model
 def simple():
