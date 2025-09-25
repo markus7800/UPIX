@@ -7,7 +7,7 @@ import sys
 
 folder = sys.argv[1]
 
-file = "viz_ped_mcmc_scale_data.pkl"
+# file = "viz_ped_mcmc_scale_data.pkl"
 file = "viz_gmm_mcmc_scale_data.pkl"
 # file = ""
 if file:
