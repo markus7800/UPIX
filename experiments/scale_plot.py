@@ -35,48 +35,16 @@ def df_from_json_dir(dir, keep_info_subdicts: list[str], discard_names: list[str
 
 plt.rcParams['text.usetex'] = True
 
-fig, axs = plt.subplots(2, 4, sharex="col", figsize=(12,6))
+gridspec = {
+    "top": 0.9,
+    "hspace": 0.05,
+    "wspace": 0.05,
+    "height_ratios": [1,1,0.8,1,1]
+}
+fig, axs = plt.subplots(5, 2, figsize=(8,11), gridspec_kw=gridspec)
+axs[2,0].set_visible(False)
+axs[2,1].set_visible(False)
 
-for (i, (file, label)) in enumerate([
-    ("viz_ped_mcmc_scale_data.pkl", "L_\\infty"),
-    ("viz_gmm_mcmc_scale_data.pkl", "L_\\infty")
-]):
-    with open(pathlib.Path(folder, file), "rb") as f:
-        res = pickle.load(f)
-        n_chains_to_W1_distance, n_chains_to_infty_distance = res
-        ax = axs[1,i]
-        xticklabels = [f"{key:,}" for key in n_chains_to_infty_distance.keys()]
-        ax.boxplot(n_chains_to_infty_distance.values(), showfliers=False) # type: ignore
-        ax.set_xticklabels(xticklabels)
-        ax.set_xlabel("number of MCMC chains")
-        ax.tick_params(axis='y', which='major', labelsize=8, rotation=45, pad=0)
-        ax.tick_params(axis='y', which='minor', labelsize=8, rotation=45, pad=0)
-        ax.tick_params(axis='x', which='major', labelsize=8, rotation=75, pad=0)
-        ax.tick_params(axis='x', which='minor', labelsize=8, rotation=75, pad=0)
-        # ax.set_ylim(0,1)
-        # if i > 0:
-        #     ax.set_yticklabels([])
-
-
-for (i, (file,label,xticksformat)) in enumerate([
-    ("viz_gp_vi_elbo_scale_data.pkl", "log Z", "{:,} x {:,}"),
-    ("viz_gp_smc_particle_scale_data.pkl", "log Z", "{:,}")
-]):
-    with open(pathlib.Path(folder, file), "rb") as f:
-        res = pickle.load(f)
-        ax = axs[1,i+2]
-        xticklabels = [xticksformat.format(*(key if isinstance(key, tuple) else [key])) for key in res.keys()]
-        ax.boxplot(res.values(), showfliers=False) # type: ignore
-        ax.set_xticklabels(xticklabels, rotation=75)
-        ax.tick_params(axis='y', which='major', labelsize=8, rotation=45, pad=0)
-        ax.tick_params(axis='y', which='minor', labelsize=8, rotation=45, pad=0)
-        ax.tick_params(axis='x', which='major', labelsize=8, rotation=75, pad=0)
-        ax.tick_params(axis='x', which='minor', labelsize=8, rotation=75, pad=0)
-        # ax.set_ylim(0,250)
-        # ax.set_yticklabels([])
-        
-axs[1,2].set_xlabel("number of ADVI runs times number of samples per step")
-axs[1,3].set_xlabel("number of SMC particles")
 
 M = ["o", "^", "s", "D"]
 
@@ -144,7 +112,8 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     df["METRIC"] = df["total_time"]
     METRIC_NAME = "wall time"
     
-    ax = axs[0,i]
+    row = {0: 0, 1: 0, 2: 3, 3: 3}[i]
+    ax = axs[row, i % 2]
     
     # plt.xscale("log")
     # ax.xaxis.set_major_locator(LogLocator(base=2.0, subs=None))
@@ -157,12 +126,16 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     ax.yaxis.set_major_locator(LogLocator(base=10.0, subs=None))
     ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=[]))
     yticks = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
-    ax.tick_params(axis='y', which='major', labelsize=8, rotation=45, pad=0)
-    ax.tick_params(axis='y', which='minor', labelsize=8, rotation=45, pad=0)
+    # ax.tick_params(axis='y', which='major', labelsize=8, rotation=45, pad=0)
+    # ax.tick_params(axis='y', which='minor', labelsize=8, rotation=45, pad=0)
+    if i % 2 == 1:
+        ax.yaxis.tick_right()
     ax.set_yticks(yticks, [f"{y:,d}" for y in yticks])
-    if i > 0:
-        ax.set_yticklabels([])
     ax.set_ylim(15,2000)
+    # ax.set_xticklabels([])
+    # hack to hide xticklabels because of shareaxis
+    ax.tick_params(axis='x', which='major', rotation=90)
+    ax.tick_params(axis='x', which='minor', rotation=90)
     
     ax.grid(True)
     ax.set_axisbelow(True)
@@ -172,7 +145,7 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
                 c=get_color(kind, n_devices),
                 marker=markers[(platform, n_devices)],
                 linestyle=linestyles[kind],
-                markersize=3,
+                markersize=4,
                 alpha=0.5
         )
     
@@ -194,7 +167,7 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
                 c=get_color(kind, n_devices),
                 marker=markers[(platform, n_devices)],
                 linestyle=linestyles["COMP"],
-                markersize=3,
+                markersize=4,
                 alpha=0.5
         )
         
@@ -204,37 +177,86 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
 
 axs[0,0].set_title("Pedestrian Model - MCMC")
 axs[0,1].set_title("Gaussian Mixture Model - RJMCMC")
-axs[0,2].set_title("Gaussian Process Model - VI")
-axs[0,3].set_title("Gaussian Process Model - SMC")
+axs[3,0].set_title("Gaussian Process Model - VI")
+axs[3,1].set_title("Gaussian Process Model - SMC")
 
 axs[0,0].set_ylabel("Runtime [s]")
-axs[1,0].set_ylabel("Approximation Quality")
+axs[1,0].set_ylabel("$L_\\infty(\\hat{F},F)$ distance")
+axs[0,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
+axs[0,1].yaxis.set_label_position("right")
+axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=16)
+axs[1,1].yaxis.set_label_position("right")
 
-annot_fontsize = 10
-axs[1,0].annotate("$L_\\infty(\\hat{F},F)$ distance to\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
-axs[1,1].annotate("$L_\\infty(\\hat{F},F)$ distance\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
-axs[1,2].annotate("local ELBO of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
-axs[1,3].annotate("local normalisation\nconstant of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
+axs[3,0].set_ylabel("Runtime [s]")
+axs[4,0].set_ylabel("Local optimal ELBO")
+axs[3,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
+axs[3,1].yaxis.set_label_position("right")
+axs[4,1].set_ylabel("marginal likelihood", rotation=270, labelpad=16)
+axs[4,1].yaxis.set_label_position("right")
+
+
+
+for (i, file) in enumerate([
+    "viz_ped_mcmc_scale_data.pkl",
+    "viz_gmm_mcmc_scale_data.pkl"
+]):
+    with open(pathlib.Path(folder, file), "rb") as f:
+        res = pickle.load(f)
+        n_chains_to_W1_distance, n_chains_to_infty_distance = res
+        ax = axs[1,i]
+        xticklabels = [f"{key:,}" for key in n_chains_to_infty_distance.keys()]
+        ax.sharex(axs[0, i % 2])
+        ax.boxplot(n_chains_to_infty_distance.values(), showfliers=False) # type: ignore
+        ax.set_xticklabels(xticklabels, rotation=75)
+        ax.set_xlabel("number of MCMC chains")
+
+        if i % 2 == 1:
+            ax.yaxis.tick_right()
+
+
+for (i, (file,label,xticksformat)) in enumerate([
+    ("viz_gp_vi_elbo_scale_data.pkl", "log Z", "{:,} x {:,}"),
+    ("viz_gp_smc_particle_scale_data.pkl", "log Z", "{:,}")
+]):
+    with open(pathlib.Path(folder, file), "rb") as f:
+        res = pickle.load(f)
+        ax = axs[4,i]
+        xticklabels = [xticksformat.format(*(key if isinstance(key, tuple) else [key])) for key in res.keys()]
+        ax.sharex(axs[3, i % 2])
+        ax.boxplot(res.values(), showfliers=False) # type: ignore
+        ax.set_xticklabels(xticklabels, rotation=75)
+        if i % 2 == 1:
+            ax.yaxis.tick_right()
+        
+axs[4,0].set_xlabel("number of VI runs times number of samples per step")
+axs[4,1].set_xlabel("number of SMC particles")
+
+# annot_fontsize = 10
+# axs[1,0].annotate("$L_\\infty(\\hat{F},F)$ distance to\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
+# axs[1,1].annotate("$L_\\infty(\\hat{F},F)$ distance\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
+# axs[1,2].annotate("local ELBO of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
+# axs[1,3].annotate("local normalisation\nconstant of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
 
 
 legend_elements = []
 for kind, color in colors.items():
     if kind == "COMP":
-        label = "Reference"
+        label = "Reference CPU"
     else:
         label = "UPIX " + kind
     legend_elements.append(Line2D([0], [0], color=color, linestyle=linestyles[kind], lw=2, label=label))
 for i in range(4):
     n_cpu = 2**(i+3)
     n_gpu = 2**(i)
-    legend_elements.append(Line2D([0],[0], marker=M[i], color="black", label=f"{n_gpu} {"GPUs" if n_cpu > 0 else "GPU"} / {n_cpu} CPUs"))
-    
-plt.tight_layout()
+    legend_elements.append(Line2D([0],[0], marker=M[i], lw=0, color="black", label=f"{n_gpu} {"GPUs" if n_cpu > 0 else "GPU"} / {n_cpu} CPUs"))
 
-fig.legend(handles=legend_elements, loc="upper center", ncols=4)
-fig.subplots_adjust(top=0.85, wspace=0.1, hspace=0.1)
+
+# plt.tight_layout()
+
+fig.legend(handles=[legend_elements[i] for i in [0,4,1,5,2,6,3,7]], loc="upper center", ncols=4)
+# fig.subplots_adjust(top=0.9)
 
 plt.savefig("scale_figure.pdf")
-plt.show()
+# plt.show()
         
         
