@@ -35,7 +35,7 @@ def df_from_json_dir(dir, keep_info_subdicts: list[str], discard_names: list[str
 
 plt.rcParams['text.usetex'] = True
 
-fig, axs = plt.subplots(2, 4, sharex="col", figsize=(16,8))
+fig, axs = plt.subplots(2, 4, sharex="col", figsize=(12,6))
 
 for (i, (file, label)) in enumerate([
     ("viz_ped_mcmc_scale_data.pkl", "L_\\infty"),
@@ -43,13 +43,19 @@ for (i, (file, label)) in enumerate([
 ]):
     with open(pathlib.Path(folder, file), "rb") as f:
         res = pickle.load(f)
-
         n_chains_to_W1_distance, n_chains_to_infty_distance = res
-        
+        ax = axs[1,i]
         xticklabels = [f"{key:,}" for key in n_chains_to_infty_distance.keys()]
-        axs[1,i].boxplot(n_chains_to_infty_distance.values(), showfliers=False) # type: ignore
-        axs[1,i].set_xticklabels(xticklabels, rotation=75)
-        axs[1,i].set_xlabel("number of MCMC chains")
+        ax.boxplot(n_chains_to_infty_distance.values(), showfliers=False) # type: ignore
+        ax.set_xticklabels(xticklabels)
+        ax.set_xlabel("number of MCMC chains")
+        ax.tick_params(axis='y', which='major', labelsize=8, rotation=45, pad=0)
+        ax.tick_params(axis='y', which='minor', labelsize=8, rotation=45, pad=0)
+        ax.tick_params(axis='x', which='major', labelsize=8, rotation=75, pad=0)
+        ax.tick_params(axis='x', which='minor', labelsize=8, rotation=75, pad=0)
+        # ax.set_ylim(0,1)
+        # if i > 0:
+        #     ax.set_yticklabels([])
 
 
 for (i, (file,label,xticksformat)) in enumerate([
@@ -58,10 +64,16 @@ for (i, (file,label,xticksformat)) in enumerate([
 ]):
     with open(pathlib.Path(folder, file), "rb") as f:
         res = pickle.load(f)
-
+        ax = axs[1,i+2]
         xticklabels = [xticksformat.format(*(key if isinstance(key, tuple) else [key])) for key in res.keys()]
-        axs[1,i+2].boxplot(res.values(), showfliers=False) # type: ignore
-        axs[1,i+2].set_xticklabels(xticklabels, rotation=75)
+        ax.boxplot(res.values(), showfliers=False) # type: ignore
+        ax.set_xticklabels(xticklabels, rotation=75)
+        ax.tick_params(axis='y', which='major', labelsize=8, rotation=45, pad=0)
+        ax.tick_params(axis='y', which='minor', labelsize=8, rotation=45, pad=0)
+        ax.tick_params(axis='x', which='major', labelsize=8, rotation=75, pad=0)
+        ax.tick_params(axis='x', which='minor', labelsize=8, rotation=75, pad=0)
+        # ax.set_ylim(0,250)
+        # ax.set_yticklabels([])
         
 axs[1,2].set_xlabel("number of ADVI runs times number of samples per step")
 axs[1,3].set_xlabel("number of SMC particles")
@@ -145,7 +157,11 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     ax.yaxis.set_major_locator(LogLocator(base=10.0, subs=None))
     ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=[]))
     yticks = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
+    ax.tick_params(axis='y', which='major', labelsize=8, rotation=45, pad=0)
+    ax.tick_params(axis='y', which='minor', labelsize=8, rotation=45, pad=0)
     ax.set_yticks(yticks, [f"{y:,d}" for y in yticks])
+    if i > 0:
+        ax.set_yticklabels([])
     ax.set_ylim(15,2000)
     
     ax.grid(True)
@@ -156,6 +172,7 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
                 c=get_color(kind, n_devices),
                 marker=markers[(platform, n_devices)],
                 linestyle=linestyles[kind],
+                markersize=3,
                 alpha=0.5
         )
     
@@ -177,6 +194,7 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
                 c=get_color(kind, n_devices),
                 marker=markers[(platform, n_devices)],
                 linestyle=linestyles["COMP"],
+                markersize=3,
                 alpha=0.5
         )
         
@@ -192,10 +210,11 @@ axs[0,3].set_title("Gaussian Process Model - SMC")
 axs[0,0].set_ylabel("Runtime [s]")
 axs[1,0].set_ylabel("Approximation Quality")
 
-axs[1,0].annotate("$L_\\infty(\\hat{F},F)$ distance to\nground truth posterior", (0.4, 0.4), fontsize=12, xycoords="axes fraction")
-axs[1,1].annotate("$L_\\infty(\\hat{F},F)$ distance\nground truth posterior", (0.4, 0.4), fontsize=12, xycoords="axes fraction")
-axs[1,2].annotate("local ELBO of SLP", (0.5, 0.4), fontsize=12, xycoords="axes fraction")
-axs[1,3].annotate("local normalisation\nconstant of SLP", (0.5, 0.4), fontsize=12, xycoords="axes fraction")
+annot_fontsize = 10
+axs[1,0].annotate("$L_\\infty(\\hat{F},F)$ distance to\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
+axs[1,1].annotate("$L_\\infty(\\hat{F},F)$ distance\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
+axs[1,2].annotate("local ELBO of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
+axs[1,3].annotate("local normalisation\nconstant of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
 
 
 legend_elements = []
@@ -212,8 +231,8 @@ for i in range(4):
     
 plt.tight_layout()
 
-fig.legend(handles=legend_elements, loc="upper center", ncols=8)
-fig.subplots_adjust(top=0.9)
+fig.legend(handles=legend_elements, loc="upper center", ncols=4)
+fig.subplots_adjust(top=0.85, wspace=0.1, hspace=0.1)
 
 plt.savefig("scale_figure.pdf")
 plt.show()
