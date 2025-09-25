@@ -22,7 +22,7 @@ gt_cdf = jnp.cumsum(gt_ps)
 # 11 0.00000457
 # 12 0.00000038
 
-n_slps = 11
+n_slps = 8
 n_samples_per_chain = 2048
 args.n_slps = n_slps
 

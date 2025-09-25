@@ -26,7 +26,7 @@ def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
 n_chains_to_W1_distance: Dict[int,jax.Array] = dict()
 n_chains_to_infty_distance: Dict[int,jax.Array] = dict()
 
-repetitions = 10
+repetitions = 8
 
 for n_chains in [2**n for n in range(20+1)]:
     W1_distances = []
