@@ -2,6 +2,8 @@
 
 ... brings back stochastic control flow to probabilistic modelling in JAX.
 
+**This is research work in progress.**
+
 **Universal probabilistic programming languages (PPL)** like Pyro or Gen enable the user to specify models with **stochastic support**.
 This means that control flow and array shapes are allowed to depend on the values sampled during execution.
 This is **fundamentally incompatible with JIT-compilation in JAX**.
@@ -19,12 +21,11 @@ UPIX provides constructs to for **programmable inference**: we enable the user t
 
 ## Usage
 
-
 This is a work in progress. Instructions are coming soon.
 
 Install options: `[cpu]`, `[gpu]`, and `[tpu]`.
 
-For now, we refer to the example programs in the `evalutation` folder.
+For now, we refer to the example programs in the `evaluation` folder.
 
 ## Example
 ```python

@@ -46,7 +46,7 @@ for x in gt_xs:
     cdf_est.append(np.mean(hmc_values < x))
 cdf_est = np.array(cdf_est)
 
-W1_distance = np.trapz(np.abs(cdf_est - gt_cdf)) # wasserstein distance
+W1_distance = np.trapz(np.abs(cdf_est - gt_cdf), gt_xs) # wasserstein distance
 infty_distance = np.max(np.abs(cdf_est - gt_cdf))
 title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
 print(title)
