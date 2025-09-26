@@ -2,7 +2,7 @@
 
 ... brings back stochastic control flow to probabilistic modelling in JAX.
 
-**This is research work in progress.**
+:warning: **This is research work in progress.** :construction:
 
 **Universal probabilistic programming languages (PPL)** like Pyro or Gen enable the user to specify models with **stochastic support**.
 This means that control flow and array shapes are allowed to depend on the values sampled during execution.
