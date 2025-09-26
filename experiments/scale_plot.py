@@ -37,7 +37,7 @@ plt.rcParams['text.usetex'] = True
 
 gridspec = {
     "top": 0.9,
-    "hspace": 0.05,
+    "hspace": 0.0,
     "wspace": 0.05,
     "height_ratios": [1,1,0.8,1,1]
 }
@@ -131,7 +131,7 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     if i % 2 == 1:
         ax.yaxis.tick_right()
     ax.set_yticks(yticks, [f"{y:,d}" for y in yticks])
-    ax.set_ylim(15,2000)
+    ax.set_ylim(7,2000)
     # ax.set_xticklabels([])
     # hack to hide xticklabels because of shareaxis
     ax.tick_params(axis='x', which='major', rotation=90)
@@ -188,10 +188,10 @@ axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=1
 axs[1,1].yaxis.set_label_position("right")
 
 axs[3,0].set_ylabel("Runtime [s]")
-axs[4,0].set_ylabel("Local optimal ELBO")
+axs[4,0].set_ylabel("SLP ELBO loss")
 axs[3,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
 axs[3,1].yaxis.set_label_position("right")
-axs[4,1].set_ylabel("marginal likelihood", rotation=270, labelpad=16)
+axs[4,1].set_ylabel("SLP marginal likelihood", rotation=270, labelpad=16)
 axs[4,1].yaxis.set_label_position("right")
 
 
@@ -206,12 +206,12 @@ for (i, file) in enumerate([
         ax = axs[1,i]
         xticklabels = [f"{key:,}" for key in n_chains_to_infty_distance.keys()]
         ax.sharex(axs[0, i % 2])
-        ax.boxplot(n_chains_to_infty_distance.values(), showfliers=False) # type: ignore
+        ax.boxplot(n_chains_to_infty_distance.values(), showfliers=False, patch_artist=True, boxprops=dict(facecolor="white", color="black")) # type: ignore
         ax.set_xticklabels(xticklabels, rotation=75)
         ax.set_xlabel("number of MCMC chains")
-
         if i % 2 == 1:
             ax.yaxis.tick_right()
+        ax.grid(True)
 
 
 for (i, (file,label,xticksformat)) in enumerate([
@@ -223,13 +223,15 @@ for (i, (file,label,xticksformat)) in enumerate([
         ax = axs[4,i]
         xticklabels = [xticksformat.format(*(key if isinstance(key, tuple) else [key])) for key in res.keys()]
         ax.sharex(axs[3, i % 2])
-        ax.boxplot(res.values(), showfliers=False) # type: ignore
+        ax.boxplot(res.values(), showfliers=False, patch_artist=True, boxprops=dict(facecolor="white", color="black")) # type: ignore
         ax.set_xticklabels(xticklabels, rotation=75)
         if i % 2 == 1:
             ax.yaxis.tick_right()
+        ax.grid(True)
         
 axs[4,0].set_xlabel("number of VI runs times number of samples per step")
 axs[4,1].set_xlabel("number of SMC particles")
+axs[4,0].set_ylim(75)
 
 # annot_fontsize = 10
 # axs[1,0].annotate("$L_\\infty(\\hat{F},F)$ distance to\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
@@ -248,7 +250,7 @@ for kind, color in colors.items():
 for i in range(4):
     n_cpu = 2**(i+3)
     n_gpu = 2**(i)
-    legend_elements.append(Line2D([0],[0], marker=M[i], lw=0, color="black", label=f"{n_gpu} {"GPUs" if n_cpu > 0 else "GPU"} / {n_cpu} CPUs"))
+    legend_elements.append(Line2D([0],[0], marker=M[i], lw=0, color="black", label=f"{n_gpu} {"GPUs" if n_gpu > 1 else "GPU"} / {n_cpu} CPUs"))
 
 
 # plt.tight_layout()
@@ -256,7 +258,7 @@ for i in range(4):
 fig.legend(handles=[legend_elements[i] for i in [0,4,1,5,2,6,3,7]], loc="upper center", ncols=4)
 # fig.subplots_adjust(top=0.9)
 
-plt.savefig("scale_figure.pdf")
+plt.savefig("scale_figure.png")
 # plt.show()
         
         

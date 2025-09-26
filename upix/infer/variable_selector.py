@@ -9,6 +9,7 @@ __all__ = [
     "PrefixSelector",
     "SuffixSelector",
     "RegexSelector",
+    "Variables",
     "PredicateSelector",
     "ComplementSelector",
     "VariableSelector"
@@ -65,7 +66,8 @@ class RegexSelector(VariableSelector):
         return re.match(self.pattern, variable) is not None
     def __repr__(self) -> str:
         return f"<r\"{self.pattern}\">"
-    
+Variables = RegexSelector
+
 class PredicateSelector(VariableSelector):
     def __init__(self, predicate: Callable[[str], bool]) -> None:
         self.predicate = predicate

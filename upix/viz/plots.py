@@ -79,7 +79,7 @@ def plot_histogram_by_slp(result: MCDCCResult, address: str, N: Optional[int] = 
     
     # plt.tight_layout()
 
-    fig.suptitle(f"Posterior of \"{address} per SLP\"")
+    fig.suptitle(f"Posterior of \"{address}\" per SLP")
 
     return fig
 
