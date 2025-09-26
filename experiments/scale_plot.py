@@ -175,10 +175,10 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     legend_elements = [Line2D([0], [0], color=colors["COMP"], linestyle=linestyles["COMP"], lw=2, label=COMP_NAME)]
     ax.legend(handles=legend_elements, loc="upper left")
 
-axs[0,0].set_title("Pedestrian Model - MCMC")
-axs[0,1].set_title("Gaussian Mixture Model - RJMCMC")
-axs[3,0].set_title("Gaussian Process Model - VI")
-axs[3,1].set_title("Gaussian Process Model - SMC")
+axs[0,0].set_title("a) Pedestrian Model - MCMC")
+axs[0,1].set_title("b) Gaussian Mixture Model - RJMCMC")
+axs[3,0].set_title("c) Gaussian Process Model - VI")
+axs[3,1].set_title("d) Gaussian Process Model - SMC")
 
 axs[0,0].set_ylabel("Runtime [s]")
 axs[1,0].set_ylabel("$L_\\infty(\\hat{F},F)$ distance")
@@ -188,7 +188,7 @@ axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=1
 axs[1,1].yaxis.set_label_position("right")
 
 axs[3,0].set_ylabel("Runtime [s]")
-axs[4,0].set_ylabel("SLP ELBO loss")
+axs[4,0].set_ylabel("SLP ELBO")
 axs[3,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
 axs[3,1].yaxis.set_label_position("right")
 axs[4,1].set_ylabel("SLP marginal likelihood", rotation=270, labelpad=16)
