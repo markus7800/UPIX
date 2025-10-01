@@ -87,7 +87,7 @@ def get_color(kind, n_devices):
     return colors[kind] # get_shade(colors[kind], s, 10)
 
 for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
-    ("pedestrian", "n_chains", "pedestrian/nonparametric", "NPDHMC", "inference_time"),
+    ("pedestrian", "n_chains", "pedestrian/nonparametric", "NP-HMC", "inference_time"),
     ("gmm", "n_chains", "gmm/rjmcmc", "Gen RJMCMC", "wall_time"), 
     ("gp/vi", "n_runs*L", "gp/sdvi", "SDVI", "inference_time"),
     ("gp/smc", "n_particles", "gp/autogp", "AutoGP", "wall_time"),
@@ -188,7 +188,7 @@ axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=1
 axs[1,1].yaxis.set_label_position("right")
 
 axs[3,0].set_ylabel("Runtime [s]")
-axs[4,0].set_ylabel("SLP ELBO")
+axs[4,0].set_ylabel("SLP best ELBO")
 axs[3,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
 axs[3,1].yaxis.set_label_position("right")
 axs[4,1].set_ylabel("SLP marginal likelihood", rotation=270, labelpad=16)
@@ -243,7 +243,9 @@ axs[4,0].set_ylim(75)
 legend_elements = []
 for kind, color in colors.items():
     if kind == "COMP":
-        label = "Reference CPU"
+        label = "Reference on CPU"
+    elif kind == "CPU":
+        label = "UPIX 2x AMD EPYC 9355"
     else:
         label = "UPIX " + kind
     legend_elements.append(Line2D([0], [0], color=color, linestyle=linestyles[kind], lw=2, label=label))
@@ -259,6 +261,7 @@ fig.legend(handles=[legend_elements[i] for i in [0,4,1,5,2,6,3,7]], loc="upper c
 # fig.subplots_adjust(top=0.9)
 
 plt.savefig("scale_figure.png")
+plt.savefig("scale_figure.pdf")
 # plt.show()
         
         

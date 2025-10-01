@@ -23,9 +23,11 @@ UPIX provides constructs to for **programmable inference**: we enable the user t
 
 This is a work in progress. Instructions are coming soon.
 
-Install options: `[cpu]`, `[gpu]`, and `[tpu]`.
+Install options: `[cpu]`, `[cuda]`, and `[tpu]`.
 
 For now, we refer to the example programs in the `evaluation` folder.
+
+We recommend using [uv](https://github.com/astral-sh/uv) with `uv run -p python3.13 --frozen --extra=cuda script_to_run.py`.
 
 ## Example
 ```python

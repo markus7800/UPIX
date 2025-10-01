@@ -6,6 +6,7 @@ os.environ["JAX_PLATFORMS"] = "cpu"
 import jax
 import jax.export
 from typing import IO
+from upix.utils import timed
 
 import jax.numpy as jnp
 jax.jit(jax.lax.linalg.cholesky).trace(jnp.eye(1)).lower()
@@ -35,7 +36,7 @@ def write_error_transport_layer(writer: IO[bytes], obj):
     writer.flush()
 
 WORKER_ID = sys.argv[1]
-# print(f"Starting worker ", WORKER_ID, "with pid", os.getpid(), file=sys.stderr)
+print(f"Starting worker ", WORKER_ID, "with pid", os.getpid(), file=sys.stderr)
 while True:
     obj = read_transport_layer(sys.stdin.buffer)
     if obj is None:
@@ -47,8 +48,10 @@ while True:
         # args will be on CPU device, of course
         # print("worker", WORKER_ID, [arg.device for arg in args], file=sys.stderr)
         out = jax_fn.call(*args) # this will always compile
-        # out will be on CPU device, of course
+        # out, timings = timed(jax_fn.call, verbose=False)(*args)
+        # print(f"trace={timings["jax_trace_time"]:.3f}s, lower={timings["jax_lower_time"]:.3f}s, comp={timings["jax_comp_time"]:.3f}s {timings["jax_comp_time"]/timings["wall_time"]*100:.2f}%, wall={timings["wall_time"]:.3f}s {timings["jax_total_jit_time"]/timings["wall_time"]*100:.2f}%", file=sys.stderr)
         # print("worker", WORKER_ID, out[0].device, file=sys.stderr)
+        # out will be on CPU device, of course
         write_transport_layer(sys.stdout.buffer, out)
         del obj
         del out

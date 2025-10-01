@@ -194,7 +194,7 @@ def get_gpu_names() -> List[str]:
 import time
 from datetime import datetime
 RETURN_VAL = TypeVar("RETURN_VAL")
-def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...,Tuple[RETURN_VAL,Dict]]:
+def timed(f: Callable[...,RETURN_VAL], compilation: bool = True, verbose: bool = True) -> Callable[...,Tuple[RETURN_VAL,Dict]]:
     def wrapped(*args, **kwargs) -> Tuple[RETURN_VAL,Dict]:
         compilation_time_tracker = CompilationTimeTracker()
         if compilation:
@@ -211,7 +211,7 @@ def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...
         cpu_time = end_cpu - start_cpu
         cpu_count = get_cpu_count()
         end_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-        print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
+        if verbose: print(f"cpu usage {cpu_time/wall_time:.1f}/{cpu_count} wall_time:{wall_time:.1f}s")
         timings = {
             "start_date": start_date,
             "end_date": end_date,
@@ -222,11 +222,11 @@ def timed(f: Callable[...,RETURN_VAL], compilation: bool = True) -> Callable[...
 
         if compilation:
             jax_total_jit_time = compilation_time_tracker.get_total_time_secs()
-            print(f"Total jit time: {jax_total_jit_time:.3f}s ({jax_total_jit_time / (wall_time) * 100:.2f}%)", end="")
+            if verbose: print(f"Total jit time: {jax_total_jit_time:.3f}s ({jax_total_jit_time/wall_time*100:.2f}%)", end="")
             trace_time = compilation_time_tracker.get_trace_time_secs()
             lower_time = compilation_time_tracker.get_lower_time_secs()
             comp_time = compilation_time_tracker.get_compile_time_secs()
-            print(f"    (trace={trace_time:.3f}s, lower={lower_time:.3f}s, compile={comp_time:.3f}s)")
+            if verbose: print(f", trace: {trace_time:.3f}s ({trace_time/wall_time*100:.2f}%), lower: {lower_time:.3f}s ({lower_time/wall_time*100:.2f}%), compile: {comp_time:.3f}s ({comp_time/wall_time*100:.2f}%)")
             _unregister_event_duration_listener_by_callback(compilation_time_tracker)
             timings["jax_total_jit_time"] = jax_total_jit_time
             timings["jax_trace_time"] = trace_time

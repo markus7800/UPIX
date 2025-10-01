@@ -4,6 +4,7 @@ from parse_args import *
 parser = get_arg_parser()
 parser.add_argument("--show_plots", action="store_true")
 parser.add_argument("n_slps", type=int)
+parser.add_argument("--jit_inf", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
 
@@ -27,7 +28,7 @@ if __name__ == "__main__":
 
     config = Config(m, verbose=2,
         parallelisation = get_parallelisation_config(args),
-        jit_inference=True,
+        jit_inference=args.jit_inf,
         N_max = args.n_slps
     )
 
@@ -43,10 +44,9 @@ if __name__ == "__main__":
     print(ps)
     print("vs")
     print(gt[:len(ps)])
-
+    
+    err = jnp.abs(jnp.hstack((ps, jnp.zeros((len(gt)-len(ps),)))) - gt)
     if args.show_plots:
-        err = jnp.abs(jnp.hstack((ps, jnp.zeros((len(gt)-len(ps),)))) - gt)
         plt.plot(err)
         plt.show()
-
-        print("Max err: ", jnp.max(err))
+    print("Max err: ", jnp.max(err))

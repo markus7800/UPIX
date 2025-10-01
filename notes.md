@@ -36,20 +36,28 @@ uv run  --frozen --python=python3.13 --extra=cuda --with=pandas evaluation/gp/ru
 
 # example section
 
+## pedestrian
 cd evaluation/pedestrian/nonparametric-hmc
 uv run -p python3.10 --no-project --with-requirements=requirements.txt pedestrian.py NP-DHMC 8 1000 100 -n_processes 8  --store_samples
 uv run -p python3.10 --no-project --with-requirements=requirements.txt check_results.py
 
 uv run evaluation/pedestrian/run_comp.py sequential pmap --show_plots -host_device_count 8
 
+## gp vi
 bash evaluation/gp/sdvi/run_comp.sh 10
 uv run -p python3.13 --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local
 
+## gp smc
 uv run --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -host_device_count 10 --show_plots
 
-uv run  evaluation/urn/run_comp.py sequential vmap_local 20 --show_plots
-
-
+## gmm
 uv run evaluation/gmm/run_comp.py sequential pmap -host_device_count 8
 
 julia -t 8 --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl 8 25000
+
+## urn
+
+cd evaluation/urn/milch  
+python3 run.py
+
+uv run evaluation/urn/run_comp.py sequential vmap_local 20 --jit_inf

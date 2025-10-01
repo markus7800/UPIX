@@ -32,37 +32,6 @@ if __name__ == "__main__":
             
     assert vi_dcc_obj.pconfig.vectorisation in (VectorisationType.GlobalSMAP, VectorisationType.GlobalVMAP, VectorisationType.LocalSMAP, VectorisationType.LocalVMAP)
     
-    # if vi_dcc_obj.pconfig.vectorisation == VectorisationType.LocalVMAP:
-    #     vi_dcc_obj.pconfig.vectorisation = VectorisationType.GlobalVMAP
-    # if vi_dcc_obj.pconfig.vectorisation == VectorisationType.LocalSMAP:
-    #     vi_dcc_obj.pconfig.vectorisation = VectorisationType.GlobalSMAP
-            
-    # fig, ax = plt.subplots()
-    # advi = ADVI(slp, vi_dcc_obj.get_guide(slp), Adam(0.005), 1, 20, pconfig=vi_dcc_obj.pconfig,
-    #             show_progress=True,
-    #             shared_progressbar=None)
-    # last_state, advi_elbo = advi.run(jax.random.key(0), n_iter=2_325)
-    # print(advi_elbo[-1,:])
-    # print(advi_elbo.shape)
-    # ax.plot(advi_elbo, alpha=0.5, c="tab:blue")
-    # plt.show()
-
-    # if vi_dcc_obj.pconfig.vectorisation == VectorisationType.GlobalVMAP:
-    #     vi_dcc_obj.pconfig.vectorisation = VectorisationType.LocalVMAP
-    # if vi_dcc_obj.pconfig.vectorisation == VectorisationType.GlobalSMAP:
-    #     vi_dcc_obj.pconfig.vectorisation = VectorisationType.LocalSMAP
-        
-    # fig, ax = plt.subplots()
-    # for seed in range(20):
-    #     advi = ADVI(slp, vi_dcc_obj.get_guide(slp), Adam(0.005), 20, 1, pconfig=vi_dcc_obj.pconfig,
-    #                 show_progress=True,
-    #                 shared_progressbar=None)
-    #     last_state, advi_elbo = advi.run(jax.random.key(seed), n_iter=2_325)
-        
-    #     best_run = int(jnp.argmax(advi_elbo[-1,:]).item()) if advi.n_runs > 1 else None
-    #     ax.plot(advi_elbo, alpha=0.5, c="tab:blue")
-    # plt.show()
-    
     def set_local_global(n_runs: int):
         if n_runs > 1:
             if vi_dcc_obj.pconfig.vectorisation == VectorisationType.LocalVMAP:
@@ -75,6 +44,42 @@ if __name__ == "__main__":
             if vi_dcc_obj.pconfig.vectorisation == VectorisationType.GlobalSMAP:
                 vi_dcc_obj.pconfig.vectorisation = VectorisationType.LocalSMAP
 
+        
+    if False:
+        fig, ax = plt.subplots(figsize=(5,2.5))
+        repetitions = 1
+        for (L, n_runs) in [
+            (1,1), (8,1), (8,8), (64,1),
+            # (64,8)
+            ]:
+            print(f"{L=} {n_runs=}")
+            set_local_global(n_runs)
+            advi = ADVI(slp, vi_dcc_obj.get_guide(slp), Adam(0.005), L, n_runs, pconfig=vi_dcc_obj.pconfig,
+                        show_progress=True,
+                        shared_progressbar=None)
+            last_state, advi_elbo = advi.run(jax.random.key(0), n_iter=2_000)
+            p = advi.optimizer.get_params_fn(last_state.optimizer_state)
+            # elbos.append(advi_elbo)
+        
+            best_run = int(jnp.nanargmax(advi_elbo[-1,:]).item()) if advi.n_runs > 1 else None
+            plt.plot(advi_elbo[:,best_run], label=f"{n_runs} x L={L}", alpha=0.5)
+            # if advi.n_runs > 1:
+            #     print(jnp.max(advi_elbo,axis=1).shape)
+            #     plt.plot(jnp.max(advi_elbo,axis=1), label=f"{n_runs} x L={L}")
+            # else:
+            #     plt.plot(advi_elbo, label=f"{n_runs} x L={L}")
+                
+        
+        plt.xlabel("iteration")
+        plt.ylabel("ELBO")
+        leg = plt.legend()
+        leg.get_frame().set_linewidth(0.0)
+        leg.get_frame().set_facecolor('none')
+        plt.tight_layout()
+        plt.savefig("elbo_scaling_L.pdf")
+        plt.show()
+        exit(0)
+        
         
     K_to_elbos: Dict[Tuple[int,int],jax.Array] = dict()
     repetitions = 10
