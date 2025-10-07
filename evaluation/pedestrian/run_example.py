@@ -57,8 +57,6 @@ class DCCConfig(MCMCDCC[T]):
         if self.iteration_counter == self.max_iterations:
             inactive_slps.extend(active_slps)
             active_slps.clear()
-        else:
-            assert not self.mcmc_optimise_memory_with_early_return_map
 
 
 if __name__ == "__main__":
@@ -97,7 +95,6 @@ if __name__ == "__main__":
     start_samples, start_weights = start_weighted_samples.unstack().get()
     
     axes = plt.gcf().axes
-    print(axes)
     axes[-2].plot(gt_xs, gt_pdf, label="ground truth", linestyle="dashed")
     axes[-2].legend()
     plt.show()

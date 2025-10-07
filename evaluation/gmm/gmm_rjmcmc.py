@@ -45,8 +45,8 @@ class DCCConfig(RJMCMCDCC[T]):
         estimate = estimates[0] # we only have one per slp
         assert isinstance(estimate, RJMCMCTransitionProbEstimate)
         K = find_K(last_slp)
-        split_transition_prob = estimate.transition_log_probs[K+1]
-        if split_transition_prob > jnp.log(0.01):
+        split_transition_log_prob = estimate.transition_log_probs[K+1]
+        if split_transition_log_prob > jnp.log(0.01):
             trace, _ = self.model.generate(rng_key, {"K": jnp.array(K+1,int)})
             slp = slp_from_decision_representative(self.model, trace)
             active_slps.append(slp)

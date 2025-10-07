@@ -61,3 +61,15 @@ cd evaluation/urn/milch
 python3 run.py
 
 uv run evaluation/urn/run_comp.py sequential vmap_local 20 --jit_inf
+
+
+
+## demo
+
+uv run evaluation/pedestrian/run_example.py sequential vmap_local
+
+JAX_NUM_CPU_DEVICES=8 uv run evaluation/pedestrian/run_example.py sequential pmap
+
+uv run --with=pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local
+
+uv run evaluation/urn/run_comp.py sequential vmap_local 20 --jit_inf
