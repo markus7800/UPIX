@@ -36,14 +36,11 @@ def df_from_json_dir(dir, keep_info_subdicts: list[str], discard_names: list[str
 plt.rcParams['text.usetex'] = True
 
 gridspec = {
-    "top": 0.9,
-    "hspace": 0.0,
-    "wspace": 0.05,
-    "height_ratios": [1,1,0.8,1,1]
+    "right": 0.63,
 }
-fig, axs = plt.subplots(5, 2, figsize=(8,11), gridspec_kw=gridspec)
-axs[2,0].set_visible(False)
-axs[2,1].set_visible(False)
+fig, axs = plt.subplots(1, 1, figsize=(5,3), gridspec_kw=gridspec)
+# axs[2,0].set_visible(False)
+# axs[2,1].set_visible(False)
 
 
 M = ["o", "^", "s", "D"]
@@ -86,11 +83,29 @@ def get_color(kind, n_devices):
         s = (np.log2(n_devices) + 2) * 2 # maps [1,2,4,8] to [4,6,8,10]
     return colors[kind] # get_shade(colors[kind], s, 10)
 
+device_legend_elements = []
+for i in range(4):
+    n_cpu = 2**(i+3)
+    n_gpu = 2**(i)
+    device_legend_elements.append(Line2D([0],[0], marker=M[i], lw=0, color="black", label=f"{n_gpu} {"GPUs" if n_gpu > 1 else "GPU"} / {n_cpu} CPUs"))
+
+for kind, color in colors.items():
+    if kind == "COMP":
+        label = "Reference on CPU"
+        continue
+    elif kind == "CPU":
+        label = "UPIX 2x EPYC 9355"
+    else:
+        label = "UPIX " + kind
+    device_legend_elements.append(Line2D([0], [0], color=color, linestyle=linestyles[kind], lw=2, label=label))
+
+# device_legend_elements = [device_legend_elements[i] for i in [0,4,1,5,2,6,3,7]]
+
 for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     ("pedestrian", "n_chains", "pedestrian/nonparametric", "NP-DHMC", "inference_time"),
-    ("gmm", "n_chains", "gmm/rjmcmc", "Gen RJMCMC", "wall_time"), 
-    ("gp/vi", "n_runs*L", "gp/sdvi", "SDVI", "inference_time"),
-    ("gp/smc", "n_particles", "gp/autogp", "AutoGP", "wall_time"),
+    # ("gmm", "n_chains", "gmm/rjmcmc", "Gen RJMCMC", "wall_time"), 
+    # ("gp/vi", "n_runs*L", "gp/sdvi", "SDVI", "inference_time"),
+    # ("gp/smc", "n_particles", "gp/autogp", "AutoGP", "wall_time"),
     ]):
     
     df = df_from_json_dir(pathlib.Path(folder, model_path, "scale"), ["workload", "timings", "dcc_timings", "pconfig", "environment_info"], ["environ", "jax_environment"])
@@ -113,15 +128,11 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     METRIC_NAME = "wall time"
     
     row = {0: 0, 1: 0, 2: 3, 3: 3}[i]
-    ax = axs[row, i % 2]
+    ax = axs#[row, i % 2]
     
-    # plt.xscale("log")
-    # ax.xaxis.set_major_locator(LogLocator(base=2.0, subs=None))
-    # ax.xaxis.set_minor_locator(LogLocator(base=2.0, subs=[]))
-    # xticks = [2**n for n in range(20+1)]
-    # ax.set_xticks(xticks, [f"{x:,d}" for x in xticks], rotation=75)
-    # ax.set_xlabel(X_LABEL)
-
+    xticklabels = ["$2^{%d}$"%(n) for n in range(20+1)]
+    ax.set_xticks(range(1,20+2), xticklabels, rotation=75)
+    
     ax.set_yscale("log")
     ax.yaxis.set_major_locator(LogLocator(base=10.0, subs=None))
     ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=[]))
@@ -130,12 +141,8 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     # ax.tick_params(axis='y', which='minor', labelsize=8, rotation=45, pad=0)
     if i % 2 == 1:
         ax.yaxis.tick_right()
-    ax.set_yticks(yticks, [f"{y:,d}" for y in yticks])
+    ax.set_yticks(yticks, [f"{y:,d}s" for y in yticks])
     ax.set_ylim(7,2000)
-    # ax.set_xticklabels([])
-    # hack to hide xticklabels because of shareaxis
-    ax.tick_params(axis='x', which='major', rotation=90)
-    ax.tick_params(axis='x', which='minor', rotation=90)
     
     ax.grid(True)
     ax.set_axisbelow(True)
@@ -172,96 +179,37 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
         )
         
     
-    legend_elements = [Line2D([0], [0], color=colors["COMP"], linestyle=linestyles["COMP"], lw=2, label=COMP_NAME)]
-    ax.legend(handles=legend_elements, loc="upper left")
+    legend_elements = device_legend_elements + [Line2D([0], [0], color=colors["COMP"], linestyle=linestyles["COMP"], lw=2, label=COMP_NAME)]
+    fig.legend(handles=legend_elements, loc="center right")
 
-axs[0,0].set_title("a) Pedestrian Model - MCMC")
-axs[0,1].set_title("b) Gaussian Mixture Model - RJMCMC")
-axs[3,0].set_title("c) Gaussian Process Model - VI")
-axs[3,1].set_title("d) Gaussian Process Model - SMC")
+# axs.set_title("Pedestrian: num.chains vs runtime")
+# axs[0,1].set_title("b) Gaussian Mixture Model - RJMCMC")
+# axs[3,0].set_title("c) Gaussian Process Model - VI")
+# axs[3,1].set_title("d) Gaussian Process Model - SMC")
 
-axs[0,0].set_ylabel("Runtime [s]")
-axs[1,0].set_ylabel("$L_\\infty(\\hat{F},F)$ distance")
-axs[0,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
-axs[0,1].yaxis.set_label_position("right")
-axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=16)
-axs[1,1].yaxis.set_label_position("right")
+# axs.set_ylabel("Runtime [s]")
+# axs[1,0].set_ylabel("$L_\\infty(\\hat{F},F)$ distance")
+# axs[0,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
+# axs[0,1].yaxis.set_label_position("right")
+# axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=16)
+# axs[1,1].yaxis.set_label_position("right")
 
-axs[3,0].set_ylabel("Runtime [s]")
-axs[4,0].set_ylabel("SLP best ELBO")
-axs[3,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
-axs[3,1].yaxis.set_label_position("right")
-axs[4,1].set_ylabel("SLP marginal likelihood", rotation=270, labelpad=16)
-axs[4,1].yaxis.set_label_position("right")
-
-
-
-for (i, file) in enumerate([
-    "viz_ped_mcmc_scale_data.pkl",
-    "viz_gmm_mcmc_scale_data.pkl"
-]):
-    with open(pathlib.Path(folder, file), "rb") as f:
-        res = pickle.load(f)
-        n_chains_to_W1_distance, n_chains_to_infty_distance = res
-        ax = axs[1,i]
-        xticklabels = [f"{key:,}" for key in n_chains_to_infty_distance.keys()]
-        ax.sharex(axs[0, i % 2])
-        ax.boxplot(n_chains_to_infty_distance.values(), showfliers=False, patch_artist=True, boxprops=dict(facecolor="white", color="black")) # type: ignore
-        ax.set_xticklabels(xticklabels, rotation=75)
-        ax.set_xlabel("number of MCMC chains")
-        if i % 2 == 1:
-            ax.yaxis.tick_right()
-        ax.grid(True)
+# axs[3,0].set_ylabel("Runtime [s]")
+# axs[4,0].set_ylabel("SLP best ELBO")
+# axs[3,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
+# axs[3,1].yaxis.set_label_position("right")
+# axs[4,1].set_ylabel("SLP marginal likelihood", rotation=270, labelpad=16)
+# axs[4,1].yaxis.set_label_position("right")
 
 
-for (i, (file,label,xticksformat)) in enumerate([
-    ("viz_gp_vi_elbo_scale_data.pkl", "log Z", "{:,} x {:,}"),
-    ("viz_gp_smc_particle_scale_data.pkl", "log Z", "{:,}")
-]):
-    with open(pathlib.Path(folder, file), "rb") as f:
-        res = pickle.load(f)
-        ax = axs[4,i]
-        xticklabels = [xticksformat.format(*(key if isinstance(key, tuple) else [key])) for key in res.keys()]
-        ax.sharex(axs[3, i % 2])
-        ax.boxplot(res.values(), showfliers=False, patch_artist=True, boxprops=dict(facecolor="white", color="black")) # type: ignore
-        ax.set_xticklabels(xticklabels, rotation=75)
-        if i % 2 == 1:
-            ax.yaxis.tick_right()
-        ax.grid(True)
-        
-axs[4,0].set_xlabel("number of VI runs times number of samples per step")
-axs[4,1].set_xlabel("number of SMC particles")
-axs[4,0].set_ylim(75)
 
-# annot_fontsize = 10
-# axs[1,0].annotate("$L_\\infty(\\hat{F},F)$ distance to\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
-# axs[1,1].annotate("$L_\\infty(\\hat{F},F)$ distance\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
-# axs[1,2].annotate("local ELBO of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
-# axs[1,3].annotate("local normalisation\nconstant of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
+plt.tight_layout()
 
-
-legend_elements = []
-for kind, color in colors.items():
-    if kind == "COMP":
-        label = "Reference on CPU"
-    elif kind == "CPU":
-        label = "UPIX 2x AMD EPYC 9355"
-    else:
-        label = "UPIX " + kind
-    legend_elements.append(Line2D([0], [0], color=color, linestyle=linestyles[kind], lw=2, label=label))
-for i in range(4):
-    n_cpu = 2**(i+3)
-    n_gpu = 2**(i)
-    legend_elements.append(Line2D([0],[0], marker=M[i], lw=0, color="black", label=f"{n_gpu} {"GPUs" if n_gpu > 1 else "GPU"} / {n_cpu} CPUs"))
-
-
-# plt.tight_layout()
-
-fig.legend(handles=[legend_elements[i] for i in [0,4,1,5,2,6,3,7]], loc="upper center", ncols=4)
+# fig.legend(handles=[legend_elements[i] for i in [0,4,1,5,2,6,3,7]], loc="upper center", ncols=4)
 # fig.subplots_adjust(top=0.9)
 
-plt.savefig("scale_figure.png")
-plt.savefig("scale_figure.pdf")
-# plt.show()
+# plt.savefig("scale_figure.png")
+plt.savefig("scale_pedestrian.pdf")
+plt.show()
         
         
