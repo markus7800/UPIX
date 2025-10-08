@@ -1,8 +1,9 @@
 
 import numpyro.distributions as numpyro_dists
 import numpyro.distributions.transforms as numypro_transforms
-from typing import Generic, TypeVar, Optional
+from typing import Generic, TypeVar, Optional, Tuple
 import jax
+import jax.numpy as jnp
 from upix.types import *
 
 __all__ = [
@@ -58,6 +59,10 @@ class Distribution(Generic[DIST_SUPPORT,DIST_SUPPORT_LIKE]):
         return self.numpyro_base.log_prob(value) # type: ignore
     def biject_so_support(self) -> Transform[FloatArray, DIST_SUPPORT]:
         return Transform(numpyro_dists.biject_to(self.numpyro_base.support))
+    def has_enumerable_support(self) -> bool:
+        return False
+    def enumerable_support_bounds(self) -> Tuple[IntArrayLike,IntArrayLike]:
+        raise NotImplementedError
     @property
     def mean(self) -> DIST_SUPPORT:
         return self.numpyro_base.mean # type: ignore
@@ -103,6 +108,10 @@ class Dirichlet(Distribution[SimplexArray,SimplexArray]):
 class Bernoulli(Distribution[IntArray,IntArrayLike]):
     def __init__(self, probs: FloatArrayLike):
         super().__init__(numpyro_dists.BernoulliProbs(probs)) # type: ignore
+    def has_enumerable_support(self) -> bool:
+        return True
+    def enumerable_support_bounds(self) -> Tuple[IntArrayLike,IntArrayLike]:
+        return (0, 1)
         
 class MaskedBernoulli(Distribution[IntArray,IntArrayLike]):
     def __init__(self, probs: FloatArrayLike, mask: BoolArrayLike):
@@ -117,6 +126,10 @@ class MaskedBernoulli(Distribution[IntArray,IntArrayLike]):
         return (self.numpyro_base.log_prob(value) * self.mask).sum() # type: ignore
     def biject_so_support(self) -> Transform[FloatArray, IntArray]:
         raise NotImplementedError
+    def has_enumerable_support(self) -> bool:
+        return True
+    def enumerable_support_bounds(self) -> Tuple[IntArrayLike,IntArrayLike]:
+        return (0, 1)
     @property
     def mean(self) -> IntArray:
         raise NotImplementedError
@@ -127,6 +140,11 @@ class MaskedBernoulli(Distribution[IntArray,IntArrayLike]):
 class Dirac(Distribution[IntArray, IntArrayLike]):
     def __init__(self, v: IntArrayLike) -> None:
         super().__init__(numpyro_dists.Delta(v)) # type: ignore
+        self.v = v
+    def has_enumerable_support(self) -> bool:
+        return True
+    def enumerable_support_bounds(self) -> Tuple[IntArrayLike,IntArrayLike]:
+        return (self.v, self.v)
 
 class Poisson(Distribution[IntArray,IntArrayLike]):
     def __init__(self, rate: FloatArrayLike):
@@ -135,14 +153,30 @@ class Poisson(Distribution[IntArray,IntArrayLike]):
 class Categorical(Distribution[IntArray,IntArrayLike]):
     def __init__(self, probs: SimplexArray):
         super().__init__(numpyro_dists.CategoricalProbs(probs)) # type: ignore
+        self.probs = probs
+    def has_enumerable_support(self) -> bool:
+        return True
+    def enumerable_support_bounds(self) -> Tuple[IntArrayLike,IntArrayLike]:
+        return (0, self.probs.size)
         
 class DiscreteUniform(Distribution[IntArray,IntArrayLike]):
     def __init__(self, low: IntArrayLike = 0, high: IntArrayLike = 1):
         super().__init__(numpyro_dists.DiscreteUniform(low, high)) # type: ignore
+        self.low = low
+        self.high = high
+    def has_enumerable_support(self) -> bool:
+        return True
+    def enumerable_support_bounds(self) -> Tuple[IntArrayLike,IntArrayLike]:
+        return (self.low, self.high)
 
 class CategoricalLogits(Distribution[IntArray,IntArrayLike]):
-    def __init__(self, logits: FloatArrayLike):
+    def __init__(self, logits: FloatArray):
         super().__init__(numpyro_dists.CategoricalLogits(logits)) # type: ignore
+        self.logits = logits
+    def has_enumerable_support(self) -> bool:
+        return True
+    def enumerable_support_bounds(self) -> Tuple[IntArrayLike,IntArrayLike]:
+        return (0, self.logits.size)
 
 class TwoSidedTruncatedDistribution(Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE]):
     def __init__(self, base: Distribution[DIST_SUPPORT,DIST_SUPPORT_LIKE], low: FloatArrayLike = 0, high: FloatArrayLike = 1) -> None:

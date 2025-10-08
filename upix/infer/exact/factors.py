@@ -6,7 +6,7 @@ from functools import reduce
 from upix.core.samplecontext import SampleContext
 from upix.core.model_slp import Model, SLP
 from upix.core.branching_tracer import retrace_branching_decisions
-from upix.types import Trace, FloatArray, PRNGKey, FloatArrayLike, IntArray
+from upix.types import Trace, FloatArray, PRNGKey, FloatArrayLike, IntArray, IntArrayLike
 from upix.distributions import Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE
 import jax.numpy as jnp
 from upix.infer.variable_selector import VariableSelector
@@ -48,6 +48,7 @@ class NamedTrace(jax_core.Trace):
         args = [tracer.val if isinstance(tracer, NamedTracer) else tracer for tracer in tracers]
         input_names: List[Set[str]] = [tracer.names for tracer in tracers if isinstance(tracer, NamedTracer)]
         output_names = reduce(lambda x, y: x | y, input_names, set())
+        # print(primitive, params.get("name", ""), input_names, output_names)
 
         out = primitive.bind_with_trace(self.parent_trace, args, params)
         if primitive.multiple_results:
@@ -55,6 +56,7 @@ class NamedTrace(jax_core.Trace):
         else:
             out_tracer = maybe_named_tracer(self, out, output_names)
         return out_tracer
+    
     def process_custom_jvp_call(self, primitive: jax_core.Primitive, fun, jvp, tracers, *, symbolic_zeros):
         args = [tracer.val if isinstance(tracer, NamedTracer) else tracer for tracer in tracers]
         input_names: List[Set[str]] = [tracer.names for tracer in tracers if isinstance(tracer, NamedTracer)]
@@ -92,27 +94,98 @@ class FactorsCtx(SampleContext):
 
 class SupportCtx(SampleContext):
     # X can be partial
-    def __init__(self, X: Trace) -> None:
+    def __init__(self, X: Trace, rng_key: PRNGKey = jax.random.key(0)) -> None:
         super().__init__()
         self.X = X
-        self.supports: Dict[str,Optional[IntArray]] = dict()
+        self.supports_bounds: List[Tuple[str,Optional[Tuple[IntArrayLike,IntArrayLike]]]] = list()
+        self.rng_key = rng_key
+        
     def sample(self, address: str, distribution: Distribution[DIST_SUPPORT, DIST_SUPPORT_LIKE], observed: Optional[DIST_SUPPORT_LIKE] = None) -> DIST_SUPPORT:
         if observed is not None:
             _observed = cast(DIST_SUPPORT, observed)
             return _observed
-        if distribution.numpyro_base.has_enumerate_support:
-            self.supports[address] = cast(IntArray,distribution.numpyro_base.enumerate_support())
+        if distribution.has_enumerable_support():
+            self.supports_bounds.append((address, distribution.enumerable_support_bounds()))
         else:
-            self.supports[address] = None    
-        value = cast(DIST_SUPPORT, self.X[address])
+            self.supports_bounds.append((address, None))
+   
+        if address in self.X:
+            value = cast(DIST_SUPPORT, self.X[address])
+        else:
+            self.rng_key, sample_key = jax.random.split(self.rng_key)
+            value = distribution.sample(sample_key)
         return value
+    
     def logfactor(self, lf: FloatArrayLike, address: str) -> None:
         pass
     
-def get_supports(slp: SLP) -> Dict[str,Optional[IntArray]]:
-    with SupportCtx(slp.decision_representative) as ctx:
-        slp.model()
-        return ctx.supports
+def get_supports(slp: SLP, static: bool = False) -> Dict[str,Optional[IntArray]]:
+    def _s(_X: Dict) -> List[Tuple[str,Optional[Tuple[IntArrayLike,IntArrayLike]]]]:
+        with SupportCtx(_X) as ctx:
+            slp.model()
+            return ctx.supports_bounds
+    
+    if static:
+        supports: Dict[str,Optional[IntArray]] = dict()
+        support_bounds = _s(slp.decision_representative)       
+        return {addr: jnp.arange(*bounds) if bounds is not None else None for addr, bounds in support_bounds}   
+    
+    def _all_support_bounds(_X: Trace) -> List[Tuple[Optional[Tuple[IntArrayLike,IntArrayLike]],str,List[str]]]:
+        with jax_core.take_current_trace() as parent_trace:
+            trace = NamedTrace(parent_trace)
+            with jax_core.set_current_trace(trace):
+                in_tracers = {addr: NamedTracer(trace, val, {addr}) for addr, val in _X.items()}
+                _s_retraced = retrace_branching_decisions(_s, slp.branching_decisions)
+                out_tracers, _ = _s_retraced(in_tracers)
+                out = []
+                for addr, bounds in out_tracers:
+                    if bounds is None:
+                        out.append((None, addr, list()))
+                    else:
+                        names = set()
+                        a, b = bounds
+                        if isinstance(a, NamedTracer):
+                            names = names | a.names
+                            a = a.val
+                        if isinstance(b, NamedTracer):
+                            names = names | b.names
+                            b = b.val
+                        out.append(((a,b), addr, sorted(names)))
+                return out
+    
+    # this should be in correct order
+    support_bounds_prototype = _all_support_bounds(slp.decision_representative)
+    # print(support_bounds_prototype)
+    
+    supports: Dict[str,Optional[IntArray]] = dict()
+    def _get_support(addr: str) -> IntArray:
+        s = supports[addr]
+        if s is None:
+            return jnp.array([slp.decision_representative[addr]])
+        else:
+            return s
+        
+    for i, (bound_prototype, addr, dependency_addresses) in enumerate(support_bounds_prototype):
+        # print(addr, dependency_addresses)
+        if len(dependency_addresses) == 0:
+            supports[addr] = jnp.arange(bound_prototype[0], bound_prototype[1]+1) if bound_prototype is not None else None # static
+            continue
+        assert all(dep in supports for dep in dependency_addresses)
+        
+        variable_supports: List[IntArray] = list(map(_get_support, dependency_addresses))
+        # print("variable_supports", variable_supports)
+        meshgrids = jnp.meshgrid(*variable_supports, indexing="ij")
+        partial_X = {addr: meshgrid.reshape(-1) for addr, meshgrid in zip(dependency_addresses, meshgrids)}
+        # print("partial_X", partial_X)
+    
+        @jax.vmap
+        def _bounds_fn(_partial_X: Trace) -> Tuple[IntArray,IntArray]:
+            return _all_support_bounds(_partial_X)[i][0] # type: ignore
+        a, b = _bounds_fn(partial_X)
+        # print("bounds", a, b)
+        supports[addr] = jnp.arange(a.min(), b.max()+1)
+        
+    return supports
     
 def get_supports_size(supports: Dict[str,Optional[IntArray]]):
     return sum(support.size if support is not None else 0 for support in supports.values())
