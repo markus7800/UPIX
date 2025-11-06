@@ -128,7 +128,7 @@ def get_supports(slp: SLP, static: bool = False) -> Dict[str,Optional[IntArray]]
     if static:
         supports: Dict[str,Optional[IntArray]] = dict()
         support_bounds = _s(slp.decision_representative)       
-        return {addr: jnp.arange(*bounds) if bounds is not None else None for addr, bounds in support_bounds}   
+        return {addr: jnp.arange(bounds[0], bounds[1]+1) if bounds is not None else None for addr, bounds in support_bounds}   
     
     def _all_support_bounds(_X: Trace) -> List[Tuple[Optional[Tuple[IntArrayLike,IntArrayLike]],str,List[str]]]:
         with jax_core.take_current_trace() as parent_trace:
@@ -364,7 +364,7 @@ def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelecto
                     else:
                         maybe_variable_supports[i] = support
             # a variable should be linked to at most one meshdgrid dimension
-            assert count <= 1, f"Variable {addr} matches multiple selectors {selectors}"
+            # assert count <= 1, f"Variable {addr} matches multiple selectors {selectors}"
         # each selector should match at least one variable (we have to link at least variable to each meshgrid dimension)
         variable_supports: List[IntArray] = []
         for i, support in enumerate(maybe_variable_supports):
@@ -384,6 +384,10 @@ def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelecto
             if addr in variable_to_ix:
                 # addr was linked to meshgrid dimension variable_to_ix[addr], we reshape to facilitate single vmap
                 X[addr] = meshgrids[variable_to_ix[addr]].reshape(-1)
+                # if we would assign variable to two selectors how to select index?
+                # i.e. for ['drop_0', 'res_0', 'res_1', 'route_0'] 'res_0' and 'res_1' have to be on different axes
+                #  but for ['drop_1', 'res_1', 'res_2', 'route_1'] 'res_1' and 'res_2' have to be on different axes
+                # we doing one sweep we cannot place res_1 on "first" or "second" axis at once
         # X does not need to contain variables taht affect branching if they do not affect the factors
         # print("X", to_shaped_arrays_str_short(X))
         
@@ -397,17 +401,18 @@ def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelecto
             # if a selector does not match any address for the factor, we want to remove this dimension later by selecting index 0
             # (in this case, the factor was computed in a broadcasted manner, i.e. it has the same values across unmatched dimensions)
             result_ix: List[int | slice] = [0] * len(selectors)
-            j = -1
+            selector_ix = list(range(len(selectors)))
+            j = 0
             n_found = 0
             for addr in factor_addresses:
                 # try to match address to selectors, factor_addresses are sorted and we require that selectors respect this order
-                for _j, selector in enumerate(selectors):
+                for _j in selector_ix[j:]:
+                    selector = selectors[_j]
                     if selector.contains(addr):
-                        assert j < _j, f"Selectors {selectors} do not match in order {factor_addresses}"
-                        j = _j
                         n_found += 1
                         # we do not want to "select away" matched address in (1)
                         result_ix[_j] = slice(None)
+                        j = _j + 1
                         break
             if n_found == len(factor_addresses):
                 # we found a selector for each address -> factor can be computed from meshgrid
@@ -415,6 +420,7 @@ def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelecto
                 factor_computed[i] = True
                 result_addresses.append(factor_addresses)
                 result_ixs.append(result_ix)
+            # print(factor_addresses, n_found == len(factor_addresses))
         # print("compute_factor_i", compute_factor_i)
         
         # adapt all_facor_fn to only return factors that we want to compute (when jitting we remove redudant computation)
