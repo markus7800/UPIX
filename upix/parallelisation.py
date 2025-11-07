@@ -14,6 +14,7 @@ from upix.utils import log_critical
 
 __all__ = [
     "ParallelisationType",
+    "VectorisationType",
     "ParallelisationConfig",
     "is_sequential",
     "is_parallel",

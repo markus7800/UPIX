@@ -124,3 +124,197 @@ We can see that this approximation is close to the ground truth.
 [2] Mak, Carol, Fabian Zaiser, and Luke Ong. "Nonparametric hamiltonian monte carlo." International Conference on Machine Learning. PMLR, 2021.
 
 [3] Reichelt, Tim, Luke Ong, and Thomas Rainforth. "Rethinking variational inference for probabilistic programs with stochastic support." Advances in Neural Information Processing Systems 35 (2022): 15160-15175.
+
+## Reproducing Paper Results
+
+### Setup
+
+#### Manual
+
+To run the experiments in on your machine you need uv, Julia 1.9, and a C++ compiler.
+
+Install [uv](https://github.com/astral-sh/uv), e.g. with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
+
+Install [julia 1.9](), e.g. with `curl -fsSL https://install.julialang.org | sh -s -- --yes --default-channel=1.9`.
+
+
+#### Docker
+
+If you want to run the experiments in a docker container instead, build and run it with:
+```
+docker build . -t upix
+docker run -it --name upix --rm upix
+```
+Make sure to make all CPUs available in the container.  
+To make GPUs in the container available, see https://docs.docker.com/engine/containers/resource_constraints/#gpu .  
+Runtimes using the docker container may be different compared 
+to running locally.
+
+#### Test the Setup
+
+Run example on CPU
+```
+uv run --frozen -p python3.13 --extra=cpu evaluation/pedestrian/run_example.py sequential vmap_local
+```
+
+Run example on CUDA GPU (if available)
+```
+uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/run_example.py sequential vmap_local
+```
+
+Run example on TPU (if available)
+```
+uv run --frozen -p python3.13 --extra=tpu evaluation/pedestrian/run_example.py sequential vmap_local
+```
+
+### Section 4: Example DCC
+
+Run following commands from the *root directory* to reproduce the experiments from Section 4.
+
+Experiments where run on a M2 Pro Macbook (without Docker).
+
+#### Section 4.1: MCMC - Pedestrian Model
+
+Run NP-DHMC baseline (with 8 parallel processes)
+```
+cd evaluation/pedestrian/nonparametric-hmc
+uv run -p python3.10 --no-project --with-requirements=requirements.txt pedestrian.py NP-DHMC 8 1000 100 -n_processes 8  --store_samples
+uv run -p python3.10 --no-project --with-requirements=requirements.txt check_results.py
+cd ../../..
+```
+
+Run UPIX-MCMC-DCC (with 8 CPU devices)
+```
+uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap --show_plots -host_device_count 8
+```
+
+#### Section 4.2: SDVI - Gaussian Process Model
+
+Run SDVI baseline (original implementation by Reichelt et al. 2022, with 10 parallel processes)
+```
+bash evaluation/gp/sdvi/run_comp.sh 10
+```
+
+Run UPIX-SDVI (with 10 parallel processes)
+```
+uv run -p python3.13 --frozen --extra=cpu --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local -num_workers 10
+```
+
+#### Section 4.3: RJMCMC - Gaussian Mixture Model
+If you do not use the docker image, install the julia packages
+```
+julia --project=evaluation/gmm/gen -e "import Pkg; Pkg.instantiate()
+```
+
+Run RJMCMC Gen baseline (with 8 threads)
+```
+julia -t 8 --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl 8 25000
+```
+
+Run UPIX-RJMCMC-DCC (with 8 CPU devices)
+```
+uv run -p python3.13 --frozen --extra=cpu evaluation/gmm/run_comp.py sequential pmap -host_device_count 8
+```
+
+
+#### Section 4.4: SMC - Gaussian Process Model
+
+If you do not use the docker image, install the julia packages
+```
+julia --project=evaluation/gp/autogp -e "import Pkg; Pkg.instantiate()"
+```
+
+Run AutoGP baseline (with 10 threads)
+```
+julia -t 10 --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl 100 false
+```
+
+
+Run UPIX-SMC-DCC (with 10 CPU devices)
+```
+uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -host_device_count 10 --show_plots
+```
+
+
+#### Section 4.5: VE - Urn Model
+
+If you do not use the docker image, compile the [Swift](https://github.com/lileicc/swift) compiler.
+E.g. on Linux
+```
+apt-get install -y g++ cmake libopenblas-dev liblapack-dev libarmadillo-dev
+make compile -C evaluation/urn/milch/swift/
+```
+
+Compile and run the BLOG baseline
+```
+cd evaluation/urn/milch 
+python3 compile.py
+python3 run.py
+cd ../../..
+```
+
+Run UPIX-VE-DCC
+```
+uv run -p python3.13 --frozen --extra=cpu evaluation/urn/run_comp.py sequential vmap_local 20 --jit_inf
+```
+
+### Section 5: Scaling Experiments
+
+We have implemented scripts to launch the `run_scale.py` scripts for each model with varying hardware and workload.
+Set the `$platform, $ndevices = cpu | cuda` arguments depending on your hardware.
+`$ndevices` **has to be a power of 2**.
+If you do not have a CPU with a processor count that is a power of 2, then you may prefix the following commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 python3 experiments/...` to use 8 CPUs (only works on Linux).
+We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA GPUs (without Docker) using following configurations:
+```
+($platform, $ndevices) =
+    (cpu, 8) | (cpu, 16) | (cpu, 32) | (cpu, 64) |
+    (cuda, 1) | (cuda, 2) | (cuda, 4) | (cuda, 8)
+```
+
+The script arguments following `$platform, $ndevices` set the workload range for each experimeent in log2 base.
+
+For instance
+```
+python3 experiments/runners/run_pedestrian_scale.py cuda 1 0 20 sequential
+```
+runs the scaling experiment for the Pedestrian model with number of MCMC chains varying from `2^0=1` to `2^20=1048576` on a single GPU.
+
+If you have less powerful hardware or do not want to run long experiments (they run up to 5 hours), you may lower the workloads.
+
+For instance, with arguments `cuda 1 0 19 sequential` the experiment should take half the time, with `cuda 1 0 18 sequential` it should take a quarter of the time, and so on.
+
+#### Scaling MCMC - Pedestrian Model
+```
+python3 experiments/runners/run_pedestrian_scale.py $platform $ndevices 0 20 sequential
+```
+#### Scaling RJMCMC - Gaussian Mixture Model
+```
+python3 experiments/runners/run_gmm_scale.py $platform $ndevices 0 18 sequential
+```
+#### Scaling SDVI - Gaussian Process Model
+```
+python3 experiments/runners/run_gp_vi_scale.py $platform $ndevices 0 14 sequential
+```
+#### Scaling SMC - Gaussian Process Model
+```
+python3 experiments/runners/run_gp_smc_scale.py $platform $ndevices 0 15 sequential
+```
+#### MCMC Reference NP-DHMC - Pedestrian Model
+```
+python3 experiments/runners/run_npdhmc_scale.py $ndevices 0 20
+```
+
+#### RJMCMC Reference Gen RJMCMC - Gaussian Mixture Model
+```
+python3 experiments/runners/run_rjmcmc_scale.py $ndevices 0 15
+```
+
+#### SDVI Reference Original SDVI - Gaussian Process Model
+```
+python3 experiments/runners/run_sdvi_scale.py 1 0 3
+```
+
+#### SMC Reference AutoGP - Gaussian Process Model
+```
+python3 experiments/runners/run_autogp_scale.py $ndevices 0 15
+```

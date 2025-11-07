@@ -44,7 +44,7 @@ ax2 = ax1.twinx()
 
 ax2.set_ylabel('sum of factor sizes', rotation=270, labelpad=14)
 ax2.set_yscale("log")
-ax2.plot(factors_size, marker=M[2], label="factor size", color="tab:gray", zorder=1, alpha=0.5)
+ax2.plot(factors_size, marker=M[2], label="cumulative size of factors", color="tab:gray", zorder=1, alpha=0.5)
 ax2.tick_params(axis='y')
 leg = ax2.legend(loc="lower right")
 leg.get_frame().set_linewidth(0.0)

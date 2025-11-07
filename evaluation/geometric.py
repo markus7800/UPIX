@@ -2,12 +2,13 @@
 from upix.all import *
 import jax
 import jax.numpy as jnp
+from upix.core import SLP
 import upix.distributions as dist
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import List
 from time import time
-from upix.infer.mcmc.mcmc_core import MCMCState, CarryStats
+from upix.infer.mcmc.mcmc_core import MCMCRegime, MCMCState, CarryStats
 
 import logging
 setup_logging(logging.WARNING)
@@ -46,14 +47,17 @@ m.set_slp_sort_key(lambda slp: find_i_max(slp.decision_representative))
 class DCCConfig(MCMCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         return MCMCSteps()
-    def run_inference(self, slp, rng_key) -> InferenceResult:
+    
+    def make_inference_task(self, slp, rng_key) -> InferenceTask:
         log_prob = slp.log_prob(slp.decision_representative)
-        return MCMCInferenceResult(
+        return InferenceTask(lambda : MCMCInferenceResult(
             None,
             MCMCState(jnp.array(0,int), jnp.array(1.,float), dict(), broadcast_jaxtree(slp.decision_representative, (1,)), log_prob, CarryStats(), None),
             1,
             1,
             False
+            ),
+            ()
         )
     def estimate_log_weight(self, slp, rng_key):
         # super().estimate_log_weight(slp, rng_key)
@@ -64,22 +68,20 @@ class DCCConfig(MCMCDCC[T]):
         return LogWeightEstimateFromPrior(log_weight, jnp.array(1, int), jnp.exp(log_weight), 1)
     
 
-
 dcc_obj = DCCConfig(m, verbose=2,
               init_n_samples=1,
               estimate_weight_n_samples=10_000_000,
               max_iterations=3,
               n_lmh_update_samples=1000,
               max_active_slps=100,
+              parallelisation=ParallelisationConfig(
+                  ParallelisationType.Sequential,
+                  VectorisationType.GlobalVMAP,
+                  1,
+            )
 )
 
-t0 = time()
+result, timings = timed(dcc_obj.run)(jax.random.key(0))
+result.pprint(sortkey="slp")
 
-result = dcc_obj.run(jax.random.key(0))
-result.pprint()
-
-t1 = time()
-
-print(f"Total time: {t1-t0:.3f}s")
-comp_time = compilation_time_tracker.get_total_compilation_time_secs()
-print(f"Total compilation time: {comp_time:.3f}s ({comp_time / (t1 - t0) * 100:.2f}%)")
+print(timings)
