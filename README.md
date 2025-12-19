@@ -6,7 +6,7 @@
 This means that control flow and array shapes are allowed to depend on the values sampled during execution.
 This is **fundamentally incompatible with JIT-compilation in JAX**.
 Thus, probabilistic programming systems built on top of JAX like NumPyro are restricted to models with static support, i.e. they disallow Python control flow.
-UPIX realises the **Divide-Conquer-Combine (DCC)** approach [1] as a framework which brings back JIT-compilation for universal PPLs.
+UPIX realises the **Divide-Conquer-Combine (DCC)** approach [1] as a framework which brings back JIT-compilation for universal PPLs and enables running inference on CPUs, GPUs or TPUs.
 
 At its core the DCC approach splits up a model with stochastic support into a potentially infinite number of sub-models with static support.
 In UPIX this is realised with a custom JAX interpreter which records and compiles the probabilistic program for *each* choice of branching decisions (all instances where an abstract JAX array tracer is made concrete).
