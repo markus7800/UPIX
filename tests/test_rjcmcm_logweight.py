@@ -197,6 +197,8 @@ Z[9,10] = 0.120249
 Z[10,10] = 0.870022
 print(Z[:5,:5])
 
+# method 1: leverage detailed balance to solve by via graph traversal
+print("method 1")
 A = np.zeros((11,11))
 b = np.zeros(11)
 
@@ -217,3 +219,39 @@ logw -= scipy.special.logsumexp(logw)
 w = np.exp(logw)
 for i in range(11):
     print(f"{i}. {w[i]:.8f}")
+
+# method 2: solve with eigenvector
+print("method 2")
+P = Z.T
+P[10,:] /= P[10,:].sum() # augmentation
+print("stochastic matrix: rows sum to 1", P.sum(axis=1))
+e = np.linalg.eig(P.T)
+idx = np.argmin(np.abs(e.eigenvalues - 1.0))
+p = e.eigenvectors[:,idx]
+p = p / p.sum()
+for i in range(11):
+    print(f"{i}. {p[i]:.8f}")
+
+# method 3: solve with linear system
+print("method 3")
+A = P.T - np.eye(11)
+b = np.zeros(11)
+# add normalisation condtion
+A[-1,:] = 1
+b[-1] = 1
+
+print(np.linalg.det(A))
+p = np.linalg.solve(A, b)
+for i in range(11):
+    print(f"{i}. {p[i]:.8f}")
+    
+# method 4: matrix iteration
+print("method 4")
+P_lim = np.linalg.matrix_power(P, 1000)
+for i in range(11):
+    for j in range(11):
+        print(f"{P_lim[i,j]:.8f}", end=" ")
+    print()
+    
+print("method 5")
+print(scipy.linalg.null_space(P.T - np.eye(11)))
