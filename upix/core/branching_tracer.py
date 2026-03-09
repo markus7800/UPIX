@@ -61,8 +61,26 @@ class BranchingTracer(jax_core.Tracer):
     def __bool__(self):
         return bool(self._branching())
         
+    def __int__(self):
+        return int(self._branching())
+    
+    def __float__(self):
+        return float(self._branching())
+    
+    def __complex__(self):
+        return complex(self._branching())
+    
+    def __hex__(self):
+        return hex(self._branching())
+    
+    def __oct__(self):
+        return oct(self._branching())
+    
     def __index__(self):
         return int(self._branching())
+    
+    def item(self, *args):
+        return self._branching().item(*args)
 
     def full_lower(self):
         return jax_core.full_lower(self.val)
