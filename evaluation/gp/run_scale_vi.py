@@ -19,11 +19,14 @@ from setup_parallelisation import get_parallelisation_config
 
 from gp_vi import *
 from upix.infer.variational_inference.optimizers import Adagrad, SGD, Adam
-from vi_plots import plot_results
+from vi_utils import plot_results, compute_lppd, save_results
 
 from enumerate_slps import find_active_slps_through_enumeration
 
+# AutoGPConfig()
+# xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_autogp()
 RecheiltConfig()
+xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_sdvi()
 
 class VIConfig2(VIConfig):
     def __init__(self, model: Model, *ignore, verbose=0, **config_kwargs) -> None:
@@ -54,40 +57,13 @@ if __name__ == "__main__":
         slp_max_n_leaf = 4,
     )
 
-    result, timings = timed(vi_dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(vi_dcc_obj.run)(jax.random.key(args.seed))
     result.pprint()
     
+    lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 100)
+    print("lppd:", lppd)
     if args.show_plots:
-        plot_results(result)
-        
-        
-    K = int(args.n_runs) * int(args.L)
-    workload = {
-        "K": K,
-        "L": args.L,
-        "n_runs": args.n_runs,
-        "n_iter": args.n_iter,
-        "n_slps": len(result.get_slps()),
-        "config": NODE_CONFIG.NAME
-    }
+        plot_results(result, xs, ys, xs_val, ys_val)
 
-    result_metrics = {
-        "result_str": result.sprint(sortkey="slp"),
-        "pmap_check": str(check_pmap())
-    }
-        
-    json_result = {
-        "workload": workload,
-        "timings": timings,
-        "dcc_timings": vi_dcc_obj.get_timings(),
-        "result_metrics": result_metrics,
-        "args": args.__dict__,
-        "pconfig": vi_dcc_obj.pconfig.__dict__,
-        "environment_info": get_environment_info()
-    }
-    
     if not args.no_save:
-        prefix = f"K_{K:07d}_nruns_{args.n_runs}_L_{args.L}_nslps_{len(result.get_slps())}_niter_{args.n_iter}_"
-        write_json_result(json_result, "gp", "vi", "scale", prefix=prefix)
-
-
+        save_results(args, result, vi_dcc_obj, timings, lppd, "scale")

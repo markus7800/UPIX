@@ -17,10 +17,14 @@ from setup_parallelisation import get_parallelisation_config
 from upix.infer import InferenceResult, LogWeightEstimate
 
 from gp_smc import *
+from smc_utils import plot_results, compute_lppd, save_results
 
 from enumerate_slps import find_active_slps_through_enumeration
 
 AutoGPConfig()
+xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_autogp()
+# RecheiltConfig()
+# xs, xs_val, ys, ys_val = get_data_sdvi()
 
 class SMCDCCConfig2(SMCDCCConfig[T]):
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
@@ -42,77 +46,17 @@ if __name__ == "__main__":
         parallelisation = get_parallelisation_config(args),
         smc_n_particles = args.n_particles,
         disable_progress=args.no_progress,
-        slp_max_n_leaf = 4
+        slp_max_n_leaf = 4,
+        n_data = len(ys)
     )
 
-    result, timings = timed(smc_dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(smc_dcc_obj.run)(jax.random.key(args.seed))
     result.pprint()
 
+    lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 100)
+    print("lppd:", lppd)
     if args.show_plots:
-        slp_weights = list(result.get_slp_weights().items())
-        slp_weights.sort(key=lambda v: v[1])
-
-        xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
-        
-        for slp_ix in range(1,5+1):
-            slp, weight = slp_weights[-slp_ix]
-            print(slp.formatted(), weight)
-            
-            weighted_samples = result.get_samples_for_slp(slp).unstack()
-            _, weights = weighted_samples.get()
-
-            xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
-
-            n_posterior_samples = 1_000
-
-            samples = []
-            sample_key = jax.random.key(0)
-            for i in tqdm(range(n_posterior_samples), desc="Sample posterior of MAP SLP"):
-                sample_key, key1, key2 = jax.random.split(sample_key, 3)
-
-                trace_ix = dist.Categorical(weights).sample(key1)
-                trace, weight = weighted_samples.get_selection(trace_ix)
-                
-                k = get_gp_kernel(trace)
-                noise = transform_param("noise", trace["noise"]) + 1e-5
-                mvn = k.posterior_predictive(xs, ys, noise, xs_pred, noise)
-
-                samples.append(mvn.sample(key2))
-
-            samples = jnp.vstack(samples)
-            m = jnp.mean(samples, axis=0)
-            q025 = jnp.quantile(samples, 0.025, axis=0)
-            q975 = jnp.quantile(samples, 0.975, axis=0)
-
-            plt.figure()
-            plt.title(f"{slp_ix}. {slp.formatted()}")
-            plt.scatter(xs, ys)
-            plt.scatter(xs_val, ys_val)
-            plt.plot(xs_pred, m, color="black")
-            plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
-        plt.show()
-        
-    workload = {
-        "n_particles": args.n_particles,
-        "n_slps": len(result.get_slps()),
-        "config": NODE_CONFIG.NAME
-    }
-
-    result_metrics = {
-        "result_str": result.sprint(sortkey="slp"),
-        "pmap_check": str(check_pmap())
-    }
-        
-    json_result = {
-        "workload": workload,
-        "timings": timings,
-        "dcc_timings": smc_dcc_obj.get_timings(),
-        "result_metrics": result_metrics,
-        "args": args.__dict__,
-        "pconfig": smc_dcc_obj.pconfig.__dict__,
-        "environment_info": get_environment_info()
-    }
+        plot_results(m, result, xs, ys, xs_val, ys_val, rescale_x, rescale_y)
     
     if not args.no_save:
-        prefix = f"nparticles_{args.n_particles:07d}_nslps_{len(result.get_slps())}_"
-        write_json_result(json_result, "gp", "smc", "scale", prefix=prefix)
+        save_results(args, result, smc_dcc_obj, timings, lppd, "scale")

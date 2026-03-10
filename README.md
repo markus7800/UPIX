@@ -201,12 +201,12 @@ uv run -p python3.13 --frozen --extra=cpu --with pandas evaluation/gp/run_comp_v
 #### Section 4.3: RJMCMC - Gaussian Mixture Model
 If you do not use the docker image, install the julia packages
 ```
-julia --project=evaluation/gmm/gen -e "import Pkg; Pkg.instantiate()
+julia --project=evaluation/gmm/gen -e "import Pkg; Pkg.instantiate()"
 ```
 
 Run RJMCMC Gen baseline (with 8 threads)
 ```
-julia -t 8 --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl 8 25000
+julia -t 8 --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl 8 25000 0
 ```
 
 Run UPIX-RJMCMC-DCC (with 8 CPU devices)
@@ -224,7 +224,7 @@ julia --project=evaluation/gp/autogp -e "import Pkg; Pkg.instantiate()"
 
 Run AutoGP baseline (with 10 threads)
 ```
-julia -t 10 --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl 100 false
+julia -t 10 --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl 100 false 0
 ```
 
 
@@ -245,10 +245,9 @@ make compile -C evaluation/urn/milch/swift/
 
 Compile and run the BLOG baseline
 ```
-cd evaluation/urn/milch 
-python3 compile.py
-python3 run.py
-cd ../../..
+uv run --directory evaluation/urn/milch compile.py
+
+uv run --with numpy,matplotlib --directory evaluation/urn/milch run.py
 ```
 
 Run UPIX-VE-DCC

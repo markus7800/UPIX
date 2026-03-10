@@ -222,7 +222,7 @@ def calculate_intermediate_lppd(
     log_posterior_predictive_densities = []
 
     num_iterations = len(list(bt2weights.values())[0])
-    for ix in range(num_iterations):
+    for ix in [num_iterations-1]: # MB: only care about last iteration range(num_iterations):
         # Create distribution over branching traces
         bt_and_weights = list(bt2weights.items())
         branching_traces = [bt for bt, _ in bt_and_weights]
@@ -314,13 +314,15 @@ def main(cfg):
         init_loc_fn=get_init_fn(cfg.init_loc_fn),
         slps_identified_by_discrete_samples=model.slps_identified_by_discrete_samples,
     )
+    # print(f"{sdvi.model.X_val=} {sdvi.model.y_val=}")
+
 
     t0 = monotonic()
     _, exclusive_kl_results, resource_allocation_metrics = sdvi.run(
         forward_kl_callback
     )
     elapsed = monotonic() - t0
-    print(f"Finished in {elapsed:.3f}s.") # ~ 1120s
+    logging.info(f"Finished in {elapsed:.3f}s.") # ~ 1120s
 
     # Plot diagnostics
     logging.info(resource_allocation_metrics["bt2num_selected"])
@@ -389,7 +391,7 @@ def main(cfg):
             cfg.posterior_predictive_num_samples,
         )
         # plot_lppd(lppds, "lppd.jpg")
-        logging.info(f"Log posterior predictive density: {lppds[-1]:.2f}")
+        logging.info(f"Log posterior predictive density: {lppds[-1]}")
     else:
         num_iterations = len(list(sdvi.bt2weight.values())[0])
         lppds = num_iterations * [float("nan")]
@@ -424,7 +426,7 @@ def main(cfg):
     with open("resource_allocation_metrics.pickle", "wb") as f:
         pickle.dump(resource_allocation_metrics, f)
         
-    if sdvi.SCALE_EXPERIMENT:
+    if sdvi.SCALE_EXPERIMENT or True:
         import sys
         import pathlib, json, uuid
         from datetime import datetime
@@ -449,7 +451,8 @@ def main(cfg):
             "workload": {
                 "L": sdvi.exclusive_kl_num_particles,
                 "n_iter": 1000,
-                "n_slps": len(sdvi.branching_traces)
+                "n_slps": len(sdvi.branching_traces),
+                "seed": args.seed,
             },
             "timings": {
                 "inference_time": sdvi.inference_time

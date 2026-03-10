@@ -18,16 +18,24 @@ def get_data_sdvi():
     ys = data[1]
     xs -= xs.min()
     xs /= xs.max()
+    rescale_x = lambda x: pd.to_datetime((np.array(x) * xs.max()) + xs.min())
     ys -= ys.mean()
     ys *= 4 / (ys.max() - ys.min())
+    rescale_y = lambda x: (np.array(x) / (4 / (ys.max() - ys.min()))) + ys.mean()
+    
 
     val_ix = round(xs.shape[0] * 0.9)
     xs, xs_val = xs[:val_ix], xs[val_ix:]
     ys, ys_val = ys[:val_ix], ys[val_ix:]
+    
+    # print("sdvi x test\n", data[0][val_ix:])
+    # print("transformed\n", xs_val)
+    # print("y test\n", data[1][val_ix:])
+    # print("transformed\n", ys_val)
 
-    return jnp.array(xs), jnp.array(xs_val), jnp.array(ys), jnp.array(ys_val)
+    return jnp.array(xs), jnp.array(xs_val), jnp.array(ys), jnp.array(ys_val), rescale_x, rescale_y
 
-xs_sdvi, xs_val_sdvi, ys_sdvi, ys_val_sdvi = get_data_sdvi()
+xs_sdvi, xs_val_sdvi, ys_sdvi, ys_val_sdvi, rescale_x_sdvi, rescale_y_sdvi = get_data_sdvi()
 # plt.scatter(xs, ys, s=2)
 # plt.scatter(xs_val, ys_val, s=2)
 # plt.show()
@@ -57,6 +65,10 @@ def get_data_autogp():
     ys_val = slope_ys * ys_val + intercept_ys
     rescale_y = lambda x: (np.array(x) - intercept_ys) / slope_ys
 
+    # print("autogp x test\n",  data[0][-18:])
+    # print("transformed\n",  xs_val)
+    # print("y test\n",  data[1][-18:])
+    # print("transformed\n", ys_val)
 
     return jnp.array(xs), jnp.array(xs_val), jnp.array(ys), jnp.array(ys_val), rescale_x, rescale_y
 

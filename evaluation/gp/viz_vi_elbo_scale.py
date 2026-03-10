@@ -1,6 +1,6 @@
 from run_scale_vi import *
 from upix.infer import ADVI
-from vi_plots import plot_guide_posterior
+from vi_utils import plot_guide_posterior
 from upix.parallelisation import VectorisationType
 import pickle
 

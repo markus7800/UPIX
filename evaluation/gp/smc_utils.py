@@ -2,9 +2,65 @@ from gp_smc import *
 import matplotlib.pyplot as plt
 from upix.infer.dcc.mc_dcc import MCDCCResult
 
+def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, ys, xs_val, ys_val, n):
+    key = jax.random.key(0)
+    _, weights = weighted_samples.get()
 
-def plot_smc_posterior(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], n, title):
-    xs_pred = jnp.hstack((xs,jnp.linspace(1.,1.5,50)))
+    l = 0.
+    for i in range(n):
+        key, trace_select_key = jax.random.split(key, 2)
+        trace_ix = dist.Categorical(weights).sample(trace_select_key)
+        trace, weight = weighted_samples.get_selection(trace_ix)
+        
+        k = get_gp_kernel(trace)
+        noise = transform_param("noise", trace["noise"]) + 1e-5
+        mvn = k.posterior_predictive(xs, ys, noise, xs_val, noise)
+        l += mvn.log_prob(ys_val) / n
+    return l
+    
+    
+def compute_lppd(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, n):
+    slp_weights = list(result.get_slp_weights().items())
+    slp_weights.sort(key=lambda v: v[1])
+
+    lp = 0.
+    for i in range(len(slp_weights)):
+        slp, weight = slp_weights[-(i+1)]
+        if (weight < 1e-4): break
+        weighted_samples = result.get_samples_for_slp(slp).unstack()
+        lp += lppd_particles(weighted_samples, xs, ys, xs_val, ys_val, n) * weight
+
+    return float(lp)
+
+def save_results(args, result: MCDCCResult, smc_dcc_obj: SMCDCC, timings: dict, lppd: float, folder: str):
+    workload = {
+        "n_particles": smc_dcc_obj.smc_n_particles,
+        "n_slps": len(result.get_slps()),
+        "config": NODE_CONFIG.NAME,
+        "seed": args.seed
+    }
+
+    result_metrics = {
+        "result_str": result.sprint(sortkey="slp"),
+        "lppd": lppd,
+    }
+        
+    json_result = {
+        "workload": workload,
+        "timings": timings,
+        "dcc_timings": smc_dcc_obj.get_timings(),
+        "result_metrics": result_metrics,
+        "args": args.__dict__,
+        "pconfig": smc_dcc_obj.pconfig.__dict__,
+        "environment_info": get_environment_info()
+    }
+    
+    prefix = f"nparticles_{smc_dcc_obj.smc_n_particles:07d}_nslps_{len(result.get_slps())}_"
+    write_json_result(json_result, "gp", "smc", folder, prefix=prefix)
+
+
+def plot_smc_posterior(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, ys, xs_val, ys_val, n, title):
+    xs_pred = jnp.hstack((xs,jnp.linspace(xs_val[0], xs_val[0] + 4*(xs_val[-1]-xs_val[0]),50)))
     
     key = jax.random.key(0)
     
@@ -33,7 +89,7 @@ def plot_smc_posterior(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], 
     plt.fill_between(xs_pred, q025, q975, alpha=0.5, color="tab:blue")
     plt.title(title)
     
-def plot_results(m: Model, result: MCDCCResult[Trace]):
+def plot_results(m: Model, result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, rescale_x, rescale_y):
     slp_weights = list(result.get_slp_weights().items())
     slp_weights.sort(key=lambda v: v[1])
 
@@ -41,7 +97,7 @@ def plot_results(m: Model, result: MCDCCResult[Trace]):
     for i in range(min(len(slp_weights),5)):
         slp, weight = slp_weights[-(i+1)]
         weighted_samples = result.get_samples_for_slp(slp).unstack()
-        plot_smc_posterior(weighted_samples, 100, slp.formatted() + f" {weight:.6f}")
+        plot_smc_posterior(weighted_samples, xs, ys, xs_val, ys_val, 100, slp.formatted() + f" {weight:.6f}")
         
 
     plt.figure()

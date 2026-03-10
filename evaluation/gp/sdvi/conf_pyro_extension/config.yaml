@@ -1,8 +1,8 @@
 hydra:
   run:
-    dir: ./experiments/data/sdvi_tmp/${name}/${hydra.job.override_dirname}/seed=${seed}
+    dir: ./experiments/data/gp/sdvi/${name}/${hydra.job.override_dirname}/seed=${seed}
   sweep:
-    dir: ./experiments/data/sdvi_tmp/${name}/${hydra.job.override_dirname}
+    dir: ./experiments/data/gp/sdvi/${name}/${hydra.job.override_dirname}
   job:
     config:
       override_dirname:

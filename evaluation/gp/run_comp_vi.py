@@ -14,15 +14,18 @@ from setup_parallelisation import get_parallelisation_config
 
 from gp_vi import *
 from upix.infer.variational_inference.optimizers import Adagrad, SGD, Adam
-from vi_plots import plot_results
+from vi_utils import plot_results, compute_lppd, save_results
 
+# AutoGPConfig()
+# xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_autogp()
 RecheiltConfig()
+xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_sdvi()
 
 if __name__ == "__main__":
     m = gaussian_process(xs, ys)
     m.set_slp_formatter(lambda slp: str(get_gp_kernel(slp.decision_representative)))
     m.set_slp_sort_key(lambda slp: get_gp_kernel(slp.decision_representative).size())
-    m.set_equivalence_map(equivalence_map)
+    # m.set_equivalence_map(equivalence_map)
     
     vi_dcc_obj = VIConfig(m, verbose=2,
         init_n_samples=1_000,
@@ -35,8 +38,14 @@ if __name__ == "__main__":
         disable_progress=args.no_progress
     )
 
-    result, timings = timed(vi_dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(vi_dcc_obj.run)(jax.random.key(args.seed))
     result.pprint()
 
+    lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 100)
+    print("lppd:", lppd)
     if args.show_plots:
-        plot_results(result)
+        plot_results(result, xs, ys, xs_val, ys_val)
+    
+    if not args.no_save:
+        save_results(args, result, vi_dcc_obj, timings, lppd, "comp")
+

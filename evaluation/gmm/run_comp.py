@@ -15,6 +15,8 @@ setup_logging(logging.WARNING)
 
 from gmm_rjmcmc import *
 
+from utils import save_result
+
 if __name__ == "__main__":
     m = gmm(ys)
     m.set_slp_formatter(formatter)
@@ -27,7 +29,7 @@ if __name__ == "__main__":
         parallelisation=get_parallelisation_config(args)
     )
 
-    result, timings = timed(dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(dcc_obj.run)(jax.random.key(args.seed))
     result.pprint(sortkey="slp")
     
     W1_distance, infty_distance = get_distance_to_gt(result)
@@ -65,3 +67,5 @@ if __name__ == "__main__":
         plt.scatter(ys, jnp.full_like(ys,0), marker="x", color="black")
         plt.show()
         
+    if not args.no_save:
+        save_result(args, result, dcc_obj, timings, W1_distance.item(), infty_distance.item(), "comp")

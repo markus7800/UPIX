@@ -11,11 +11,14 @@ from upix.viz import *
 from setup_parallelisation import get_parallelisation_config
 
 from gp_smc import *
-from smc_plots import plot_results
+from smc_utils import plot_results, compute_lppd, save_results
 
 AutoGPConfig()
+xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_autogp()
 # RecheiltConfig()
+# xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_sdvi()
 
+        
 if __name__ == "__main__":
     
     m = gaussian_process(xs, ys)
@@ -34,11 +37,19 @@ if __name__ == "__main__":
         max_new_active_slps = 5,
         one_inference_run_per_slp = True,
         parallelisation = get_parallelisation_config(args),
-        disable_progress=args.no_progress
+        disable_progress=args.no_progress,
+        n_data = len(ys)
     )
 
-    result, timings = timed(smc_dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(smc_dcc_obj.run)(jax.random.key(args.seed))
     result.pprint()
-
+    
+    lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 100)
+    print("lppd:", lppd)
     if args.show_plots:
-        plot_results(m, result)
+        plot_results(m, result, xs, ys, xs_val, ys_val, rescale_x, rescale_y)
+        
+    
+    if not args.no_save:
+        save_results(args, result, smc_dcc_obj, timings, lppd, "comp")
+

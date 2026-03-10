@@ -12,9 +12,11 @@ using Printf
 function main()
     n_particles = parse(Int, ARGS[1])
     show_plots = parse(Bool, ARGS[2])
+    seed = parse(Int, ARGS[3])
     n_threads = Threads.nthreads()
     println("#Threads: ", n_threads)
     println("#Particles: ", n_particles)
+    println("seed: ", seed)
 
     data = CSV.File("evaluation/gp/tsdl.161.csv"; header=[:ds, :y], types=Dict(:ds=>Dates.Date, :y=>Float64));
     df = DataFrames.DataFrame(data)
@@ -24,21 +26,14 @@ function main()
     df_train = df[1:end-n_test, :]
     df_test = df[end-n_test+1:end, :]
 
-    # node_dist_leaf = AutoGP.GP.normalize([0., 0, 0, 0, 1,])
-    # noise = AutoGP.Model.transform_param(:noise,-3.)
-    # noise = nothing
-    # config = AutoGP.GP.GPConfig(node_dist_leaf=node_dist_leaf, max_depth=1, noise=noise)
-
-    # config = AutoGP.GP.GPConfig(max_depth=1)
-
-    config = AutoGP.GP.GPConfig()
+    config = AutoGP.GP.GPConfig(changepoints=false)
 
     println(config)
 
 
     model = AutoGP.GPModel(df_train.ds, df_train.y; n_particles=n_particles, config=config);
 
-    AutoGP.seed!(0)
+    AutoGP.seed!(seed)
 
     t0 = time_ns()
     Base.cumulative_compile_timing(true)
@@ -70,6 +65,23 @@ function main()
     end
     print_top_10()
     top_10_ix = [i for (w, i, k) in kernels_sorted[1:min(length(kernels_sorted),10)]]
+
+    function LPPD()
+        x_test = AutoGP.Transforms.apply(model.ds_transform, AutoGP.to_numeric.(df_test.ds))
+        y_test = AutoGP.Transforms.apply(model.y_transform, df_test.y)
+        # println("x_test:", x_test)
+        # println("y_test:", y_test)
+        l = 0
+        for (w, i, k) in kernels_sorted
+            trace = model.pf_state.traces[i]
+            if w <= 1e-4 break end
+            mvn = AutoGP.Inference.predict_mvn(trace, x_test)
+            l += w * AutoGP.Distributions.logpdf(mvn, y_test)
+        end
+        println("lppd: ", l)
+        return l
+    end
+    lppd = LPPD()
 
     if show_plots
         plt.figure()
@@ -126,7 +138,11 @@ function main()
 {
   "id": "$id",
   "workload": {
-    "n_particles": $n_particles
+    "n_particles": $n_particles,
+    "seed": $seed
+  },
+  "result_metrics": {
+    "lppd": $lppd
   },
   "timings": {
     "inference_time": $(wall_time - comp_time),

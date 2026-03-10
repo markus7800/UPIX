@@ -29,6 +29,8 @@ m.set_slp_sort_key(find_t_max)
 from upix.infer import MCMCDCC, T, MCMCRegime, MCMCStep, InferenceResult, LogWeightEstimate, MCMCInferenceResult
 from upix.infer import AllVariables, DHMC
 
+from utils import save_results
+
 class DCCConfig(MCMCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         regime = MCMCStep(AllVariables(), DHMC(50, 0.05, 0.15, unconstrained=False))
@@ -119,7 +121,7 @@ if __name__ == "__main__":
                 disable_progress=args.no_progress
     )
 
-    result, timings = timed(dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(dcc_obj.run)(jax.random.key(args.seed))
     result.pprint(sortkey="slp")
 
     gt_xs = jnp.load("evaluation/pedestrian/gt_xs-100.npy")
@@ -155,36 +157,6 @@ if __name__ == "__main__":
         plt.plot(gt_xs, jnp.abs(cdf_est - gt_cdf))
         plt.title(title)
         plt.show()
-        
-    workload = {
-        "n_chains": dcc_obj.mcmc_n_chains,
-        "n_samples_per_chain": dcc_obj.mcmc_n_samples_per_chain,
-        "n_slps": len(result.get_slps())
-    }
-    
-    avg_acceptance_rate = jnp.mean(jnp.vstack(
-        [jnp.vstack([info.accepted/args.n_samples_per_chain for info in r[0].last_state.infos if isinstance(info, HMCInfo)])
-         for r in dcc_obj.inference_results.values() if isinstance(r[0], MCMCInferenceResult) and r[0].last_state.infos is not None]))
-
-    result_metrics = {
-        "W1": W1_distance.item(),
-        "L_inf": infty_distance.item(),
-        "result_str": result.sprint(sortkey="slp"),
-        "avg_acceptance_rate": avg_acceptance_rate.item(),
-        "pmap_check": str(check_pmap())
-    }
-        
-    json_result = {
-        "workload": workload,
-        "timings": timings,
-        "dcc_timings": dcc_obj.get_timings(),
-        "result_metrics": result_metrics,
-        "args": args.__dict__,
-        "pconfig": dcc_obj.pconfig.__dict__,
-        "environment_info":  get_environment_info()
-    }
     
     if not args.no_save:
-        prefix = f"nchains_{dcc_obj.mcmc_n_chains:07d}_nslps_{len(result.get_slps())}_niter_{dcc_obj.mcmc_n_samples_per_chain}_"
-        write_json_result(json_result, "pedestrian", "scale", prefix=prefix)
-
+        save_results(args, result, dcc_obj, timings, W1_distance.item(), infty_distance.item(), "scale")

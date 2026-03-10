@@ -12,8 +12,6 @@ import logging
 setup_logging(logging.WARN)
 
 from data import *
-xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_autogp()
-
 
 def normalise(a: jax.Array): return a / a.sum()
 
@@ -42,8 +40,6 @@ def RecheiltConfig():
     NODE_CONFIG.N_LEAF_NODE_TYPES = 4
     NODE_CONFIG.NODE_TYPES = [UnitRationalQuadratic, UnitPolynomialDegreeOne, UnitSquaredExponential, UnitPeriodic, Plus, Times]
     NODE_CONFIG.NODE_TYPE_PROBS = normalise(jnp.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1],float))
-
-RecheiltConfig()
 
 def covariance_prior(idx: int) -> GPKernel:
     node_type = sample(f"{idx}_node_type", dist.Categorical(NODE_CONFIG.NODE_TYPE_PROBS))

@@ -49,8 +49,9 @@ class SMCDCCConfig(SMCDCC[T], Generic[T]):
         return regime
     
     def get_SMC_data_annealing_schedule(self, slp: SLP) -> Optional[DataAnnealingSchedule]:
-        step = round(len(ys)*0.1)
-        return data_annealing_schedule_from_range({"obs": range(step,len(ys),step)})
+        n_data = self.config["n_data"]
+        step = round(n_data*0.1)
+        return data_annealing_schedule_from_range({"obs": range(step,n_data,step)})
     
     # def get_SMC_tempering_schedule(self, slp: SLP) -> Optional[TemperetureSchedule]:
     #     schedule = tempering_schedule_from_sigmoid(jnp.linspace(-5,5,10))

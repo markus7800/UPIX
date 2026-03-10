@@ -1,69 +1,5 @@
 JAX_LOG_COMPILES=1
 
-## slurm
-
-srun -p GPU-l40s -w a-l40s-o-1 --gres=gpu:l40s:8 -c 64 --cpu-freq=high --pty bash
-
-## Pedestrian
-
-### Ground truth
-~ 1h
-uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/ground_truth.py sequential vmap_global 100 1_000_000 1000 1_000 
-
-~ 4h
-uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/ground_truth.py sequential vmap_global 1_000 1_000_000 1000 1_000 
-
-### Scale
-
-uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/run_scale.py sequential pmap 8 1048576 256 -num_workers ...
-
-uv run --frozen --python=python3.13 --extra=cuda evaluation/pedestrian/run_scale.py jax_devices vmap_glbal 8 1048576 256 -vmap_batch_size 524288 -num_workers ...
-
-uv run --frozen --python=python3.13 --extra=cpu evaluation/pedestrian/run_scale.py sequential pmap 8 1048576 256 --cpu -host_device_count ...
-
-### Nonparametric HMC
-
-uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 8 256 0 -n_processes 8  --disable_bar
-
-
-## GP
-
-uv run  --frozen --python=python3.13 --extra=cpu --with=pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local --cpu -omp 1 -num_workers=...
-
-uv run  --frozen --python=python3.13 --extra=cuda --with=pandas evaluation/gp/run_scale_vi.py sequential smap_local 1 1 1000 -host_device_count 64 --cpu
-
-
-
-# example section
-
-## pedestrian
-cd evaluation/pedestrian/nonparametric-hmc
-uv run -p python3.10 --no-project --with-requirements=requirements.txt pedestrian.py NP-DHMC 8 1000 100 -n_processes 8  --store_samples
-uv run -p python3.10 --no-project --with-requirements=requirements.txt check_results.py
-
-uv run evaluation/pedestrian/run_comp.py sequential pmap --show_plots -host_device_count 8
-
-## gp vi
-bash evaluation/gp/sdvi/run_comp.sh 10
-uv run -p python3.13 --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local
-
-## gp smc
-uv run --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -host_device_count 10 --show_plots
-
-## gmm
-uv run evaluation/gmm/run_comp.py sequential pmap -host_device_count 8
-
-julia -t 8 --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl 8 25000
-
-## urn
-
-cd evaluation/urn/milch  
-python3 run.py
-
-uv run evaluation/urn/run_comp.py sequential vmap_local 20 --jit_inf
-
-
-
 ## demo
 
 uv run evaluation/pedestrian/run_example.py sequential vmap_local
@@ -73,3 +9,163 @@ JAX_NUM_CPU_DEVICES=8 uv run evaluation/pedestrian/run_example.py sequential pma
 uv run --with=pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local
 
 uv run evaluation/urn/run_comp.py sequential vmap_local 20 --jit_inf
+
+
+# GP LPPD
+autogp x test
+126    1959-07-01
+127    1959-08-01
+128    1959-09-01
+129    1959-10-01
+130    1959-11-01
+131    1959-12-01
+132    1960-01-01
+133    1960-02-01
+134    1960-03-01
+135    1960-04-01
+136    1960-05-01
+137    1960-06-01
+138    1960-07-01
+139    1960-08-01
+140    1960-09-01
+141    1960-10-01
+142    1960-11-01
+143    1960-12-01
+transformed
+126    1.007889
+127    1.016040
+128    1.024191
+129    1.032080
+130    1.040231
+131    1.048120
+132    1.056271
+133    1.064423
+134    1.072048
+135    1.080200
+136    1.088088
+137    1.096240
+138    1.104128
+139    1.112280
+140    1.120431
+141    1.128320
+142    1.136471
+143    1.144360
+y test
+126    548
+127    559
+128    463
+129    407
+130    362
+131    405
+132    417
+133    391
+134    419
+135    461
+136    472
+137    535
+138    622
+139    606
+140    508
+141    461
+142    390
+143    432
+transformed
+126    0.735126
+127    0.762558
+128    0.523156
+129    0.383506
+130    0.271286
+131    0.378518
+132    0.408443
+133    0.343605
+134    0.413431
+135    0.518169
+136    0.545600
+137    0.702708
+138    0.919665
+139    0.879765
+140    0.635376
+141    0.518169
+142    0.341112
+143    0.445850
+
+sdvi x test
+130    10.833333
+131    10.916667
+132    11.000000
+133    11.083333
+134    11.166667
+135    11.250000
+136    11.333333
+137    11.416667
+138    11.500000
+139    11.583333
+140    11.666667
+141    11.750000
+142    11.833333
+143    11.916667
+y test
+130     81.701389
+131    124.701389
+132    136.701389
+133    110.701389
+134    138.701389
+135    180.701389
+136    191.701389
+137    254.701389
+138    341.701389
+139    325.701389
+140    227.701389
+141    180.701389
+142    109.701389
+143    151.701389
+transformed
+130    0.630899
+131    0.962945
+132    1.055609
+133    0.854837
+134    1.071053
+135    1.395378
+136    1.480320
+137    1.966806
+138    2.638621
+139    2.515069
+140    1.758312
+141    1.395378
+142    0.847115
+143    1.171439
+
+
+with different seeds
+0:
+[2026-03-06 09:45:03,899][root][INFO] - Log posterior predictive density: -0.54
+[2026-03-06 09:45:03,956][root][INFO] - Global ELBO: 27.683622862420474
+
+1:
+[2026-03-06 10:35:38,167][root][INFO] - Log posterior predictive density: 2.7079864627563492
+[2026-03-06 10:35:38,228][root][INFO] - Global ELBO: 30.15176693615133
+
+2:
+[2026-03-06 10:52:07,073][root][INFO] - Log posterior predictive density: -9.28225813475506
+[2026-03-06 10:52:07,135][root][INFO] - Global ELBO: -17.250652047916706
+
+3:
+[2026-03-06 11:11:04,376][root][INFO] - Log posterior predictive density: -8.054452320805064
+[2026-03-06 11:11:04,420][root][INFO] - Global ELBO: 28.23389050195987
+
+4:
+[2026-03-06 11:31:38,906][root][INFO] - Log posterior predictive density: -0.27967625966624043
+[2026-03-06 11:31:38,965][root][INFO] - Global ELBO: 4.2364881675406885
+
+x.mean(), x.std()
+(np.float64(-3.0892980511031443), np.float64(4.712041094253538))
+
+e.mean(), e.std()
+(np.float64(17.20465706315374), np.float64(19.913868876192588))
+
+run_comp_vi.py
+seed 0: lppd: 6.239265 in 164s
+seed 1: lppd: 5.7198586 in 160s
+seed 2: lppd: 6.4857144 in 172s
+seed 3: lppd: 5.686124 in 164s
+seed 4: lppd: 5.28597 in 162s

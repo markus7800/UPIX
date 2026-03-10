@@ -46,7 +46,7 @@ def pyro_walk_model() -> float:
 
 import torch.multiprocessing as mp
 
-def target_NP_LA_DHMC(rep, count, burnin, bar_pos=None, disable_bar=False, store_sampes=False):
+def target_NP_LA_DHMC(global_seed, rep, count, burnin, bar_pos=None, disable_bar=False, store_sampes=False):
     # pick best from paper
     eps = 0.1
     L = 5
@@ -61,13 +61,13 @@ def target_NP_LA_DHMC(rep, count, burnin, bar_pos=None, disable_bar=False, store
         L=L,
         K=K,
         alpha=alpha,
-        seed=rep,
+        seed=rep+global_seed*100,
         bar_pos=bar_pos,
         disable_bar=disable_bar,
         save_samples=store_sampes
     )
 
-def target_NP_DHMC(rep, count, burnin, bar_pos=None, disable_bar=False, store_sampes=False):
+def target_NP_DHMC(global_seed, rep, count, burnin, bar_pos=None, disable_bar=False, store_sampes=False):
     # pick from paper
     eps = 0.1
     num_steps = 50
@@ -78,7 +78,7 @@ def target_NP_DHMC(rep, count, burnin, bar_pos=None, disable_bar=False, store_sa
         burnin=burnin,
         eps=eps,
         leapfrog_steps=num_steps,
-        seed=rep,
+        seed=rep+global_seed*100,
         bar_pos=bar_pos,
         disable_bar=disable_bar,
         save_samples=store_sampes
@@ -96,6 +96,7 @@ if __name__ == "__main__":
     parser.add_argument("-n_processes", default=1, type=int)
     parser.add_argument("--disable_bar", action="store_true")
     parser.add_argument("--store_samples", action="store_true")
+    parser.add_argument("-seed", default=0, type=int)
     args = parser.parse_args()
 
     n_iter = args.n_iter
@@ -103,6 +104,7 @@ if __name__ == "__main__":
     repetitions = args.repetitions
     disable_bar=args.disable_bar
     store_samples=args.store_samples
+    seed=args.seed
 
     if args.n_processes > repetitions:
         n_processes = repetitions
@@ -115,20 +117,20 @@ if __name__ == "__main__":
         if n_processes > 1:
             processes = []
             with mp.Pool(n_processes) as p:
-                p.starmap(target_NP_LA_DHMC, [(rep, n_iter, burnin, rep % n_processes, disable_bar, store_samples) for rep in range(repetitions)])
+                p.starmap(target_NP_LA_DHMC, [(seed, rep, n_iter, burnin, rep % n_processes, disable_bar, store_samples) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")
-                target_NP_LA_DHMC(rep, n_iter, burnin, rep, disable_bar, store_samples)
+                target_NP_LA_DHMC(seed, rep, n_iter, burnin, rep, disable_bar, store_samples)
 
     elif args.algorithm == "NP-DHMC":
         if n_processes > 1:
             with mp.Pool(n_processes) as p:
-                p.starmap(target_NP_DHMC, [(rep, n_iter, burnin, rep % n_processes, disable_bar, store_samples) for rep in range(repetitions)])
+                p.starmap(target_NP_DHMC, [(seed, rep, n_iter, burnin, rep % n_processes, disable_bar, store_samples) for rep in range(repetitions)])
         else:
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")
-                target_NP_DHMC(rep, n_iter, burnin, rep, disable_bar, store_samples)
+                target_NP_DHMC(seed, rep, n_iter, burnin, rep, disable_bar, store_samples)
                 
     inference_time = monotonic() - t0
     tqdm.write(f"\nFinished in {inference_time:.3f}s.")
@@ -155,7 +157,8 @@ if __name__ == "__main__":
         "workload": {
             "n_chains": repetitions,
             "n_samples_per_chain": n_iter,
-            "burnin": burnin
+            "burnin": burnin,
+            "seed": seed,
         },
         "timings": {
             "inference_time": inference_time

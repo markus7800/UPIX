@@ -102,13 +102,14 @@ function main()
 
     n_chains = parse(Int, ARGS[1])
     n_samples_per_chain = parse(Int, ARGS[2])
+    seed = parse(Int, ARGS[3])
     nthreads = Threads.nthreads()
-    println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, nthreads=$nthreads")
+    println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, nthreads=$nthreads, seed=$seed")
     N = n_samples_per_chain
     result = Vector{Vector{Int}}(undef, n_chains)
 
     Threads.@threads for i in 1:n_chains
-        result[i] = run_inference(i, N)
+        result[i] = run_inference(i + 100*seed, N)
     end
     max_k = maximum(length(r) for r in result)
     cumulative_result = zeros(Int, max_k)
@@ -146,7 +147,8 @@ function main()
   "id": "$id",
   "workload": {
     "n_chains": $n_chains,
-    "n_samples_per_chain": $n_samples_per_chain
+    "n_samples_per_chain": $n_samples_per_chain,
+    "seed": $seed
   },
   "timings": {
     "inference_time": $(wall_time - comp_time),

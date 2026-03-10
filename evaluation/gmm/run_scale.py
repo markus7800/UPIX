@@ -17,7 +17,7 @@ setup_logging(logging.WARNING)
 
 from gmm_rjmcmc import *
 
-from upix.infer.mcmc.metropolis import MHInfo
+from utils import save_result
 
 class StaticDCCConfig(DCCConfig):
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
@@ -62,40 +62,11 @@ if __name__ == "__main__":
         disable_progress=args.no_progress
     )
 
-    result, timings = timed(dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(dcc_obj.run)(jax.random.key(args.seed))
     result.pprint(sortkey="slp")
     
-    workload = {
-        "n_chains": args.n_chains,
-        "n_samples_per_chain": args.n_samples_per_chain,
-        "n_slps": len(result.get_slps())
-    }
-    
-    avg_acceptance_rate = jnp.mean(jnp.vstack(
-        [jnp.vstack([info.accepted/args.n_samples_per_chain for info in r[0].last_state.infos if isinstance(info, MHInfo)])
-         for r in dcc_obj.inference_results.values() if isinstance(r[0], MCMCInferenceResult) and r[0].last_state.infos is not None]))
-
-
     W1_distance, infty_distance = get_distance_to_gt(result)
-
-    result_metrics = {
-        "result_str": result.sprint(sortkey="slp"),
-        "avg_acceptance_rate": avg_acceptance_rate.item(),
-        "pmap_check": str(check_pmap()),
-        "W1": W1_distance.item(),
-        "L_inf": infty_distance.item()
-    }
-        
-    json_result = {
-        "workload": workload,
-        "timings": timings,
-        "dcc_timings": dcc_obj.get_timings(),
-        "result_metrics": result_metrics,
-        "args": args.__dict__,
-        "pconfig": dcc_obj.pconfig.__dict__,
-        "environment_info": get_environment_info()
-    }
+    
     
     if not args.no_save:
-        prefix = f"nchains_{args.n_chains:07d}_nslps_{len(result.get_slps())}_niter_{args.n_samples_per_chain}_"
-        write_json_result(json_result, "gmm", "scale", prefix=prefix)
+        save_result(args, result, dcc_obj, timings, W1_distance.item(), infty_distance.item(), "scale")

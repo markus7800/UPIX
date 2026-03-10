@@ -26,6 +26,8 @@ from upix.infer import MCMCDCC, T, MCMCRegime, MCMCStep, InferenceResult, LogWei
 from upix.infer import LogWeightEstimateFromPrior, estimate_log_Z_for_SLP_from_prior
 from upix.infer import AllVariables, DHMC
 
+from utils import save_results
+
 class DCCConfig(MCMCDCC[T]):
     def get_MCMC_inference_regime(self, slp: SLP) -> MCMCRegime:
         regime = MCMCStep(AllVariables(), DHMC(50, 0.05, 0.15, unconstrained=False))
@@ -77,7 +79,7 @@ if __name__ == "__main__":
                 disable_progress=args.no_progress
     )
 
-    result, timings = timed(dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(dcc_obj.run)(jax.random.key(args.seed))
     result.pprint(sortkey="slp")
 
 
@@ -134,7 +136,6 @@ if __name__ == "__main__":
         plt.figure(figsize=(5,2.5))
         plt.hist(start_samples, weights=start_weights, density=True, bins=100, alpha=0.5)
         plt.plot(gt_xs, gt_pdf, label="ground truth")
-        print(start_samples.shape, start_weights.shape)
         kde = jax.scipy.stats.gaussian_kde(start_samples, weights=start_weights)
         plt.plot(gt_xs, kde(gt_xs), color="tab:blue", label="MCMC-DCC")
         plt.ylim(0,1.4)
@@ -168,27 +169,5 @@ if __name__ == "__main__":
         plt.show()
     
     
-    workload = {
-        "n_chains": dcc_obj.mcmc_n_chains,
-        "n_samples_per_chain": dcc_obj.mcmc_n_samples_per_chain,
-        "n_slps": len(result.get_slps())
-    }
-
-    result_metrics = {
-        "W1": W1_distance.item(),
-        "L_inf": infty_distance.item()
-    }
-        
-    json_result = {
-        "workload": workload,
-        "timings": timings,
-        "dcc_timings": dcc_obj.get_timings(),
-        "result_metrics": result_metrics,
-        "args": args.__dict__,
-        "pconfig": dcc_obj.pconfig.__dict__,
-        "environment_info":  get_environment_info()
-    }
-    
     if not args.no_save:
-        prefix = f"nchains_{dcc_obj.mcmc_n_chains:07d}_nslps_{len(result.get_slps())}_niter_{dcc_obj.mcmc_n_samples_per_chain}_"
-        write_json_result(json_result , "pedestrian", "scale", prefix=prefix)
+        save_results(args, result, dcc_obj, timings, W1_distance.item(), infty_distance.item(), "comp")

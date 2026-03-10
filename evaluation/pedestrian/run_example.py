@@ -78,7 +78,7 @@ if __name__ == "__main__":
                 disable_progress=args.no_progress
     )
 
-    result, timings = timed(dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(dcc_obj.run)(jax.random.key(args.seed))
     result.pprint(sortkey="slp")
 
 

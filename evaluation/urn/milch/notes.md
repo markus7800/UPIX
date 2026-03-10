@@ -1,8 +1,11 @@
 
-TODO: install armadillo
+TODO: install armadillo (14.6. for c++11)
 
 export CPATH=/opt/homebrew/include
 export LIBRARY_PATH=/opt/homebrew/lib
+
+to install from source
+sudo install_name_tool -id /usr/local/lib/libarmadillo.14.dylib /usr/local/lib/libarmadillo.14.dylib
 
 ```
 cd swift

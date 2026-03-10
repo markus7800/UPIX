@@ -11,4 +11,5 @@ uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/require
     resource_allocation.num_total_iterations=1000000 \
     sdvi.num_parallel_processes=$1 \
     sdvi.exclusive_kl_num_particles=1 \
-    sdvi.SCALE_EXPERIMENT=false
+    sdvi.SCALE_EXPERIMENT=false \
+    seed=$2

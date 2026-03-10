@@ -12,11 +12,13 @@ from setup_parallelisation import get_parallelisation_config
 from upix.parallelisation import VectorisationType
 
 from gp_smc_sh import *
-from smc_plots import plot_results
+from smc_utils import plot_results
 
 
 AutoGPConfig()
+xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_autogp()
 # RecheiltConfig()
+# xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_sdvi()
 
 if __name__ == "__main__":
     
@@ -31,15 +33,16 @@ if __name__ == "__main__":
         successive_halving=SuccessiveHalving(10_000, 10),
         parallelisation = get_parallelisation_config(args),
         round_n_particles_to_multiple = jax.device_count(),
-        disable_progress=args.no_progress
+        disable_progress=args.no_progress,
+        n_data = len(ys)
     )
     # assert smc_dcc_obj.pconfig.vectorisation == VectorisationType.LocalVMAP
 
-    result, timings = timed(smc_dcc_obj.run)(jax.random.key(0))
+    result, timings = timed(smc_dcc_obj.run)(jax.random.key(args.seed))
     result.pprint()
     
     if args.show_plots:
-        plot_results(m, result)
+        plot_results(m, result, xs, ys, xs_val, ys_val, rescale_x, rescale_y)
 
 
 # ((1Per * 1SqExp) + 1Poly): StackedSampleValues(dict, 1 x 530) with prob=0.000000, log_Z=144.877136

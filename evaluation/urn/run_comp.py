@@ -32,7 +32,7 @@ if __name__ == "__main__":
         N_max = args.n_slps
     )
 
-    result, timings = timed(config.run)(jax.random.key(0))
+    result, timings = timed(config.run)(jax.random.key(args.seed))
     result.pprint(sortkey="slp")
 
     gt = jnp.load("evaluation/urn/gt_ps.npy")
@@ -49,4 +49,28 @@ if __name__ == "__main__":
     if args.show_plots:
         plt.plot(err)
         plt.show()
-    print("Max err: ", jnp.max(err))
+    l_inf_distance = jnp.max(err)
+    print("Max err: ", l_inf_distance)
+    
+    workload = {
+        "n_slps":  args.n_slps,
+        "jit_inf": args.jit_inf,
+        "seed": args.seed
+    }
+    
+    result_metrics = {
+        "L_inf": l_inf_distance.item()
+    }
+        
+    json_result = {
+        "workload": workload,
+        "timings": timings,
+        "dcc_timings": config.get_timings(),
+        "result_metrics": result_metrics,
+        "args": args.__dict__,
+        "pconfig": config.pconfig.__dict__,
+        "environment_info": get_environment_info()
+    }
+    
+    prefix = f"nslps_{len(result.get_slps())}_jitinf_{args.jit_inf}_"
+    write_json_result(json_result, "urn", "ve", prefix=prefix)

@@ -1,6 +1,6 @@
 from run_scale_smc import *
 from upix.infer import SMC, ReweightingType, StratifiedResampling, ResampleType, ResampleTime
-from smc_plots import plot_smc_posterior
+from smc_utils import plot_smc_posterior
 import pickle
 
 if __name__ == "__main__":
