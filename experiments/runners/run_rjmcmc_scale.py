@@ -12,7 +12,7 @@ args = parser.parse_args()
 
 NCHAINS = [2**n for n in range(args.minpow,args.maxpow+1)]
 
-CMD_TEMPLATE = "julia -t %d --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl %d %d"
+CMD_TEMPLATE = "julia -t %d --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl %d %d 0"
 
 RUNNER_T0 = time.monotonic()
 

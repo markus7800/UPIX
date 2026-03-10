@@ -12,7 +12,7 @@ args = parser.parse_args()
 
 NPARTICLES = [2**n for n in range(args.minpow,args.maxpow+1)]
 
-CMD_TEMPLATE = "OMP_NUM_THREADS=1 julia -t %d --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl %d false"
+CMD_TEMPLATE = "OMP_NUM_THREADS=1 julia -t %d --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl %d false 0"
 
 RUNNER_T0 = time.monotonic()
 
