@@ -70,6 +70,7 @@ class LMHCtx(SampleContext):
         self.log_likelihood_proposed += lf
         
 
+from tqdm.auto import tqdm
 def lmh(m: Model, resample_selector: VariableSelector, X: Trace, rng_key: PRNGKey):
     log_priors_current: Dict[str, FloatArray] = dict()
     log_likelihood_current: FloatArray = jnp.array(0., float)
@@ -92,4 +93,5 @@ def lmh(m: Model, resample_selector: VariableSelector, X: Trace, rng_key: PRNGKe
     acceptance_log_prob += sum((ctx.log_priors_proposed[addr] - log_priors_current[addr] for addr in log_priors_current.keys() & ctx.log_priors_proposed.keys()), start=jnp.array(0,float))
     acceptance_log_prob = jax.lax.min(acceptance_log_prob, 0.)
 
+    tqdm.write(f"{resample_address}: {ctx.X_current[resample_address]} -> {ctx.X_proposed[resample_address]} {jnp.exp(acceptance_log_prob)}")
     return ctx.X_proposed, acceptance_log_prob

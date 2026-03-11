@@ -201,6 +201,9 @@ class MCDCC(AbstractDCC[MCDCCResult[DCC_COLLECT_TYPE]]):
         combined_inference_results: Dict[SLP, InferenceResult] = {slp: reduce(lambda x, y: x.combine_results(y), results) for slp, results in inference_results.items()}
         combined_log_weight_estimates: Dict[SLP, LogWeightEstimate] = {slp: reduce(lambda x, y: x.combine_estimates(y), results) for slp, results in log_weight_estimates.items()}
 
+        # TODO: this should be
+        # self.inference_results
+        # self.log_weight_estimates
         self.combined_inference_results = {slp: [combined_result] for slp, combined_result in combined_inference_results.items()} # small optimisation to avoid repeated combination
         self.log_weight_estimates = {slp: [combined_estimate] for slp, combined_estimate in combined_log_weight_estimates.items()} # small optimisation to avoid repeated combination
 

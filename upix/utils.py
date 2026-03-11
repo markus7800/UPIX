@@ -104,14 +104,17 @@ def maybe_jit_warning(tracker: JitVariationTracker, input: Any):
         if logger.level <= logging.DEBUG:
             tabs = " " * (len("upix - WARNING: ") + len(f"Compile {tracker.name} with input:") - 8)
             msg += "".join([f"\n{tabs}prev-input: {prev_input}" for prev_input in tracker.get_variations(axis_env_str)])
-        log_warn("Re-" + msg)
+        log_warn("Re-" + msg + "\n" + str(trace_context()))
+        exit()
     else:
-        log_info(msg)
+        log_info(msg + "\n" + str(trace_context()))
     tracker.add_variation(axis_env_str, input_str)
 
 def get_dtype_shape_str_of_tree(tree):
     def _dtype_shape(v):
-        return jax.typeof(v).str_short(short_dtypes=False,mesh_axis_types=True)
+        t = jax.typeof(v)
+        w = "~" if hasattr(t, "weak_type") and t.weak_type else ""
+        return w + t.str_short(short_dtypes=False,mesh_axis_types=True)
     s = str(jax.tree.map(_dtype_shape, tree))
     return s
 

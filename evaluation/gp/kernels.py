@@ -8,6 +8,8 @@ from typing import List
 
 @dataclass
 class GPKernel(ABC):
+    def __init__(*params):
+        pass
     @abstractmethod
     def eval_cov(self, t1: jax.Array, t2: jax.Array) -> jax.Array:
         raise NotImplementedError

@@ -13,6 +13,9 @@ from setup_parallelisation import get_parallelisation_config
 from gp_smc import *
 from smc_utils import plot_results, compute_lppd, save_results
 
+import logging
+setup_logging(logging.WARN)
+
 AutoGPConfig()
 xs, xs_val, ys, ys_val, rescale_x, rescale_y = get_data_autogp()
 # RecheiltConfig()

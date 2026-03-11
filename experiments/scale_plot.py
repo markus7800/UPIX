@@ -231,7 +231,8 @@ for (i, (file,label,xticksformat)) in enumerate([
         
 axs[4,0].set_xlabel("number of VI runs times number of samples per step")
 axs[4,1].set_xlabel("number of SMC particles")
-axs[4,0].set_ylim(75)
+# axs[4,0].set_ylim(75)
+axs[4,0].set_ylim(0)
 
 # annot_fontsize = 10
 # axs[1,0].annotate("$L_\\infty(\\hat{F},F)$ distance to\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")

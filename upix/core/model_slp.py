@@ -48,6 +48,11 @@ class Model:
             self()
             return ctx.log_prior
         
+    def log_likelihood(self, X: Trace) -> FloatArray:
+        with LogprobCtx(X) as ctx:
+            self()
+            return ctx.log_likelihood
+        
     def log_prob_trace(self, X: Trace) -> Dict[str, Tuple[FloatArray,bool]]:
         with LogprobTraceCtx(X) as ctx:
             self()

@@ -7,5 +7,5 @@ done
 
 for seed in {0..4} ;
 do
-    uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -host_device_count 10 -seed $seed --show_plots ;
+    uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -host_device_count 10 --no_progress -seed $seed ;
 done
