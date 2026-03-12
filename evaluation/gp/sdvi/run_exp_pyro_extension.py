@@ -377,6 +377,7 @@ def main(cfg):
         bt: [n for n, _ in sdvi.guides[bt].named_parameters()]
         for bt in sdvi.branching_traces
     }
+    lppd = 0
     if model.does_lppd_evaluation:
         parameters = {
             bt: {param_name: m[param_name] for param_name in parameter_names[bt]}
@@ -391,7 +392,8 @@ def main(cfg):
             cfg.posterior_predictive_num_samples,
         )
         # plot_lppd(lppds, "lppd.jpg")
-        logging.info(f"Log posterior predictive density: {lppds[-1]}")
+        lppd = lppds[-1]
+        logging.info(f"Log posterior predictive density: {lppd}")
     else:
         num_iterations = len(list(sdvi.bt2weight.values())[0])
         lppds = num_iterations * [float("nan")]
@@ -452,10 +454,14 @@ def main(cfg):
                 "L": sdvi.exclusive_kl_num_particles,
                 "n_iter": 1000,
                 "n_slps": len(sdvi.branching_traces),
-                "seed": args.seed,
+                "seed": cfg.seed,
+            },
+            "result_metrics": {
+                "lppd": lppd
             },
             "timings": {
-                "inference_time": sdvi.inference_time
+                "inference_time": sdvi.inference_time,
+                "wall_time": elapsed,
             },
             "environment_info": {
                 "platform": "cpu",
@@ -467,8 +473,6 @@ def main(cfg):
         }
         now = datetime.today().strftime('%Y-%m-%d_%H-%M')
         fpath = pathlib.Path(
-            os.path.dirname(os.path.realpath(__file__)), "..", "..", "..",
-            "experiments", "data", "gp", "sdvi", f"{platform}_{num_workers:02d}",
             f"L_{sdvi.exclusive_kl_num_particles:07d}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
         print(fpath)
         fpath.parent.mkdir(exist_ok=True, parents=True)

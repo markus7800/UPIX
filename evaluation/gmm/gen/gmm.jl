@@ -162,7 +162,9 @@ function main()
     "threads": $nthreads
   },
   "result": {
-    "counts": $(repr(cumulative_result))
+    "counts": $(repr(cumulative_result)),
+    "L_inf": $(infty_distance),
+    "W1": $(W1_distance)
   }
 }
 """

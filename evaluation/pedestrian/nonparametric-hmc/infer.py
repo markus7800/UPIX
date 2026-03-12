@@ -426,7 +426,7 @@ def run_inference(
     # samples["is"]["samples"] = values
     # samples["is"]["weighted"] = weighted
 
-    filename = f"{name}__count{count}_eps{eps}_leapfrogsteps{leapfrog_steps}"
+    filename = f"{name}_seed_{seed}_count{count}_eps{eps}_leapfrogsteps{leapfrog_steps}"
     samples["filename"] = filename
     if save_samples:
         with open(f"samples_produced/{filename}.pickle", "wb") as f:
@@ -497,7 +497,7 @@ def run_inference_icml2022(
         samples[method]["alpha"] = alpha
     if K != 0:
         samples[method]["K"] = K
-    filename = f"{name}__count{count}_eps{eps}_L{L}_alpha{alpha}_K{K}"
+    filename = f"{name}_seed_{seed}_count{count}_eps{eps}_L{L}_alpha{alpha}_K{K}"
     if save_samples:
         with open(f"lookahead_samples/{filename}.pickle", "wb") as f:
             pickle.dump(samples, f)

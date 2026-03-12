@@ -162,6 +162,7 @@ class SDVI:
                 break
 
         self.smoothing_epsilon = torch.log(torch.tensor(0.01)) + min_logjoint
+        logging.info(f"n_init_slps={len(self.branching_traces)}")
 
     def initialise_guides(self):
         self.guides = dict()

@@ -30,8 +30,8 @@ l_inf = np.max(err)
 print("Max err:", l_inf)
 
 
-match = re.findall(r"running time: (\d+.\d+s)", out)
-timing = str(match[0])
+match = re.findall(r"running time: (\d+.\d+)s", out)
+timing = float(match[0])
 print("Timings:", timing)
 
 

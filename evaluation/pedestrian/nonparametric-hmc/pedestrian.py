@@ -52,7 +52,7 @@ def target_NP_LA_DHMC(global_seed, rep, count, burnin, bar_pos=None, disable_bar
     L = 5
     alpha = 0.1
     K = 2
-    run_inference_icml2022(
+    return run_inference_icml2022(
         lambda trace: run_prob_prog(walk_model, trace=trace),
         name=f"walk_model_{rep}",
         count=count,
@@ -71,7 +71,7 @@ def target_NP_DHMC(global_seed, rep, count, burnin, bar_pos=None, disable_bar=Fa
     # pick from paper
     eps = 0.1
     num_steps = 50
-    run_inference(
+    return run_inference(
         lambda trace: run_prob_prog(walk_model, trace=trace),
         name=f"walk_model{rep}",
         count=count,
@@ -115,25 +115,46 @@ if __name__ == "__main__":
     
     if args.algorithm == "NP-LA-DHMC":
         if n_processes > 1:
-            processes = []
             with mp.Pool(n_processes) as p:
-                p.starmap(target_NP_LA_DHMC, [(seed, rep, n_iter, burnin, rep % n_processes, disable_bar, store_samples) for rep in range(repetitions)])
+                samples = p.starmap(target_NP_LA_DHMC, [(seed, rep, n_iter, burnin, rep % n_processes, disable_bar, store_samples) for rep in range(repetitions)])
         else:
+            samples = []
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")
-                target_NP_LA_DHMC(seed, rep, n_iter, burnin, rep, disable_bar, store_samples)
+                samples.append(target_NP_LA_DHMC(seed, rep, n_iter, burnin, rep, disable_bar, store_samples))
 
     elif args.algorithm == "NP-DHMC":
         if n_processes > 1:
             with mp.Pool(n_processes) as p:
-                p.starmap(target_NP_DHMC, [(seed, rep, n_iter, burnin, rep % n_processes, disable_bar, store_samples) for rep in range(repetitions)])
+                samples = p.starmap(target_NP_DHMC, [(seed, rep, n_iter, burnin, rep % n_processes, disable_bar, store_samples) for rep in range(repetitions)])
         else:
+            samples = []
             for rep in range(repetitions):
                 print(f"REPETITION {rep+1}/{repetitions}")
-                target_NP_DHMC(seed, rep, n_iter, burnin, rep, disable_bar, store_samples)
-                
+                samples.append(target_NP_DHMC(seed, rep, n_iter, burnin, rep, disable_bar, store_samples))
+    
     inference_time = monotonic() - t0
     tqdm.write(f"\nFinished in {inference_time:.3f}s.")
+    
+    import numpy as np
+    all_samples = []
+    for s in samples:
+        all_samples += s["hmc"]["samples"] # list of floats
+    all_samples = np.array(all_samples)
+
+    gt_xs = np.load("evaluation/pedestrian/gt_xs-100.npy")
+    gt_cdf = np.load("evaluation/pedestrian/gt_cdf-100-1_000_000_000_000.npy")
+    gt_pdf = np.load("evaluation/pedestrian/gt_pdf_est-100-1_000_000_000_000.npy")
+    
+    cdf_est = []
+    for x in gt_xs:
+        cdf_est.append(np.mean(all_samples < x))
+    cdf_est = np.array(cdf_est)
+
+    W1_distance = np.trapz(np.abs(cdf_est - gt_cdf), gt_xs) # wasserstein distance
+    infty_distance = np.max(np.abs(cdf_est - gt_cdf))
+    title = f"W1 = {W1_distance.item():.4g}, L_inf = {infty_distance.item():.4g}"
+    print(title)
     
     import pathlib, json, uuid
     from datetime import datetime
@@ -162,6 +183,10 @@ if __name__ == "__main__":
         },
         "timings": {
             "inference_time": inference_time
+        },
+        "result_metrics": {
+            "W1": W1_distance,
+            "L_inf": infty_distance,
         },
         "environment_info": {
             "platform": "cpu",

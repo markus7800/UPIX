@@ -175,10 +175,7 @@ Experiments where run on a M2 Pro Macbook (without Docker).
 
 Run NP-DHMC baseline (with 8 parallel processes)
 ```
-cd evaluation/pedestrian/nonparametric-hmc
-uv run -p python3.10 --no-project --with-requirements=requirements.txt pedestrian.py NP-DHMC 8 1000 100 -n_processes 8  --store_samples
-uv run -p python3.10 --no-project --with-requirements=requirements.txt check_results.py
-cd ../../..
+uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 8 1000 100 -n_processes 8
 ```
 
 Run UPIX-MCMC-DCC (with 8 CPU devices)
