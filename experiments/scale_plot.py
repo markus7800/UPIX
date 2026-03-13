@@ -232,7 +232,7 @@ for (i, (file,label,xticksformat)) in enumerate([
 axs[4,0].set_xlabel("number of VI runs times number of samples per step")
 axs[4,1].set_xlabel("number of SMC particles")
 # axs[4,0].set_ylim(75)
-axs[4,0].set_ylim(0)
+# axs[4,0].set_ylim(0)
 
 # annot_fontsize = 10
 # axs[1,0].annotate("$L_\\infty(\\hat{F},F)$ distance to\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
@@ -261,7 +261,7 @@ for i in range(4):
 fig.legend(handles=[legend_elements[i] for i in [0,4,1,5,2,6,3,7]], loc="upper center", ncols=4)
 # fig.subplots_adjust(top=0.9)
 
-plt.savefig("scale_figure.png")
+# plt.savefig("scale_figure.png")
 plt.savefig("scale_figure.pdf")
 # plt.show()
         

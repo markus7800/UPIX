@@ -41,6 +41,9 @@ if __name__ == "__main__":
     assert (jnp.array([slp.decision_representative["N"] for (slp, log_Z) in result.get_log_weights_sorted(sortkey="slp")]) == jnp.arange(1,len(log_Zs)+1)).all()
 
     ps = jnp.exp(log_Zs - jax.scipy.special.logsumexp(log_Zs))
+    for i in range(len(ps)):
+        print(f"{i+1}: {ps[i]}")
+    
     print(ps)
     print("vs")
     print(gt[:len(ps)])

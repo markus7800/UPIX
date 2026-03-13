@@ -17,7 +17,7 @@ def urn(obs: IntArray, biased: bool):
     balls_arr = jnp.hstack(tuple(balls))
     draws: List[IntArray] = []
     for k in range(len(obs)):
-        draw = sample(f"draw_{k}", dist.DiscreteUniform(0,N-1))
+        draw = sample(f"draw_{k}", dist.DiscreteUniform(0,N-1)) # N-1 inclusive
         draws.append(draw)
     for k in range(len(obs)):
         if biased:

@@ -46,6 +46,7 @@ log_Zs = np.hstack([log_Z(N) for N in range(1,256)])
 # print(log_Zs)
 
 ps = np.exp(log_Zs - scipy.special.logsumexp(log_Zs))
-print(ps[:20])
+for i in range(2):
+    print(f"{i+1:2d}: {ps[i]}")
 
 np.save("evaluation/urn/gt_ps.npy", ps)

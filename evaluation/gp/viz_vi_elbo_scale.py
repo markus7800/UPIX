@@ -50,7 +50,7 @@ if __name__ == "__main__":
         repetitions = 1
         for (L, n_runs) in [
             (1,1), (8,1), (8,8), (64,1),
-            # (64,8)
+            (64,8)
             ]:
             print(f"{L=} {n_runs=}")
             set_local_global(n_runs)
@@ -72,7 +72,7 @@ if __name__ == "__main__":
         
         plt.xlabel("iteration")
         plt.ylabel("ELBO")
-        leg = plt.legend()
+        leg = plt.legend(ncols=2)
         leg.get_frame().set_linewidth(0.0)
         leg.get_frame().set_facecolor('none')
         plt.tight_layout()
