@@ -71,17 +71,19 @@ function main()
         y_test = AutoGP.Transforms.apply(model.y_transform, df_test.y)
         # println("x_test:", x_test)
         # println("y_test:", y_test)
-        l = 0
+        pell = 0.0
+        lppd = -Inf
         for (w, i, k) in kernels_sorted
             trace = model.pf_state.traces[i]
-            if w <= 1e-4 break end
             mvn = AutoGP.Inference.predict_mvn(trace, x_test)
-            l += w * AutoGP.Distributions.logpdf(mvn, y_test)
+            lp = AutoGP.Distributions.logpdf(mvn, y_test)
+            pell += lp * w
+            lppd = AutoGP.Gen.logsumexp(lppd, lp + log(w))
         end
-        println("lppd: ", l)
-        return l
+        return pell, lppd
     end
-    lppd = LPPD()
+    pell, lppd = LPPD()
+    println("pell: ", pell, " lppd: ", lppd)
 
     if show_plots
         plt.figure()
@@ -142,6 +144,7 @@ function main()
     "seed": $seed
   },
   "result_metrics": {
+    "pell": $pell,
     "lppd": $lppd
   },
   "timings": {

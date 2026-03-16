@@ -4,31 +4,36 @@ from upix.infer.dcc.vi_dcc import VIDCCResult
 def lppd_guide(g: Guide, xs, ys, xs_val, ys_val, n):
     key = jax.random.key(0)
     posterior = Traces(g.sample(key, (n,)), n)
-    l = 0.
+    pell = 0.0
+    lppd = -jnp.inf
     for i in range(n):
         trace = posterior.get_ix(i)
         k = get_gp_kernel(trace)
         noise = transform_param("noise", trace["noise"]) + 1e-5
         mvn = k.posterior_predictive(xs, ys, noise, xs_val, noise)
-        l += mvn.log_prob(ys_val) / n
-    return l
+        lp = mvn.log_prob(ys_val)
+        pell += lp
+        lppd = jnp.logaddexp(lppd, lp)
+    return pell / n, lppd - jnp.log(n)
     
     
 def compute_lppd(result: VIDCCResult, xs, ys, xs_val, ys_val, n):
     slp_weights = list(result.get_slp_weights().items())
     slp_weights.sort(key=lambda v: v[1])
 
-    lp = 0.
+    pell = 0.0 # posterior expected log-likelihood = sum (log p(y|theta_i)) / n
+    lppd = -jnp.inf # log posterior predictive density = log (sum p(y|theta_i) / n)
     for i in range(len(slp_weights)):
         slp, weight = slp_weights[-(i+1)]
-        if (weight < 1e-4): break
         g = result.slp_guides[slp]
         
-        lp += lppd_guide(g, xs, ys, xs_val, ys_val, n) * weight
+        pell_g, lppd_g = lppd_guide(g, xs, ys, xs_val, ys_val, n)
+        pell += pell_g * weight
+        lppd = jnp.logaddexp(lppd, lppd_g + jnp.log(weight))
         
-    return float(lp)
+    return float(pell), float(lppd)
 
-def save_results(args, result: VIDCCResult, vi_dcc_obj: VIDCC, timings: dict, lppd: float, folder: str):
+def save_results(args, result: VIDCCResult, vi_dcc_obj: VIDCC, timings: dict, pell: float, lppd: float, folder: str):
     K = int(vi_dcc_obj.advi_n_runs) * int(vi_dcc_obj.advi_L)
     workload = {
         "K": K,
@@ -42,6 +47,7 @@ def save_results(args, result: VIDCCResult, vi_dcc_obj: VIDCC, timings: dict, lp
 
     result_metrics = {
         "result_str": result.sprint(sortkey="slp"),
+        "pell": pell,
         "lppd": lppd
     }
         

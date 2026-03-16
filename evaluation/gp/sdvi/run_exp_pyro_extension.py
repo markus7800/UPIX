@@ -258,8 +258,9 @@ def calculate_intermediate_lppd(
                 ).get_trace()
             posterior_samples.append(posterior_sample)
 
+        pell, lppd = model.evaluation(posterior_samples)
         log_posterior_predictive_densities.append(
-            model.evaluation(posterior_samples).item()
+            (pell.item(), lppd.item())
         )
 
     return log_posterior_predictive_densities
@@ -392,8 +393,8 @@ def main(cfg):
             cfg.posterior_predictive_num_samples,
         )
         # plot_lppd(lppds, "lppd.jpg")
-        lppd = lppds[-1]
-        logging.info(f"Log posterior predictive density: {lppd}")
+        pell, lppd = lppds[-1]
+        logging.info(f"PELL: {pell} LPPD: {lppd}")
     else:
         num_iterations = len(list(sdvi.bt2weight.values())[0])
         lppds = num_iterations * [float("nan")]
@@ -457,6 +458,7 @@ def main(cfg):
                 "seed": cfg.seed,
             },
             "result_metrics": {
+                "pell": pell,
                 "lppd": lppd
             },
             "timings": {

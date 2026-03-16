@@ -193,16 +193,18 @@ class GPKernelLearning(AbstractModel):
         post_kernels = self.extract_posterior_kernels(posterior_samples)
         noises = [trace.nodes["std"]["value"] for trace in posterior_samples]
 
-        log_p = torch.tensor(0.0)
+        pell = torch.tensor(0.0) # this is what Reichelt et al. called LPPD but we call it posterior expected log-likelihood
+        lppd = -torch.tensor(torch.inf)
         for kernel_fn, noise in zip(post_kernels, noises):
             gp_mean, gp_cov = self.gp_analytic_posterior(
                 kernel_fn, self.X, self.X_val, self.y, noise, self.jitter, full_cov=True
             )
-            log_p += (
-                dist.MultivariateNormal(gp_mean, gp_cov).log_prob(self.y_val).detach()
-            )
+            lp = dist.MultivariateNormal(gp_mean, gp_cov).log_prob(self.y_val).detach()
+            pell += lp
+            lppd = torch.logaddexp(lppd, lp)
 
-        return log_p / len(posterior_samples)
+        n = len(posterior_samples)
+        return pell / n, lppd - torch.log(torch.tensor(n))
 
     def plot_posterior_samples(self, posterior_samples, fname):
         post_kernels = self.extract_posterior_kernels(posterior_samples)

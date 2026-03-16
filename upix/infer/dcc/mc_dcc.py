@@ -84,19 +84,17 @@ class MCDCCResult(BaseDCCResult, Generic[DCC_COLLECT_TYPE]):
                              mapper: Callable[[DCC_COLLECT_TYPE], DCC_RESULT_QUERY_TYPE],
                              selector: Callable[[jax.Array], jax.Array],
                              ) -> StackedSampleValues[Tuple[DCC_RESULT_QUERY_TYPE, FloatArray]]:
-        log_Z = self.slp_log_weights[slp]
-        log_Z_normaliser = self.get_log_weight_normaliser()
         weighted_sample = self.slp_weighted_samples[slp]
-        weights = jax.lax.exp(weighted_sample.log_weights - jax.scipy.special.logsumexp(weighted_sample.log_weights) + log_Z - log_Z_normaliser)
 
-        assert weights.shape == (weighted_sample.values.N, weighted_sample.values.T)
+        assert weighted_sample.log_weights.shape == (weighted_sample.values.N, weighted_sample.values.T)
 
         values = mapper(weighted_sample.values.data)
         
-        weights = selector(weights)
+        log_weights = selector(weighted_sample.log_weights)
         values = jax.tree.map(selector,values)
-
-        weights = weights / weights.sum() # selector results in unnormalised weights
+        
+        weights = jax.lax.exp(log_weights - jax.scipy.special.logsumexp(log_weights))
+        weights = weights / weights.sum() # prevent numerical issues
         
         return StackedSampleValues((values, weights), weighted_sample.values.N, weighted_sample.values.T)
     

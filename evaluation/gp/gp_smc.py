@@ -183,8 +183,8 @@ class SMCDCCConfig(SMCDCC[T], Generic[T]):
             
             resample_node_ix = leaf_ix if move == "split" else leaf_ix // 2
             
-            tqdm.write(str(get_gp_kernel(trace)))
-            tqdm.write(f"{resample_node_ix=} {move=} {split_node=} {leaf_node=} {discard_node=}")
+            # tqdm.write(str(get_gp_kernel(trace)))
+            # tqdm.write(f"{resample_node_ix=} {move=} {split_node=} {leaf_node=} {discard_node=}")
             resample_params = (split_node, leaf_node) if move == "split" else (discard_node,)
             
             n_proposals = self.config.get("n_proposals_per_update_sample", 100)
@@ -197,7 +197,7 @@ class SMCDCCConfig(SMCDCC[T], Generic[T]):
             amax = jnp.argmax(loglikelihoods).item()
             trace_proposed = traces_proposed.get_ix(amax)
             loglikelihood: FloatArray = loglikelihoods[amax]
-            tqdm.write(f" -> {get_gp_kernel(trace_proposed)}")
+            # tqdm.write(f" -> {get_gp_kernel(trace_proposed)}")
             
             if self.model.equivalence_map is not None:
                 trace_proposed = self.model.equivalence_map(trace_proposed)

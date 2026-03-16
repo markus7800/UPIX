@@ -6,7 +6,8 @@ def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, 
     key = jax.random.key(0)
     _, weights = weighted_samples.get()
 
-    l = 0.
+    pell = 0.0
+    lppd = -jnp.inf
     for i in range(n):
         key, trace_select_key = jax.random.split(key, 2)
         trace_ix = dist.Categorical(weights).sample(trace_select_key)
@@ -15,24 +16,28 @@ def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, 
         k = get_gp_kernel(trace)
         noise = transform_param("noise", trace["noise"]) + 1e-5
         mvn = k.posterior_predictive(xs, ys, noise, xs_val, noise)
-        l += mvn.log_prob(ys_val) / n
-    return l
+        lp = mvn.log_prob(ys_val)
+        pell += lp
+        lppd = jnp.logaddexp(lppd, lp)
+    return pell / n, lppd - jnp.log(n)
     
     
 def compute_lppd(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, n):
     slp_weights = list(result.get_slp_weights().items())
     slp_weights.sort(key=lambda v: v[1])
 
-    lp = 0.
+    pell = 0.0 # posterior expected log-likelihood = sum (log p(y|theta_i)) / n
+    lppd = -jnp.inf # log posterior predictive density = log (sum p(y|theta_i) / n)
     for i in range(len(slp_weights)):
         slp, weight = slp_weights[-(i+1)]
-        if (weight < 1e-4): break
         weighted_samples = result.get_samples_for_slp(slp).unstack()
-        lp += lppd_particles(weighted_samples, xs, ys, xs_val, ys_val, n) * weight
+        pell_p, lppd_p = lppd_particles(weighted_samples, xs, ys, xs_val, ys_val, n)
+        pell += pell_p * weight
+        lppd = jnp.logaddexp(lppd, lppd_p + jnp.log(weight))
 
-    return float(lp)
+    return float(pell), float(lppd)
 
-def save_results(args, result: MCDCCResult, smc_dcc_obj: SMCDCC, timings: dict, lppd: float, folder: str):
+def save_results(args, result: MCDCCResult, smc_dcc_obj: SMCDCC, timings: dict, pell: float, lppd: float, folder: str):
     workload = {
         "n_particles": smc_dcc_obj.smc_n_particles,
         "n_slps": len(result.get_slps()),
@@ -42,7 +47,8 @@ def save_results(args, result: MCDCCResult, smc_dcc_obj: SMCDCC, timings: dict, 
 
     result_metrics = {
         "result_str": result.sprint(sortkey="slp"),
-        "lppd": lppd,
+        "pell": pell,
+        "lppd": lppd
     }
         
     json_result = {
