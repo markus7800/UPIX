@@ -117,5 +117,9 @@ s += main
 print(s)
 
 
+# docker run -it -v.:/home/opam/dice sholtzen/dice
 # time dice -determinism -eager-eval -flip-lifting -num-recursive-calls -show-size -recursion-limit 21 -max-list-length 21 urnN.dice
 # time ./dice -eager-eval -flip-lifting -num-recursive-calls -show-size -recursion-limit 21 -max-list-length 21 urnN.dice
+
+
+# docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -eager-eval -flip-lifting -num-recursive-calls -show-size -recursion-limit 21 -max-list-length 21 urn10.dice

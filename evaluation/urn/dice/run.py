@@ -4,34 +4,35 @@ import re
 import numpy as np
 import argparse
 import os
+import time
+
 parser = argparse.ArgumentParser()
-parser.add_argument("-seed", default=0, type=int, required=False)
 parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 
-res = subprocess.run(["./urn_biased.out", str(args.seed * 10000)], capture_output=True)
+N = 10
+
+cmd = f"docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -eager-eval -flip-lifting -recursion-limit 20 -max-list-length 20 urn{N}.dice"
+
+t0 = time.time()
+res = subprocess.run(cmd, capture_output=True, shell=True)
+timing = time.time() - t0
 
 out = res.stdout.decode()
 print(out)
 print(res.stderr.decode())
 
-match = re.findall(r"(\d+) -> (\d.\d+e-\d\d)", out)
-
-gt = np.load("../gt_ps.npy")
+gt = np.load("evaluation/urn/gt_ps.npy")
 urn_result = np.zeros(len(gt))
 
-for ix, p in match:
-    urn_result[int(ix)-1] = float(p)
-
+for r in re.findall(r"^(\d+)\t([\d.e-]+)", out, flags=re.MULTILINE):
+    urn_result[int(r[0])-1] = float(r[1])
+    
 
 err = np.abs(urn_result - gt)
 l_inf = np.max(err)
 print("Max err:", l_inf)
 
-
-match = re.findall(r"running time: (\d+.\d+)s", out)
-timing = float(match[0])
-print("Timings:", timing)
 
 
 if args.show_plots:
@@ -60,14 +61,13 @@ id_str = str(uuid.uuid4())
 json_result = {
     "id": id_str,
     "workload": {
-        "seed": args.seed,
-        "n_iter": 10000000,
+        "N": N,
     },
     "result_metrics": {
         "L_inf": l_inf
     },
     "timings": {
-        "inference_time": timing
+        "wall_time": timing
     },
     "environment_info": {
         "platform": "cpu",
@@ -79,7 +79,7 @@ json_result = {
 now = datetime.today().strftime('%Y-%m-%d_%H-%M')
 fpath = pathlib.Path(
     os.path.dirname(os.path.realpath(__file__)), "..", "..", "..",
-    "experiments", "data", "urn", "swift", f"{platform}_{num_workers:02d}",
+    "experiments", "data", "urn", "dice", f"{platform}_{num_workers:02d}",
     f"date_{now}_{id_str[:8]}.json")
 fpath.parent.mkdir(exist_ok=True, parents=True)
 with open(fpath, "w") as f:

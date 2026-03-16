@@ -1,0 +1,58 @@
+
+fun index(n: int(4), xs: list(bool)): bool {
+    if n == int(4,0) then
+        head xs
+    else
+        index(n - int(4, 1), tail xs)
+}
+
+fun pickball(N: int(4)): int(4) {
+    if N == int(4,0) then
+        int(4,0)
+    else if N == int(4, 1) then
+        int(4,0)
+    else if N == int(4,2) then
+        discrete(0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else if N == int(4,3) then
+        discrete(0.3333333333333333, 0.3333333333333333, 0.3333333333333333, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else if N == int(4,4) then
+        discrete(0.25, 0.25, 0.25, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else if N == int(4,5) then
+        discrete(0.2, 0.2, 0.2, 0.2, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else if N == int(4,6) then
+        discrete(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else if N == int(4,7) then
+        discrete(0.14285714285714285, 0.14285714285714285, 0.14285714285714285, 0.14285714285714285, 0.14285714285714285, 0.14285714285714285, 0.14285714285714285, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else if N == int(4,8) then
+        discrete(0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else if N == int(4,9) then
+        discrete(0.1111111111111111, 0.1111111111111111, 0.1111111111111111, 0.1111111111111111, 0.1111111111111111, 0.1111111111111111, 0.1111111111111111, 0.1111111111111111, 0.1111111111111111, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else if N == int(4,10) then
+        discrete(0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else
+        int(4, 0)
+}
+
+fun draw(xs: list(bool), obs: bool, N: int(4)) {
+    let d = pickball(N) in
+    let x = index(d, xs) in
+    let y = if x then flip 0.8 else flip 0.2 in
+    observe(y <=> obs)
+}
+
+let N = discrete(0.0025891035071813205, 0.015534629798148788, 0.046603877721031875, 0.09320768540157683, 0.13981153588464157, 0.1677738461744804, 0.16777376835171715, 0.14380611606421248, 0.10785473880254771, 0.07190294908023769, 0.043141749214224166) in
+let tmp = observe(N > int(4,0)) in
+let xs = [flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5] in
+
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+N
+

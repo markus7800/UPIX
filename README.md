@@ -240,11 +240,9 @@ apt-get install -y g++ cmake libopenblas-dev liblapack-dev libarmadillo-dev
 make compile -C evaluation/urn/milch/swift/
 ```
 
-Compile and run the BLOG baseline
+Run the Dice baseline with its [docker image](https://hub.docker.com/layers/sholtzen/dice/latest/images/sha256-5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65d011ddc1e6969fa2e)
 ```
-uv run --directory evaluation/urn/milch compile.py
-
-uv run --with numpy,matplotlib --directory evaluation/urn/milch run.py
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -eager-eval -flip-lifting -num-recursive-calls -show-size -recursion-limit 21 -max-list-length 21 urn10.dice
 ```
 
 Run UPIX-VE-DCC
