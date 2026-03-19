@@ -73,20 +73,20 @@ class GPKernelLearning(AbstractModel):
             rq_kernel = gp.kernels.RationalQuadratic(
                 input_dim=self.input_dim,
             )
-            rq_kernel.lengthscale = pyro.nn.PyroSample(dist.InverseGamma(2.0, 1.0))
-            rq_kernel.scale_mixture = pyro.nn.PyroSample(dist.InverseGamma(2.0, 1.0))
+            rq_kernel.lengthscale = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
+            rq_kernel.scale_mixture = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
             return rq_kernel
         elif kernel_type == 1.0:
             # Linear kernel
             linear_kernel = gp.kernels.Polynomial(input_dim=self.input_dim, degree=1)
-            linear_kernel.bias = pyro.nn.PyroSample(dist.InverseGamma(2.0, 1.0))
+            linear_kernel.bias = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
             return linear_kernel
         elif kernel_type == 2.0:
             # Squared Exponential kernel
             rbf_kernel = gp.kernels.RBF(
                 input_dim=self.input_dim,
             )
-            rbf_kernel.lengthscale = pyro.nn.PyroSample(dist.InverseGamma(2.0, 1.0))
+            rbf_kernel.lengthscale = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
             return rbf_kernel
         elif kernel_type == 3.0:
             # Periodic
@@ -95,9 +95,9 @@ class GPKernelLearning(AbstractModel):
                 variance=torch.tensor(1.0),
             )
             periodic_kernel.lengthscale = pyro.nn.PyroSample(
-                dist.InverseGamma(2.0, 1.0)
+                dist.LogNormal(-1.5,1.0)
             )
-            periodic_kernel.period = pyro.nn.PyroSample(dist.InverseGamma(2.0, 1.0))
+            periodic_kernel.period = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
             return periodic_kernel
         elif kernel_type == 4.0:
             # Sum
@@ -116,7 +116,7 @@ class GPKernelLearning(AbstractModel):
         # Sample kernel function
         kernel_fn = self.sample_kernel_fn("")
 
-        std = pyro.sample("std", dist.HalfNormal(1))
+        std = pyro.sample("std", dist.LogNormal(-1.5,1.0))
 
         # Create covariance matrix
         N = self.X.size(0)
