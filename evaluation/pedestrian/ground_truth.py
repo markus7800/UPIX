@@ -6,6 +6,7 @@ parser.add_argument("n_qs", type=int)
 parser.add_argument("batch_size", type=int)
 parser.add_argument("num_batches", type=int)
 parser.add_argument("n_iter", type=int)
+parser.add_argument("seed", type=int)
 parser.add_argument("--show_plots", action="store_true")
 parser.add_argument("--old", action="store_true")
 args = parser.parse_args()
@@ -66,7 +67,7 @@ def cdf_cruncher_old(qs, n_iter, batch_size):
         c += cdf(x, qs, weights) * 1/n_iter
     return c
 
-def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation, n_devices):
+def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation, n_devices, seed):
 
     bar = tqdm(position=0)
     pmngr = ProgressbarManager("", bar, vectorisation==VectorisationType.PMAP)
@@ -107,7 +108,7 @@ def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation, n_devices):
     
     cs = []
     ss = []
-    key = jax.random.key(0)
+    key = jax.random.key(seed)
     for i in tqdm(range(n_iter), position=1):
         key, iter_key = jax.random.split(key)
         c, s = parallel_run(_get_c, (i+1,iter_key),  batch_axis_size=batch_size, vectorisation=vectorisation, n_devices=n_devices)
@@ -124,19 +125,20 @@ def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation, n_devices):
     return jax.lax.exp(res_c - res_s)
     
 
-# n_sq batch_size num_batches n_iter
+# n_sq batch_size num_batches n_iter seed
 
 # GTX 1070
-# uv run --python python3 --extra cuda --locked --with PyQt6 evaluation/pedestrian/ground_truth.py sequential vmap_global 100 1_000_000 10 1_000 --show_plots
+# uv run --python python3 --extra cuda --locked --with PyQt6 evaluation/pedestrian/ground_truth.py sequential vmap_global 100 1_000_000 10 1_000 0 --show_plots
 
 start_linspace = jnp.linspace(0., 3., args.n_qs)
 N_SAMPLES = args.num_batches * args.batch_size * args.n_iter
+SEED = args.seed
 # print(args)
-print(f"N_QS = {args.n_qs:_} N_SAMPLES = {N_SAMPLES:_}")
+print(f"N_QS = {args.n_qs:_} N_SAMPLES = {N_SAMPLES:_} SEED = {SEED}")
 
 if not args.old:
     pconfig = get_parallelisation_config(args)
-    gt_cdf = cdf_cruncher(start_linspace, batch_size=args.batch_size, num_batches=args.num_batches, n_iter=args.n_iter, vectorisation=pconfig.vectorisation, n_devices=pconfig.num_workers)
+    gt_cdf = cdf_cruncher(start_linspace, batch_size=args.batch_size, num_batches=args.num_batches, n_iter=args.n_iter, vectorisation=pconfig.vectorisation, n_devices=pconfig.num_workers, seed=SEED)
 else:
     assert args.num_batches == 1
     gt_cdf = cdf_cruncher_old(start_linspace, batch_size=args.batch_size, n_iter=args.n_iter)
@@ -145,8 +147,8 @@ gt_pdf = jnp.hstack([jnp.array(0.),jnp.diff(gt_cdf)]) / (start_linspace[1] - sta
 
 if not args.no_save:
     jnp.save(f"evaluation/pedestrian/gt_xs-{args.n_qs}.npy", start_linspace)
-    jnp.save(f"evaluation/pedestrian/gt_pdf_est-{args.n_qs}-{N_SAMPLES:_}.npy", gt_pdf)
-    jnp.save(f"evaluation/pedestrian/gt_cdf-{args.n_qs}-{N_SAMPLES:_}.npy", gt_cdf)
+    jnp.save(f"evaluation/pedestrian/gt_pdf_est-{args.n_qs}-{N_SAMPLES:_}-{SEED}.npy", gt_pdf)
+    jnp.save(f"evaluation/pedestrian/gt_cdf-{args.n_qs}-{N_SAMPLES:_}-{SEED}.npy", gt_cdf)
 
 if args.show_plots:
     t0 = time()
