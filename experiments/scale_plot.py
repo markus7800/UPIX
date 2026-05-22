@@ -215,7 +215,7 @@ for (i, file) in enumerate([
 
 
 for (i, (file,label,xticksformat)) in enumerate([
-    ("viz_gp_vi_elbo_scale_data.pkl", "log Z", "{:,} x {:,}"),
+    ("viz_gp_vi_elbo_scale_data_autogp.pkl", "log Z", "{:,} x {:,}"),
     ("viz_gp_smc_particle_scale_data.pkl", "log Z", "{:,}")
 ]):
     with open(pathlib.Path(folder, file), "rb") as f:

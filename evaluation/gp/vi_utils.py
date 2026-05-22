@@ -1,8 +1,8 @@
 from gp_vi import *
 from upix.infer.dcc.vi_dcc import VIDCCResult
 
-def lppd_guide(g: Guide, xs, ys, xs_val, ys_val, n):
-    key = jax.random.key(0)
+def lppd_guide(g: Guide, xs, ys, xs_val, ys_val, n, seed):
+    key = jax.random.key(seed)
     posterior = Traces(g.sample(key, (n,)), n)
     pell = 0.0
     lppd = -jnp.inf
@@ -17,7 +17,7 @@ def lppd_guide(g: Guide, xs, ys, xs_val, ys_val, n):
     return pell / n, lppd - jnp.log(n)
     
     
-def compute_lppd(result: VIDCCResult, xs, ys, xs_val, ys_val, n):
+def compute_lppd_old(result: VIDCCResult, xs, ys, xs_val, ys_val, n, seed):
     slp_weights = list(result.get_slp_weights().items())
     slp_weights.sort(key=lambda v: v[1])
 
@@ -27,11 +27,38 @@ def compute_lppd(result: VIDCCResult, xs, ys, xs_val, ys_val, n):
         slp, weight = slp_weights[-(i+1)]
         g = result.slp_guides[slp]
         
-        pell_g, lppd_g = lppd_guide(g, xs, ys, xs_val, ys_val, n)
+        pell_g, lppd_g = lppd_guide(g, xs, ys, xs_val, ys_val, n, seed*1000+i)
         pell += pell_g * weight
         lppd = jnp.logaddexp(lppd, lppd_g + jnp.log(weight))
         
     return float(pell), float(lppd)
+
+    
+def compute_lppd(result: VIDCCResult, xs, ys, xs_val, ys_val, n, seed):
+    slp_weights = list(result.get_slp_weights().items())
+    weights = jnp.array([w for _, w in slp_weights],float)
+    slp_dist = dist.Categorical(weights / weights.sum()) # is normalised in log-space, so be safe here
+
+    pell = 0.0 # posterior expected log-likelihood = sum (log p(y|theta_i)) / n
+    lppd = -jnp.inf # log posterior predictive density = log (sum p(y|theta_i) / n)
+    
+    rng_key = jax.random.key(seed)
+    
+    for _ in range(n):
+        rng_key, slp_key, guide_key = jax.random.split(rng_key, 3)
+        slp_ix = slp_dist.sample(slp_key)
+        slp, _ = slp_weights[slp_ix]
+        g = result.slp_guides[slp]
+        trace = g.sample(guide_key)
+        k = get_gp_kernel(trace)
+        noise = transform_param("noise", trace["noise"]) + 1e-5
+        mvn = k.posterior_predictive(xs, ys, noise, xs_val, noise)
+        lp = mvn.log_prob(ys_val)
+        pell += lp
+        lppd = jnp.logaddexp(lppd, lp)
+        
+    return float(pell / n), float(lppd - jnp.log(n))
+        
 
 def save_results(args, result: VIDCCResult, vi_dcc_obj: VIDCC, timings: dict, pell: float, lppd: float, folder: str):
     K = int(vi_dcc_obj.advi_n_runs) * int(vi_dcc_obj.advi_L)

@@ -53,7 +53,7 @@ if __name__ == "__main__":
     result, timings = timed(smc_dcc_obj.run)(jax.random.key(args.seed))
     result.pprint()
 
-    pell, lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 100)
+    pell, lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 1000, 0)
     print("pell:", pell, "lppd:", lppd)
     if args.show_plots:
         plot_results(m, result, xs, ys, xs_val, ys_val, rescale_x, rescale_y)

@@ -47,7 +47,13 @@ if __name__ == "__main__":
     result, timings = timed(smc_dcc_obj.run)(jax.random.key(args.seed))
     result.pprint()
     
-    pell, lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 100)
+    pells_lppds = [compute_lppd(result, xs, ys, xs_val, ys_val, 1000, i) for i in range(5)]
+    pells = jnp.array([pell for pell, _ in pells_lppds], float)
+    print(f"pell: {float(pells.mean())} +/- {float(pells.std())}")
+    lppds = jnp.array([lppd for _, lppd in pells_lppds], float)
+    print(f"lppd: {float(lppds.mean())} +/- {float(lppds.std())}")
+    
+    pell, lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 1000, 0)
     print("pell:", pell, "lppd:", lppd)
     if args.show_plots:
         plot_results(m, result, xs, ys, xs_val, ys_val, rescale_x, rescale_y)

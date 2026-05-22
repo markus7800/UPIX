@@ -2,8 +2,8 @@ from gp_smc import *
 import matplotlib.pyplot as plt
 from upix.infer.dcc.mc_dcc import MCDCCResult
 
-def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, ys, xs_val, ys_val, n):
-    key = jax.random.key(0)
+def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, ys, xs_val, ys_val, n, seed):
+    key = jax.random.key(seed)
     _, weights = weighted_samples.get()
 
     pell = 0.0
@@ -11,7 +11,7 @@ def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, 
     for i in range(n):
         key, trace_select_key = jax.random.split(key, 2)
         trace_ix = dist.Categorical(weights).sample(trace_select_key)
-        trace, weight = weighted_samples.get_selection(trace_ix)
+        trace, _ = weighted_samples.get_selection(trace_ix)
         
         k = get_gp_kernel(trace)
         noise = transform_param("noise", trace["noise"]) + 1e-5
@@ -22,7 +22,7 @@ def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, 
     return pell / n, lppd - jnp.log(n)
     
     
-def compute_lppd(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, n):
+def compute_lppd_old(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, n, seed):
     slp_weights = list(result.get_slp_weights().items())
     slp_weights.sort(key=lambda v: v[1])
 
@@ -31,11 +31,39 @@ def compute_lppd(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, n):
     for i in range(len(slp_weights)):
         slp, weight = slp_weights[-(i+1)]
         weighted_samples = result.get_samples_for_slp(slp).unstack()
-        pell_p, lppd_p = lppd_particles(weighted_samples, xs, ys, xs_val, ys_val, n)
+        pell_p, lppd_p = lppd_particles(weighted_samples, xs, ys, xs_val, ys_val, n, 1000*seed+i)
         pell += pell_p * weight
         lppd = jnp.logaddexp(lppd, lppd_p + jnp.log(weight))
 
     return float(pell), float(lppd)
+
+def compute_lppd(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, n, seed):
+    slp_weights = list(result.get_slp_weights().items())
+    weights = jnp.array([w for _, w in slp_weights],float)
+    slp_dist = dist.Categorical(weights / weights.sum()) # is normalised in log-space, so be safe here
+    
+    pell = 0.0 # posterior expected log-likelihood = sum (log p(y|theta_i)) / n
+    lppd = -jnp.inf # log posterior predictive density = log (sum p(y|theta_i) / n)
+    
+    rng_key = jax.random.key(seed)
+    
+    for _ in range(n):
+        rng_key, slp_key, trace_key = jax.random.split(rng_key, 3)
+        slp_ix = slp_dist.sample(slp_key)
+        slp, _ = slp_weights[slp_ix]
+        weighted_samples = result.get_samples_for_slp(slp).unstack()
+        trace_ix = dist.Categorical(weighted_samples.get()[1]).sample(trace_key)
+        trace, _ = weighted_samples.get_selection(trace_ix)
+        
+        k = get_gp_kernel(trace)
+        noise = transform_param("noise", trace["noise"]) + 1e-5
+        mvn = k.posterior_predictive(xs, ys, noise, xs_val, noise)
+        lp = mvn.log_prob(ys_val)
+        pell += lp
+        lppd = jnp.logaddexp(lppd, lp)
+        
+    return float(pell / n), float(lppd - jnp.log(n))
+
 
 def save_results(args, result: MCDCCResult, smc_dcc_obj: SMCDCC, timings: dict, pell: float, lppd: float, folder: str):
     workload = {

@@ -14,7 +14,7 @@ build
 *.out
 *.err
 tmp*
-experiments/data
+experiments/data*
 .vscode
 Manifest.toml
 *.pkl
