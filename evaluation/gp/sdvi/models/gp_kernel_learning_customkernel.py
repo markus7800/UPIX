@@ -4,7 +4,7 @@ import pyro.distributions as dist
 import matplotlib.pyplot as plt
 import numpy as np
 import logging
-import pyro.contrib.gp as gp
+from .kernels import *
 
 from torch.distributions import biject_to
 
@@ -12,26 +12,10 @@ from .abstract_model import AbstractModel
 from .pyro_extensions.guides import AutoSLPNormalReparamGuide
 
 # Adapted from https://github.com/treigerm/sdvi_neurips
-# replaces InverseGamma priors with LogNormal priors, but this is not very robust
+# replaces InverseGamma priors with Normal priors and transforms them to be LogNormal
+# uses same kernel library as upix translated to torch
 # reads data from relative path
 # adds pell vs lppd eval
-# adds kernel representation
-
-def repr_kernel(kernel):
-    if isinstance(kernel, gp.kernels.RationalQuadratic):
-        return f"RQ({kernel.lengthscale:.2f}, {kernel.scale_mixture.item():.2f})"
-    elif isinstance(kernel, gp.kernels.Polynomial):
-        return f"Linear({kernel.bias.item():.2f})"
-    elif isinstance(kernel, gp.kernels.RBF):
-        return f"SqExp({kernel.lengthscale.item():.2f})"
-    elif isinstance(kernel, gp.kernels.Periodic):
-        return f"Per({kernel.lengthscale.item():.2f}, {kernel.period.item():.2f})"
-    elif isinstance(kernel, gp.kernels.Sum):
-        return f"({repr_kernel(kernel.kern0)} + {repr_kernel(kernel.kern1)})"
-    elif isinstance(kernel, gp.kernels.Product):
-        return f"({repr_kernel(kernel.kern0)} * {repr_kernel(kernel.kern1)})"
-    else:
-        assert False
 
 class GPKernelLearning(AbstractModel):
     does_lppd_evaluation = True
@@ -40,7 +24,7 @@ class GPKernelLearning(AbstractModel):
     input_dim = 1
 
     def __init__(self, data_path, jitter=1e-6):
-        logging.info("gp_kernel_learning original with LogNormal priors")
+        logging.info("gp_kernel_learning with custom kernels log transformed Normal priors")
         self.X, self.y, self.X_val, self.y_val = self.load_data(data_path)
 
         self.jitter = jitter
@@ -67,79 +51,61 @@ class GPKernelLearning(AbstractModel):
 
         return xs, ys, xs_val, ys_val
 
-    def sample_kernel_fn(self, address_prefix: str) -> gp.kernels.Kernel:
+    def sample_kernel_fn(self, kern_prefix: str) -> GPKernel:
         kernel_type = pyro.sample(
-            f"{address_prefix}kernel_type",
+            f"{kern_prefix}kernel_type",
             dist.Categorical(torch.tensor([0.2, 0.2, 0.2, 0.2, 0.1, 0.1])),
             infer={"branching": True},
         )
 
         if kernel_type == 0.0:
             # Rational Quadratic kernel
-            rq_kernel = gp.kernels.RationalQuadratic(
-                input_dim=self.input_dim,
+            rq_kernel = UnitRationalQuadratic(
+                transform_param("lengthscale", pyro.sample(f"{kern_prefix}lengthscale", dist.Normal(0.,1.0))),
+                transform_param("scalemixture", pyro.sample(f"{kern_prefix}scalemixture", dist.Normal(0.,1.0)))
             )
-            rq_kernel.lengthscale = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
-            rq_kernel.scale_mixture = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
             return rq_kernel
         elif kernel_type == 1.0:
             # Linear kernel
-            linear_kernel = gp.kernels.Polynomial(input_dim=self.input_dim, degree=1)
-            linear_kernel.bias = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
+            linear_kernel = UnitPolynomialDegreeOne(
+                transform_param("bias", pyro.sample(f"{kern_prefix}bias", dist.Normal(0.,1.0)))
+            )
             return linear_kernel
         elif kernel_type == 2.0:
             # Squared Exponential kernel
-            rbf_kernel = gp.kernels.RBF(
-                input_dim=self.input_dim,
+            rbf_kernel = UnitSquaredExponential(
+                transform_param("lengthscale", pyro.sample(f"{kern_prefix}lengthscale", dist.Normal(0.,1.0)))
             )
-            rbf_kernel.lengthscale = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
             return rbf_kernel
         elif kernel_type == 3.0:
             # Periodic
-            periodic_kernel = gp.kernels.Periodic(
-                input_dim=self.input_dim,
-                variance=torch.tensor(1.0),
+            periodic_kernel = UnitPeriodic(
+                transform_param("lengthscale", pyro.sample(f"{kern_prefix}lengthscale", dist.Normal(0.,1.0))),
+                transform_param("period", pyro.sample(f"{kern_prefix}period", dist.Normal(0.,1.0)))
             )
-            periodic_kernel.lengthscale = pyro.nn.PyroSample(
-                dist.LogNormal(-1.5,1.0)
-            )
-            periodic_kernel.period = pyro.nn.PyroSample(dist.LogNormal(-1.5,1.0))
             return periodic_kernel
         elif kernel_type == 4.0:
             # Sum
-            left_child = self.sample_kernel_fn(f"{address_prefix}sum_left_")
-            right_child = self.sample_kernel_fn(f"{address_prefix}sum_right_")
-            return gp.kernels.Sum(left_child, right_child)
+            left_child = self.sample_kernel_fn(kern_prefix+"skern0.")
+            right_child = self.sample_kernel_fn(kern_prefix+"skern1.")
+            return Plus(left_child, right_child)
         elif kernel_type == 5.0:
             # Product
-            left_child = self.sample_kernel_fn(f"{address_prefix}times_left_")
-            right_child = self.sample_kernel_fn(f"{address_prefix}times_right_")
-            return gp.kernels.Product(left_child, right_child)
+            left_child = self.sample_kernel_fn(kern_prefix+"tkern0.")
+            right_child = self.sample_kernel_fn(kern_prefix+"tkern1.")
+            return Times(left_child, right_child)
         else:
             raise ValueError(f"Unkown kernel type: {kernel_type}")
 
     def __call__(self):
-        # Sample kernel function
-        kernel_fn = self.sample_kernel_fn("")
-
-        std = pyro.sample("std", dist.LogNormal(-1.5,1.0))
-
-        # Create covariance matrix
+        kernel = self.sample_kernel_fn(".")
+        noise = transform_param("noise", pyro.sample("std", dist.Normal(0.,1.))) + 1e-5
         N = self.X.size(0)
-        Kff = kernel_fn(self.X)
-        # The constant kernel has problems because it uses .expand() internally.
-        # To avoid the problem we need to clone the covariance matrix.
-        Kff = Kff.type(self.X.dtype).clone()
-        Kff.view(-1)[:: N + 1] += self.jitter + torch.pow(
-            std, 2
-        )  # add noise to diagonal
-        Lff = torch.linalg.cholesky(Kff)
+        cov_matrix = kernel.eval_cov_vec(self.X) + noise * torch.eye(N)
 
-        zero_loc = self.X.new_zeros(N)
-        pyro.sample("y", dist.MultivariateNormal(zero_loc, scale_tril=Lff), obs=self.y)
+        pyro.sample("obs", dist.MultivariateNormal(self.X.new_zeros(N), covariance_matrix=cov_matrix), obs=self.y)
+        return kernel
 
-        # Sample data from standard normal
-        return kernel_fn
 
     def make_parameter_plots(self, results, guide, branching_trace, file_prefix):
         if isinstance(guide, AutoSLPNormalReparamGuide):
@@ -197,15 +163,12 @@ class GPKernelLearning(AbstractModel):
 
     def evaluation(self, posterior_samples, ground_truth_weights=None):
         post_kernels = self.extract_posterior_kernels(posterior_samples)
-        noises = [trace.nodes["std"]["value"] for trace in posterior_samples]
+        noises = [transform_param("noise", trace.nodes["std"]["value"]) for trace in posterior_samples]
 
         pell = torch.tensor(0.0) # this is what Reichelt et al. called LPPD but we call it posterior expected log-likelihood
         lppd = -torch.tensor(torch.inf)
         for kernel_fn, noise in zip(post_kernels, noises):
-            gp_mean, gp_cov = self.gp_analytic_posterior(
-                kernel_fn, self.X, self.X_val, self.y, noise, self.jitter, full_cov=True
-            )
-            lp = dist.MultivariateNormal(gp_mean, gp_cov).log_prob(self.y_val).detach()
+            lp = kernel_fn.posterior_predictive(self.X, self.y, noise, self.X_val, noise).log_prob(self.y_val).detach()
             pell += lp
             lppd = torch.logaddexp(lppd, lp)
 
@@ -214,26 +177,15 @@ class GPKernelLearning(AbstractModel):
 
     def plot_posterior_samples(self, posterior_samples, fname):
         post_kernels = self.extract_posterior_kernels(posterior_samples)
-        noises = [trace.nodes["std"]["value"] for trace in posterior_samples]
+        noises = [transform_param("noise", trace.nodes["std"]["value"]) for trace in posterior_samples]
 
         new_xs = torch.linspace(0, 1, 500)
         posterior_fs = torch.zeros((len(post_kernels), new_xs.size(0)))
-        gp_means = torch.zeros((len(post_kernels), new_xs.size(0)))
-        gp_vars = torch.zeros((len(post_kernels), new_xs.size(0)))
         for ix in range(len(post_kernels)):
             with torch.no_grad():
-                gp_post_mean, gp_post_cov = self.gp_analytic_posterior(
-                    post_kernels[ix],
-                    self.X,
-                    new_xs,
-                    self.y,
-                    noises[ix],
-                    self.jitter,
-                    full_cov=True,
+                posterior_fs[ix, :] = (
+                    post_kernels[ix].posterior_predictive(self.X, self.y, noises[ix], new_xs, noises[ix]).sample().detach()
                 )
-            posterior_fs[ix, :] = (
-                dist.MultivariateNormal(gp_post_mean, gp_post_cov).sample().detach()
-            )
 
         f_post_mean = posterior_fs.mean(dim=0)
         f_post_std = posterior_fs.std(dim=0)
@@ -259,52 +211,10 @@ class GPKernelLearning(AbstractModel):
         plt.close("all")
 
     @staticmethod
-    def extract_posterior_kernels(posterior_samples):
+    def extract_posterior_kernels(posterior_samples) -> list[GPKernel]:
         post_kernels = [trace.nodes["_RETURN"]["value"] for trace in posterior_samples]
-        for ix in range(len(post_kernels)):
-            for name, s in posterior_samples[ix].iter_stochastic_nodes():
-                if name in ["std", "y"] or "kernel_type" in name:
-                    continue
-
-                if isinstance(post_kernels[ix], gp.kernels.Sum) or isinstance(
-                    post_kernels[ix], gp.kernels.Product
-                ):
-                    names = name.split(".")
-                    kern_mod = post_kernels[ix]._modules[names[0]]
-                    for jx in range(len(names) - 2):
-                        kern_mod = kern_mod._modules[names[jx + 1]]
-                    setattr(kern_mod, names[-1], s["value"])
-                else:
-                    setattr(post_kernels[ix], name, s["value"])
         return post_kernels
 
     @staticmethod
     def repr_samples(posterior_samples):
-        return [repr_kernel(k) for k in GPKernelLearning.extract_posterior_kernels(posterior_samples)]
-
-    @staticmethod
-    def gp_analytic_posterior(
-        kernel_fn: gp.kernels.Kernel,
-        X: torch.tensor,
-        new_xs: torch.tensor,
-        y: torch.tensor,
-        noise: torch.tensor,
-        jitter: float,
-        full_cov: bool = False,
-    ):
-        N = X.size(0)
-        Kff = kernel_fn(X).contiguous()
-        Kff = Kff.type(X.dtype).clone()
-        Kff.view(-1)[:: N + 1] += jitter + torch.pow(noise, 2)
-        Lff = torch.linalg.cholesky(Kff)
-
-        gp_post_mean, gp_post_cov = gp.util.conditional(
-            new_xs, X, kernel_fn, y, Lff=Lff, jitter=jitter, full_cov=full_cov
-        )
-        if full_cov:
-            M = new_xs.size(0)
-            gp_post_cov = gp_post_cov.contiguous()
-            gp_post_cov.view(-1, M * M)[:, :: M + 1] += torch.pow(noise, 2)
-        else:
-            gp_post_cov = gp_post_cov + torch.pow(noise, 2)
-        return gp_post_mean, gp_post_cov
+        return [repr(k) for k in GPKernelLearning.extract_posterior_kernels(posterior_samples)]

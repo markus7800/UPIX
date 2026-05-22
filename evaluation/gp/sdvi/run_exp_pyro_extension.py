@@ -315,7 +315,6 @@ def main(cfg):
         init_loc_fn=get_init_fn(cfg.init_loc_fn),
         slps_identified_by_discrete_samples=model.slps_identified_by_discrete_samples,
     )
-    # print(f"{sdvi.model.X_val=} {sdvi.model.y_val=}")
 
 
     t0 = monotonic()
@@ -323,8 +322,8 @@ def main(cfg):
         forward_kl_callback
     )
     elapsed = monotonic() - t0
-    logging.info(f"Finished in {elapsed:.3f}s.") # ~ 1120s
-
+    logging.info(f"Finished in {elapsed:.3f}s.")
+        
     # Plot diagnostics
     logging.info(resource_allocation_metrics["bt2num_selected"])
     # for bt in sdvi.branching_traces:
@@ -357,7 +356,7 @@ def main(cfg):
     #     "slp_weights.jpg",
     #     ground_truth_slp_weights=ground_truth_branch_weights,
     # )
-
+    
     top_5_slps = [
         (k, v[-1].item())
         for k, v in sorted(
@@ -365,26 +364,31 @@ def main(cfg):
         )[:5]
     ]
     logging.info(f"Top 5 SLPs: {top_5_slps}")
-    
-    top_5_samples = sdvi.get_topk_samples(5)
-    logging.info(model.repr_samples(top_5_samples))
 
     # plot_all_local_elbos_and_iwaes(exclusive_kl_results, [x[0] for x in top_5_slps])
     # Plot evolution of the utilities for each SLP
     # if "utilities" in resource_allocation_metrics:
     #     plot_slp_weights(resource_allocation_metrics["utilities"], "utilities.jpg")
-
+    
     parameter_names = {
         bt: [n for n, _ in sdvi.guides[bt].named_parameters()]
         for bt in sdvi.branching_traces
     }
-    lppd = 0
-    if model.does_lppd_evaluation:
-        parameters = {
-            bt: {param_name: m[param_name] for param_name in parameter_names[bt]}
-            for bt, m in exclusive_kl_results.items()
-        }
-        lppds = calculate_intermediate_lppd(
+
+    parameters = {
+        bt: {param_name: m[param_name] for param_name in parameter_names[bt]}
+        for bt, m in exclusive_kl_results.items()
+    }
+        
+    # set >1 to compute LPPD estimation std
+    lppd_reps = 1
+    
+    logging.info(f"Estimating LPPD with {cfg.posterior_predictive_num_samples} posterior samples.")
+    
+    lppds = []
+    pells = []
+    for _ in range(lppd_reps):
+        result = calculate_intermediate_lppd(
             model,
             sdvi.guides,
             parameters,
@@ -393,20 +397,30 @@ def main(cfg):
             cfg.posterior_predictive_num_samples,
         )
         # plot_lppd(lppds, "lppd.jpg")
-        pell, lppd = lppds[-1]
-        logging.info(f"PELL: {pell} LPPD: {lppd}")
+        pell, lppd = result[-1]
+        pells.append(pell)
+        lppds.append(lppd)
+
+    pell, lppd = pells[0], lppds[0] # save first independent of lppd_reps
+    
+    if lppd_reps > 1:
+        pells = torch.tensor(pells)
+        lppds = torch.tensor(lppds)
+        logging.info(f"PELL: {torch.mean(pells).item()} +/- {torch.std(pells).item()} LPPD: {torch.mean(lppds).item()} +/- {torch.std(lppds).item()}")
     else:
-        num_iterations = len(list(sdvi.bt2weight.values())[0])
-        lppds = num_iterations * [float("nan")]
+        logging.info(f"PELL: {pell} LPPD: {lppd}")
 
     posterior_samples = sdvi.sample_posterior_predictive(
         cfg.posterior_predictive_num_samples
     )
-    # model.plot_posterior_samples(posterior_samples, "posterior_predictive.jpg")
+    model.plot_posterior_samples(posterior_samples, "posterior_predictive.jpg")
 
     # Make plots showing the evolution of the global ELBO
     # make_elbo_plot(global_elbos, "global_elbos.jpg", marginal_likelihood=global_Z)
     logging.info(f"Global ELBO: {global_elbos[-1]}")
+    
+    top_5_samples = sdvi.get_topk_samples(5)
+    logging.info(model.repr_samples(top_5_samples))
 
     # Create dict without parameters
     exclusive_kl_metrics = {
@@ -453,7 +467,6 @@ def main(cfg):
             "id": id_str,
             "workload": {
                 "L": sdvi.exclusive_kl_num_particles,
-                "n_iter": 1000,
                 "n_slps": len(sdvi.branching_traces),
                 "seed": cfg.seed,
             },
@@ -474,7 +487,7 @@ def main(cfg):
             }
         }
         now = datetime.today().strftime('%Y-%m-%d_%H-%M')
-        fpath = pathlib.Path(
+        fpath = pathlib.Path("..", "..", "..",
             f"L_{sdvi.exclusive_kl_num_particles:07d}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")
         print(fpath)
         fpath.parent.mkdir(exist_ok=True, parents=True)
