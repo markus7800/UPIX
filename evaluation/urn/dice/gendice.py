@@ -49,7 +49,8 @@ for i in range(2,args.N+1):
     for j in range(i):
         ps[j] = 1/i
     pickball_fn_body += f"else if N == int({bits},{i}) then\n" 
-    pickball_fn_body += "    discrete(" + ", ".join(map(str,ps)) + ")\n"
+    # pickball_fn_body += "    discrete(" + ", ".join(map(str,ps)) + ")\n"
+    pickball_fn_body += f"    uniform({bits},0,{i})\n"
 pickball_fn_body += f"""else
     int({bits}, 0)
 """

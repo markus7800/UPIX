@@ -2,6 +2,7 @@ import sys
 sys.path.append("evaluation")
 from parse_args import *
 parser = get_arg_parser()
+parser.add_argument("-n_particles", help="number of smc particles", type=int, default=128)
 parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
@@ -32,7 +33,7 @@ if __name__ == "__main__":
     smc_dcc_obj = SMCDCCConfig(m, verbose=2,
         init_n_samples=1_000,
         smc_rejuvination_attempts=8,
-        smc_n_particles=100,
+        smc_n_particles=args.n_particles,
         smc_collect_inference_info=True,
         max_iterations = 5,
         n_lmh_update_samples = 250,

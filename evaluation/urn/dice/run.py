@@ -7,20 +7,27 @@ import os
 import time
 
 parser = argparse.ArgumentParser()
+parser.add_argument("N", help="nballs")
 parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 
-N = 10
+N = args.N
+# subprocess.run("python3 ", capture_output=True, shell=True)
 
-cmd = f"docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -eager-eval -flip-lifting -recursion-limit 20 -max-list-length 20 urn{N}.dice"
+cmd = f"docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice bash run_dice_urn.sh {N}"
 
-t0 = time.time()
 res = subprocess.run(cmd, capture_output=True, shell=True)
-timing = time.time() - t0
 
 out = res.stdout.decode()
 print(out)
-print(res.stderr.decode())
+err = res.stderr.decode()
+print(err)
+
+match = re.search(r'^real\s+(\d+)m([\d.]+)s', err, re.MULTILINE)
+assert match
+minutes = int(match.group(1))
+seconds = float(match.group(2))    
+timing = (minutes * 60) + seconds
 
 gt = np.load("evaluation/urn/gt_ps.npy")
 urn_result = np.zeros(len(gt))
@@ -78,7 +85,6 @@ json_result = {
 }
 now = datetime.today().strftime('%Y-%m-%d_%H-%M')
 fpath = pathlib.Path(
-    os.path.dirname(os.path.realpath(__file__)), "..", "..", "..",
     "experiments", "data", "urn", "dice", f"{platform}_{num_workers:02d}",
     f"date_{now}_{id_str[:8]}.json")
 fpath.parent.mkdir(exist_ok=True, parents=True)

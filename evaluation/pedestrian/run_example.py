@@ -87,15 +87,16 @@ if __name__ == "__main__":
     gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf_est-100-1_000_000_000_000.npy")
 
 
-    plot_histogram_by_slp(result, "start")
-    
-    
-    start_weighted_samples, _ = result.get_samples_for_address("start", sample_ixs=slice(1000,None)) # burn-in
-    assert start_weighted_samples is not None
-    start_samples, start_weights = start_weighted_samples.unstack().get()
-    
-    axes = plt.gcf().axes
-    axes[-2].plot(gt_xs, gt_pdf, label="ground truth", linestyle="dashed")
-    axes[-2].legend()
-    plt.show()
+    if args.show_plots:
+        plot_histogram_by_slp(result, "start")
+        
+        
+        start_weighted_samples, _ = result.get_samples_for_address("start", sample_ixs=slice(1000,None)) # burn-in
+        assert start_weighted_samples is not None
+        start_samples, start_weights = start_weighted_samples.unstack().get()
+        
+        axes = plt.gcf().axes
+        axes[-2].plot(gt_xs, gt_pdf, label="ground truth", linestyle="dashed")
+        axes[-2].legend()
+        plt.show()
 

@@ -16,8 +16,8 @@ RUN /root/.juliaup/bin/julia --project=evaluation/gmm/gen -e "import Pkg; Pkg.in
 
 RUN /root/.juliaup/bin/julia --project=evaluation/gp/autogp -e "import Pkg; Pkg.instantiate()"
 
-RUN apt-get install -y g++ cmake libopenblas-dev liblapack-dev libarmadillo-dev
-
-RUN make compile -C evaluation/urn/milch/swift/
+# For running urn with BLOG (Milch)
+# RUN apt-get install -y g++ cmake libopenblas-dev liblapack-dev libarmadillo-dev
+# RUN make compile -C evaluation/urn/milch/swift/
 
 ENTRYPOINT [ "bash" ]

@@ -2,6 +2,8 @@ import sys
 sys.path.append("evaluation")
 from parse_args import *
 parser = get_arg_parser()
+parser.add_argument("-n_chains", help="number of chains to run", type=int, default=8)
+parser.add_argument("-n_samples_per_chain", help="number of sampler per chain to run", type=int, default=25_000)
 parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
@@ -23,8 +25,8 @@ if __name__ == "__main__":
     m.set_slp_sort_key(find_K)
 
     dcc_obj = DCCConfig(m, verbose=2,
-        mcmc_n_chains=8,
-        mcmc_n_samples_per_chain=25_000,
+        mcmc_n_chains=args.n_chains,
+        mcmc_n_samples_per_chain=args.n_samples_per_chain,
         mcmc_collect_for_all_traces=True,
         parallelisation=get_parallelisation_config(args)
     )

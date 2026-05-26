@@ -2,7 +2,7 @@
 
 for seed in {0..4} ;
 do
-    bash evaluation/gp/sdvi run_comp.sh 10 $seed
+    bash evaluation/gp/sdvi/run_comp.sh 10 $seed
 done
 
 for seed in {0..4} ;

@@ -55,7 +55,7 @@ class DCCConfig(RJMCMCDCC[T]):
 
 
 def get_distance_to_gt(result: MCDCCResult):
-    gt_cluster_visits = jnp.array([687, 574, 119783, 33258676, 46000324, 16768787, 3302321, 485045, 57502, 5806, 457, 38])
+    gt_cluster_visits = jnp.array([687, 574, 119783, 33258676, 46000324, 16768787, 3302321, 485045, 57502, 5806, 457, 38, 0, 0, 0, 0, 0])
     gt_ps = gt_cluster_visits / gt_cluster_visits.sum()
     gt_cdf = jnp.cumsum(gt_ps)
     

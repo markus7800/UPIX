@@ -4,6 +4,7 @@ from parse_args import *
 parser = get_arg_parser()
 parser.add_argument("-L", type=int, default=1)
 parser.add_argument("-n_runs", type=int, default=1)
+parser.add_argument("-sh_iterations", type=int, default=1_000_000)
 parser.add_argument("--show_plots", action="store_true")
 args = parser.parse_args()
 setup_devices_from_args(args)
@@ -33,7 +34,7 @@ if __name__ == "__main__":
         advi_n_runs=args.n_runs, # 8 would work better
         advi_optimizer=Adam(0.005),
         elbo_estimate_n_samples=100,
-        successive_halving=SuccessiveHalving(1_000_000, 10),
+        successive_halving=SuccessiveHalving(args.sh_iterations, 10),
         parallelisation = get_parallelisation_config(args),
         disable_progress=args.no_progress
     )
