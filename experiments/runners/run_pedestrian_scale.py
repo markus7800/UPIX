@@ -23,7 +23,10 @@ if platform == "cpu":
         print('# CMD: ' + cmd)
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
-        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
+        elapsed = time.monotonic()-t0
+        print(f"# Finished CMD in {elapsed:.3f}s")
+        if elapsed > 5000:
+            break
         
 if platform == "cuda":
     check_cmd = f"uv run --frozen -p python3.13 --extra=cuda experiments/runners/check_environ.py gpu {ndevices}"
@@ -41,6 +44,9 @@ if platform == "cuda":
         print('# CMD: ' + cmd)
         t0 = time.monotonic()
         subprocess.run(cmd, shell=True)
-        print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
+        elapsed = time.monotonic()-t0
+        print(f"# Finished CMD in {elapsed:.3f}s")
+        if elapsed > 5000:
+            break
         
 print(f"\n# Runner finished in {time.monotonic() - RUNNER_T0:.3f}s")

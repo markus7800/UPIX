@@ -6,7 +6,7 @@ platform, ndevices, minpow, maxpow, parallelisation, flags = get_scale_args()
 
 n_slps = 8
 
-N_ITERS = [2048]
+N_ITER = 2048
 
 NCHAINS = [2**n for n in range(minpow,maxpow+1)]
 print(f"{NCHAINS=}")
@@ -19,13 +19,15 @@ if platform == "cpu":
     
     assert parallelisation == "sequential"
     vectorisation = "pmap"
-    for n_iter in N_ITERS:
-        for nchains in NCHAINS:
-            cmd = f"uv run --frozen -p python3.13 --extra=cpu evaluation/gmm/run_scale.py {parallelisation} {vectorisation} {n_slps} {nchains} {n_iter} -host_device_count {ndevices} -num_workers {ndevices} --cpu {flags}"
-            print('# CMD: ' + cmd)
-            t0 = time.monotonic()
-            subprocess.run(cmd, shell=True)
-            print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
+    for nchains in NCHAINS:
+        cmd = f"uv run --frozen -p python3.13 --extra=cpu evaluation/gmm/run_scale.py {parallelisation} {vectorisation} {n_slps} {nchains} {N_ITER} -host_device_count {ndevices} -num_workers {ndevices} --cpu {flags}"
+        print('# CMD: ' + cmd)
+        t0 = time.monotonic()
+        subprocess.run(cmd, shell=True)
+        elapsed = time.monotonic()-t0
+        print(f"# Finished CMD in {elapsed:.3f}s")
+        if elapsed > 5000:
+            break
         
 if platform == "cuda":
     check_cmd = f"uv run --frozen -p python3.13 --extra=cuda experiments/runners/check_environ.py gpu {ndevices}"
@@ -39,12 +41,14 @@ if platform == "cuda":
     else:
         vectorisation="vmap_global"
                 
-    for n_iter in N_ITERS:
-        for nchains in NCHAINS:
-            cmd = f"uv run --frozen -p python3.13 --extra=cuda evaluation/gmm/run_scale.py {parallelisation} {vectorisation} {n_slps} {nchains} {n_iter} -vmap_batch_size {2**19} -num_workers {ndevices} {flags}"
-            print('# CMD: ' + cmd)
-            t0 = time.monotonic()
-            subprocess.run(cmd, shell=True)
-            print(f"# Finished CMD in {time.monotonic()-t0:.3f}s")
+    for nchains in NCHAINS:
+        cmd = f"uv run --frozen -p python3.13 --extra=cuda evaluation/gmm/run_scale.py {parallelisation} {vectorisation} {n_slps} {nchains} {N_ITER} -vmap_batch_size {2**19} -num_workers {ndevices} {flags}"
+        print('# CMD: ' + cmd)
+        t0 = time.monotonic()
+        subprocess.run(cmd, shell=True)
+        elapsed = time.monotonic()-t0
+        print(f"# Finished CMD in {elapsed:.3f}s")
+        if elapsed > 5000:
+            break
             
 print(f"\n# Runner finished in {time.monotonic() - RUNNER_T0:.3f}s")
