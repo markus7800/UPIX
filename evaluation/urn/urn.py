@@ -30,7 +30,8 @@ def _get_n(slp: SLP) -> int:
     return int(slp.decision_representative["N"].item())
 
 
-from upix.infer import ExactDCC, VariableSelector, SingleVariable, PrefixSelector, Factor, compute_factors_optimised
+from upix.infer import ExactDCC, VariableSelector, SingleVariable, PrefixSelector, Factor
+from upix.infer import compute_factors_iteratively, compute_factors_vmapped_single_pass, compute_factors_optimised
     
 class Config(ExactDCC):
     
@@ -50,6 +51,7 @@ class Config(ExactDCC):
         return []
     
     def get_factors(self, slp: SLP, supports: Dict[str, Optional[IntArray]]) -> List[Factor]:
+        # return compute_factors_vmapped_single_pass(slp, supports, False)
         N = int(slp.decision_representative["N"].item())
         selectors: List[VariableSelector] = []
         selectors.append(SingleVariable("N"))

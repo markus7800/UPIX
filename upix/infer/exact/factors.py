@@ -14,7 +14,8 @@ from upix.infer.variable_selector import VariableSelector
 __all__ = [
     "get_supports",
     "get_supports_size",
-    "compute_factors",
+    "compute_factors_iteratively",
+    "compute_factors_vmapped_single_pass",
     "compute_factors_optimised",
     "Factor",
     "get_factors_size",
@@ -220,7 +221,7 @@ def factor_sum_out_addr(A: Factor, address_to_sum_out: str) -> Factor:
     table = jax.scipy.special.logsumexp(A.table, axis=axis)
     return Factor(variables, table)
   
-def compute_factors(slp: SLP, supports: Dict[str, Optional[IntArray]], jit: bool = True):
+def compute_factors_iteratively(slp: SLP, supports: Dict[str, Optional[IntArray]], jit: bool = True):
     all_factors_fn = make_all_factors_fn(slp)
     factor_prototypes = all_factors_fn(slp.decision_representative)
     # supports = get_supports(slp)
@@ -252,6 +253,58 @@ def compute_factors(slp: SLP, supports: Dict[str, Optional[IntArray]], jit: bool
 
     return factors
     
+def compute_factors_vmapped_single_pass(slp: SLP, supports: Dict[str, Optional[IntArray]], jit: bool = True):
+    all_factors_fn = make_all_factors_fn(slp)
+    factor_prototypes = all_factors_fn(slp.decision_representative)
+    def _get_support(addr: str) -> IntArray:
+        s = supports[addr]
+        if s is None:
+            return jnp.array([slp.decision_representative[addr]])
+        else:
+            return s
+        
+    addresses: List[str] = reduce(
+        lambda x,y: x + y,
+        [factor_addresses for _, factor_addresses in factor_prototypes])
+    addresses = sorted(set(addresses))
+    
+    
+    vars: List[IntArray] = [_get_support(addr) for addr in addresses]    
+    def _factor_fn(*vars) -> List[FloatArray]:
+        X: Trace = {addr: vars[i] for i, addr in enumerate(addresses)}
+        return [f for f, _ in all_factors_fn(X)]
+    
+    
+    _vmapped_factor_fn = _factor_fn
+    
+    for i, addr in reversed(list(enumerate(addresses))):
+        in_axes: list = [None] * len(addresses)
+        in_axes[i] = 0
+        
+        out_axes = []
+        for (_, factor_addresses) in factor_prototypes:
+            if addr in factor_addresses:
+                out_axes.append(0) # that's why we have to vmap in reverse order of inputs
+            else:
+                out_axes.append(None)
+        
+        _vmapped_factor_fn = jax.vmap(
+            _vmapped_factor_fn, 
+            in_axes=in_axes, 
+            out_axes=out_axes
+        )
+    
+
+    _vmapped_factor_fn = jax.jit(_vmapped_factor_fn) if jit else _vmapped_factor_fn
+    factor_tables = _vmapped_factor_fn(*vars)
+    
+    factors: List[Factor] = []
+    for (_, factor_addresses), factor_table in zip(factor_prototypes, factor_tables):
+        # print(factor_addresses, factor_table.shape)
+        factors.append(Factor(factor_addresses, factor_table))
+    return factors
+    
+
 
 def compute_factors_optimised(slp: SLP, selector_list: List[List[VariableSelector]], supports: Dict[str,Optional[IntArray]], jit: bool = True):
     all_factors_fn = make_all_factors_fn(slp)

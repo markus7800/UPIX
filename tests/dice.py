@@ -39,7 +39,7 @@ slp = SLP_from_branchless_model(diamond(2))
 supports = get_supports(slp)
 print(supports)
 
-fs = compute_factors(slp, supports, True)
+fs = compute_factors_iteratively(slp, supports, True)
 print(fs)
 
 marginal_variables = ["res_2"]

@@ -3,7 +3,7 @@ from typing import List, Dict, Optional
 from upix.types import FloatArray, IntArray
 from upix.core import Model, SLP
 from upix.types import PRNGKey
-from upix.infer.exact import Factor, compute_factors, get_greedy_elimination_order, variable_elimination, get_supports, get_supports_size, get_factors_size
+from upix.infer.exact import Factor, compute_factors_iteratively, get_greedy_elimination_order, variable_elimination, get_supports, get_supports_size, get_factors_size
 from upix.infer.dcc.abstract_dcc import InferenceTask, EstimateLogWeightTask, InferenceResult, LogWeightEstimate, AbstractDCC, BaseDCCResult, initialise_active_slps_from_prior
 from upix.parallelisation import VectorisationType
 from tqdm.auto import tqdm
@@ -84,7 +84,7 @@ class ExactDCC(AbstractDCC[ExactDCCResult]):
             raise Exception("In SMCDCC we should perform one run of SMC before estimate_log_weight to reuse estimate")
     
     def get_factors(self, slp: SLP, supports: Dict[str, Optional[IntArray]]) -> List[Factor]:
-        return compute_factors(slp, supports, True)
+        return compute_factors_iteratively(slp, supports, True)
     
     def get_elimination_order(self, slp: SLP, factors: List[Factor]) -> List[str]:
         t0 = time.time()
