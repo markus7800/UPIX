@@ -2,7 +2,8 @@
 # platform ndevices name
 
 export UV_PROJECT_ENVIRONMENT=.venv-$1_$2_$3
-export TMPDIR=./tmp
+export TMPDIR=~/tmp
+export OMP_NUM_THREADS=1
 
 uv sync --frozen --extra=$1
 

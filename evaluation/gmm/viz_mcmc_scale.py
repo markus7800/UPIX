@@ -27,6 +27,8 @@ n_slps = 8
 n_samples_per_chain = 2048
 repetitions = 10
 
+args.n_slps = n_slps
+
 m = gmm(ys)
 m.set_slp_formatter(formatter)
 m.set_slp_sort_key(find_K)

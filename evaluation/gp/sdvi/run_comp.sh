@@ -4,7 +4,7 @@ PROCESSES=$1
 SEED=$2
 ITERATIONS=${3:-1000000}
 
-uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/requirements.txt python3 evaluation/gp/sdvi/run_exp_pyro_extension.py \
+OMP_NUM_THREADS=1 uv run -p python3.10 --no-project --with-requirements=evaluation/gp/sdvi/requirements.txt python3 evaluation/gp/sdvi/run_exp_pyro_extension.py \
     name=gp_grammar_sdvi \
     sdvi.exclusive_kl_num_particles=1 \
     sdvi.elbo_estimate_num_particles=100 \

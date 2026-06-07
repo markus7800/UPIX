@@ -18,6 +18,7 @@ if __name__ == "__main__":
         parallelisation = get_parallelisation_config(args),
         disable_progress=args.no_progress,
         slp_max_n_leaf=3,
+        n_data = len(ys)
     )
     
     slp_str = "(GamExp + (Lin * Per))"

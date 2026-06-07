@@ -13,6 +13,8 @@ n_slps = 8
 n_samples_per_chain = 256
 repetitions = 10
 
+args.n_slps = n_slps
+
 
 m = pedestrian()
 m.set_slp_formatter(formatter)

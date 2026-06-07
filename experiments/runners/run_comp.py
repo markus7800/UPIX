@@ -126,7 +126,7 @@ def intall_julia_gen():
     cmd = [
         "julia",
         "--project=evaluation/gmm/gen",
-        "-e", '"import Pkg; Pkg.instantiate()"'
+        "-e", "import Pkg; Pkg.instantiate()"
     ]
     subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
     if smoketest: print("ok. ", end="")
@@ -193,7 +193,7 @@ def intall_julia_autogp():
     cmd = [
         "julia",
         "--project=evaluation/gp/autogp",
-        "-e", '"import Pkg; Pkg.instantiate()"'
+        "-e", "import Pkg; Pkg.instantiate()"
     ]
     subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
     if smoketest: print("ok. ", end="")

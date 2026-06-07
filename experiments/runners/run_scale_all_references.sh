@@ -1,7 +1,8 @@
 #! /bin/bash
 # n_cpu_devices name
 
-export TMPDIR=./tmp
+export TMPDIR=~/tmp
+export OMP_NUM_THREADS=1
 
 python3 experiments/runners/run_npdhmc_scale.py $1 0 ${3:-20} 2>&1 | tee ped_npdhmc_$1_$2.out
 

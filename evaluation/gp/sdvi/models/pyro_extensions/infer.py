@@ -307,7 +307,7 @@ class SDVI:
                     iwae_num_inner,
                     base_seed,
                     self.save_metrics_every_n,
-                    None if self.num_parallel_processes == 1 else 4,
+                    1 # we always use num_parallel_process = cpu_count -> num_threads per process should be 1
                 )
                 for ix, selected_bt in enumerate(active_slps)
             ]
