@@ -1,6 +1,6 @@
 import subprocess
 import time
-from scale_args import get_scale_args
+from scale_args import get_scale_args, MAX_TIME_S
 
 platform, ndevices, minpow, maxpow, parallelisation, flags = get_scale_args()
 
@@ -26,7 +26,7 @@ if platform == "cpu":
         subprocess.run(cmd, shell=True)
         elapsed = time.monotonic()-t0
         print(f"# Finished CMD in {elapsed:.3f}s")
-        if elapsed > 5000:
+        if elapsed > MAX_TIME_S:
             break
         
 if platform == "cuda":
@@ -48,7 +48,7 @@ if platform == "cuda":
         subprocess.run(cmd, shell=True)
         elapsed = time.monotonic()-t0
         print(f"# Finished CMD in {elapsed:.3f}s")
-        if elapsed > 5000:
+        if elapsed > MAX_TIME_S:
             break
             
 print(f"\n# Runner finished in {time.monotonic() - RUNNER_T0:.3f}s")

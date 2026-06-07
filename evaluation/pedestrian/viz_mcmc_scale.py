@@ -8,9 +8,11 @@ gt_cdf = jnp.load("evaluation/pedestrian/gt_cdf-100-1_000_000_000_000.npy")
 gt_pdf = jnp.load("evaluation/pedestrian/gt_pdf_est-100-1_000_000_000_000.npy")
 
 
-n_slps = 10
+maxpow = args.maxpow
+n_slps = 8
 n_samples_per_chain = 256
-args.n_slps = n_slps
+repetitions = 10
+
 
 m = pedestrian()
 m.set_slp_formatter(formatter)
@@ -26,9 +28,8 @@ def cdf_estimate(sample_points, sample_weights: jax.Array, qs):
 n_chains_to_W1_distance: Dict[int,jax.Array] = dict()
 n_chains_to_infty_distance: Dict[int,jax.Array] = dict()
 
-repetitions = 8
 
-for n_chains in [2**n for n in range(20+1)]:
+for n_chains in [2**n for n in range(maxpow+1)]:
     W1_distances = []
     infty_distances = []
     for seed in range(repetitions):
@@ -61,7 +62,9 @@ for n_chains in [2**n for n in range(20+1)]:
     
     n_chains_to_W1_distance[n_chains] = jnp.vstack(W1_distances).reshape(-1)
     n_chains_to_infty_distance[n_chains] = jnp.vstack(infty_distances).reshape(-1)
-    
-with open("viz_ped_mcmc_scale_data.pkl", "wb") as f:
+  
+folder = "experiments/data/pedestrian/scale"
+os.makedirs(folder, exist_ok=True)  
+with open(f"{folder}/viz_ped_mcmc_scale_data.pkl", "wb") as f:
     pickle.dump((n_chains_to_W1_distance, n_chains_to_infty_distance), f)
     

@@ -1,6 +1,8 @@
 
 import argparse
 
+MAX_TIME_S = 2000
+
 def get_scale_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("platform", help="cpu | cuda")

@@ -9,6 +9,9 @@ if __name__ == "__main__":
     m.set_slp_sort_key(lambda slp: get_gp_kernel(slp.decision_representative).size())
     m.set_equivalence_map(equivalence_map)
     
+    maxpow = args.maxpow
+    repetitions = 10
+    
     args.n_slps = 128
     smc_dcc_obj = SMCDCCConfig2(m, verbose=2,
         smc_collect_inference_info=True,
@@ -29,9 +32,8 @@ if __name__ == "__main__":
         
     
     n_particles_to_log_Zs: Dict[int,jax.Array] = dict()
-    repetitions = 10
     
-    for smc_n_particles in [2**e for e in range(0,15+1)]:
+    for smc_n_particles in [2**e for e in range(0,maxpow+1)]:
         log_Zs = []
         for seed in range(repetitions):
             
@@ -68,6 +70,8 @@ if __name__ == "__main__":
         n_particles_to_log_Zs[smc_n_particles] = log_Zs
     # plt.show()
     
-    with open("viz_gp_smc_particle_scale_data.pkl", "wb") as f:
+    folder = "experiments/data/gp/smc/scale"
+    os.makedirs(folder, exist_ok=True)
+    with open(f"{folder}/viz_gp_smc_particle_scale_data.pkl", "wb") as f:
         pickle.dump(n_particles_to_log_Zs, f)
     

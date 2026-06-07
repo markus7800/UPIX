@@ -3,6 +3,7 @@
 import subprocess
 import time
 import argparse
+from scale_args import MAX_TIME_S
 
 parser = argparse.ArgumentParser()
 parser.add_argument("ndevices", type=int)
@@ -23,7 +24,7 @@ for nparticles in NPARTICLES:
     subprocess.run(cmd, shell=True)
     elapsed = time.monotonic()-t0
     print(f"# Finished CMD in {elapsed:.3f}s")
-    if elapsed > 5000:
+    if elapsed > MAX_TIME_S:
         break
         
 print(f"\n# Runner finished in {time.monotonic() - RUNNER_T0:.3f}s")

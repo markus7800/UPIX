@@ -6,7 +6,10 @@ parser.add_argument("folder")
 args = parser.parse_args()
 folder = args.folder
 
-log_m2 = open(pathlib.Path(folder, "log_m2.txt"), "r").read()
+# uv run -p python3.13 --frozen --extra=cpu evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf
+# uv run -p python3.13 --frozen --extra=cuda evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf
+
+# log_m2 = open(pathlib.Path(folder, "log_m2.txt"), "r").read()
 
 log_cpu = open(pathlib.Path(folder, "log_cpu.txt"), "r").read()
 

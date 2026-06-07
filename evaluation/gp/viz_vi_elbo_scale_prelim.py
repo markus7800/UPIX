@@ -9,12 +9,7 @@ if __name__ == "__main__":
     m.set_slp_formatter(lambda slp: str(get_gp_kernel(slp.decision_representative)))
     m.set_slp_sort_key(lambda slp: get_gp_kernel(slp.decision_representative).size())
     m.set_equivalence_map(equivalence_map)
-    
-    maxpow = args.maxpow
-    max_L = 8
-    n_iter = 1000
-    repetitions = 10
-    
+            
     args.n_slps = 128
     
     vi_dcc_obj = VIConfig2(m, verbose=2,
@@ -48,47 +43,38 @@ if __name__ == "__main__":
                 vi_dcc_obj.pconfig.vectorisation = VectorisationType.LocalVMAP
             if vi_dcc_obj.pconfig.vectorisation == VectorisationType.GlobalSMAP:
                 vi_dcc_obj.pconfig.vectorisation = VectorisationType.LocalSMAP
+
         
-        
-    K_to_elbos: Dict[Tuple[int,int],jax.Array] = dict()
-    
-    for K in [2**e for e in range(0,maxpow+1)]:
-        if K // max_L == 0:
-            n_runs = 1
-            L = K
-        else:
-            n_runs = K // max_L
-            L = max_L
+    fig, ax = plt.subplots(figsize=(5,2.5))
+    for (L, n_runs) in [
+        (1,1), (8,1), (8,8), (64,1),
+        (64,8)
+        ]:
         print(f"{L=} {n_runs=}")
         set_local_global(n_runs)
-        elbos = []
-        for seed in range(repetitions):
-            advi = ADVI(slp, vi_dcc_obj.get_guide(slp), Adam(0.005), L, n_runs, pconfig=vi_dcc_obj.pconfig,
-                        show_progress=True,
-                        shared_progressbar=None)
-            last_state, advi_elbo = advi.run(jax.random.key(seed), n_iter=n_iter)
-            p = advi.optimizer.get_params_fn(last_state.optimizer_state)
+        advi = ADVI(slp, vi_dcc_obj.get_guide(slp), Adam(0.005), L, n_runs, pconfig=vi_dcc_obj.pconfig,
+                    show_progress=True,
+                    shared_progressbar=None)
+        last_state, advi_elbo = advi.run(jax.random.key(0), n_iter=2_000)
+        p = advi.optimizer.get_params_fn(last_state.optimizer_state)
+        # elbos.append(advi_elbo)
+    
+        best_run = int(jnp.nanargmax(advi_elbo[-1,:]).item()) if advi.n_runs > 1 else None
+        plt.plot(advi_elbo[:,best_run], label=f"{n_runs} x L={L}", alpha=0.5)
+        # if advi.n_runs > 1:
+        #     print(jnp.max(advi_elbo,axis=1).shape)
+        #     plt.plot(jnp.max(advi_elbo,axis=1), label=f"{n_runs} x L={L}")
+        # else:
+        #     plt.plot(advi_elbo, label=f"{n_runs} x L={L}")
             
-            best_run = int(jnp.nanargmax(advi_elbo[-1,:]).item()) if advi.n_runs > 1 else None
-            guide = advi.get_updated_guide(last_state, best_run)
-            Xs, lqs = guide.sample_and_log_prob(jax.random.key(seed), shape=(10_000,))
-            lps = jax.vmap(slp.log_prob)(Xs)
-            elbo = jnp.mean(jnp.where(jnp.isnan(lqs), -jnp.inf, lps) - lqs)
-            elbos.append(elbo)
-            # print(f"{seed=} {jnp.isnan(advi_elbo[-1,:]).sum()=} {jnp.isnan(p).sum()=} {jnp.isnan(lqs).sum()=} {jnp.isnan(lps).sum()=}  {elbo=}")
-            # if seed == 0:
-            #     plot_guide_posterior(guide, 100, f"n_runs={K} ELBO={elbo.item():.2f}")
-                
-
-        elbos = jnp.vstack(elbos).reshape(-1)
-        print(f"{K=} elbo est: {elbos.mean().item():.4f} +/- {elbos.std().item()}")
-        K_to_elbos[(n_runs, L)] = elbos
     
-    # plt.show()
-    
-    folder = "experiments/data/gp/vi/scale"
-    os.makedirs(folder, exist_ok=True)
-    with open(f"{folder}/viz_gp_vi_elbo_scale_data.pkl", "wb") as f:
-        pickle.dump(K_to_elbos, f)
-    
-    
+    plt.xlabel("iteration")
+    plt.ylabel("ELBO")
+    leg = plt.legend(ncols=2)
+    leg.get_frame().set_linewidth(0.0)
+    leg.get_frame().set_facecolor('none')
+    plt.tight_layout()
+    plt.savefig("elbo_scaling_L.pdf")
+    plt.show()
+        
+        

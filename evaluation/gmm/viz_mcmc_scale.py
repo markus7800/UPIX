@@ -22,9 +22,10 @@ gt_cdf = jnp.cumsum(gt_ps)
 # 11 0.00000457
 # 12 0.00000038
 
+maxpow = args.maxpow
 n_slps = 8
 n_samples_per_chain = 2048
-args.n_slps = n_slps
+repetitions = 10
 
 m = gmm(ys)
 m.set_slp_formatter(formatter)
@@ -33,10 +34,10 @@ m.set_slp_sort_key(find_K)
 n_chains_to_W1_distance: Dict[int,jax.Array] = dict()
 n_chains_to_infty_distance: Dict[int,jax.Array] = dict()
 
-repetitions = 10
-
-with open("viz_gmm_result.txt", "w") as f:
-    for n_chains in [2**n for n in range(18+1)]:
+folder = "experiments/data/gmm/scale"
+os.makedirs(folder, exist_ok=True)
+with open(f"{folder}/viz_gmm_result.txt", "w") as f:
+    for n_chains in [2**n for n in range(maxpow+1)]:
         W1_distances = []
         infty_distances = []
         for seed in range(repetitions):
@@ -62,7 +63,6 @@ with open("viz_gmm_result.txt", "w") as f:
         n_chains_to_W1_distance[n_chains] = jnp.vstack(W1_distances).reshape(-1)
         n_chains_to_infty_distance[n_chains] = jnp.vstack(infty_distances).reshape(-1)
     
-
-with open("viz_gmm_mcmc_scale_data.pkl", "wb") as f:
+with open(f"{folder}/viz_gmm_mcmc_scale_data.pkl", "wb") as f:
     pickle.dump((n_chains_to_W1_distance, n_chains_to_infty_distance), f)
         

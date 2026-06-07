@@ -1,6 +1,7 @@
 
 import subprocess
 import argparse
+from time import monotonic
 
 parser = argparse.ArgumentParser()
 parser.add_argument("model", choices=["pedestrian", "gp-vi", "gp-smc", "gmm", "urn", "all", "dice"],  help="Model to run")
@@ -19,11 +20,12 @@ stderr_behavior = None if args.verbose else subprocess.DEVNULL
 print(f"{smoketest=} {repetitions=} {ncpu=}")
     
 def run_pedestrian_npdhmc():
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} Pedestrian NPDHMC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 10 if smoketest else 1
     
-    for seed in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "uv", "run", 
             "-p", "python3.10", 
@@ -33,17 +35,20 @@ def run_pedestrian_npdhmc():
             "NP-DHMC", str(ncpu), str(1000 // d), "100", 
             "-n_processes", str(ncpu), 
             "--disable_bar", 
-            "-seed", str(seed)
+            "-seed", str(rep)
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
         
 def run_pedestrian_upix():
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} Pedestrian UPIX MCMC-DCC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 10 if smoketest else 1
     
-    for seed in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "uv", "run", 
             "-p", "python3.13", 
@@ -54,10 +59,12 @@ def run_pedestrian_upix():
             "-n_chains", str(ncpu),
             "-n_samples_per_chain", str(25_000 // d),
             "-host_device_count", str(ncpu), 
-            "-seed", str(seed)
+            "-seed", str(rep)
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
 
         
 if args.model in ["pedestrian", "all"]:
@@ -66,26 +73,30 @@ if args.model in ["pedestrian", "all"]:
     
     
 def run_gp_sdvi(): 
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} SDVI  ... ", end="" if smoketest else "\n", flush=True)
 
     d = 100 if smoketest else 1
     
-    for seed in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "bash", 
             "evaluation/gp/sdvi/run_comp.sh", 
             str(ncpu), 
-            str(seed),
+            str(rep),
             str(1_000_000 // d)
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
 
 
 def run_gp_vi_upix():
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} GP UPIX VI-DCC ... ", end="" if smoketest else "\n", flush=True)
     
-    for seed in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "uv", "run", 
             "-p", "python3.13", 
@@ -96,10 +107,12 @@ def run_gp_vi_upix():
             "cpu_multiprocess", "vmap_local",
             "-sh_iterations", str(1_000_000),
             "-num_workers", str(ncpu), 
-            "-seed", str(seed)
+            "-seed", str(rep)
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
 
 if args.model in ["gp-vi", "all"]:
     run_gp_sdvi()
@@ -107,7 +120,8 @@ if args.model in ["gp-vi", "all"]:
     
     
     
-def intall_julia_gen(): 
+def intall_julia_gen():
+    t0 = monotonic()
     print(f"Installing Gen.jl (if needed) ... ", end="" if smoketest else "\n", flush=True)
     cmd = [
         "julia",
@@ -115,14 +129,16 @@ def intall_julia_gen():
         "-e", '"import Pkg; Pkg.instantiate()"'
     ]
     subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
     
-def run_gmm_gen(): 
+def run_gmm_gen():
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} Gen RJMCMC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 10 if smoketest else 1
 
-    for seed in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "julia",
             "-t", str(ncpu),
@@ -130,18 +146,21 @@ def run_gmm_gen():
             "evaluation/gmm/gen/gmm.jl",
             str(ncpu), 
             str(25_000 // d),
-            str(seed),
+            str(rep),
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
 
 
 def run_gmm_upix():
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} GP UPIX RJ-DCC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 10 if smoketest else 1
 
-    for seed in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "uv", "run", 
             "-p", "python3.13", 
@@ -152,10 +171,12 @@ def run_gmm_upix():
             "-n_chains", str(ncpu),
             "-n_samples_per_chain", str(25_000 // d),
             "-host_device_count", str(ncpu), 
-            "-seed", str(seed)
+            "-seed", str(rep)
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
     
     
 if args.model in ["gmm", "all"]:
@@ -166,7 +187,8 @@ if args.model in ["gmm", "all"]:
     
     
     
-def intall_julia_autogp(): 
+def intall_julia_autogp():
+    t0 = monotonic()
     print(f"Installing AutoGP.jl (if needed) ... ", end="" if smoketest else "\n", flush=True)
     cmd = [
         "julia",
@@ -174,14 +196,16 @@ def intall_julia_autogp():
         "-e", '"import Pkg; Pkg.instantiate()"'
     ]
     subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
     
-def run_gp_autogp(): 
+def run_gp_autogp():
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} AutoGP.jl ... ", end="" if smoketest else "\n", flush=True)
     
     d = 16 if smoketest else 1
 
-    for seed in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "julia",
             "-t", str(ncpu),
@@ -189,18 +213,21 @@ def run_gp_autogp():
             "evaluation/gp/autogp/main.jl",
             str(128 // d), 
             "false",
-            str(seed),
+            str(rep),
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
 
 
 def run_gp_smc_upix():
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} GP UPIX SMC-DCC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 16 if smoketest else 1
 
-    for seed in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "uv", "run", 
             "-p", "python3.13", 
@@ -211,10 +238,12 @@ def run_gp_smc_upix():
             "sequential", "smap_local",
             "-n_particles", str(128 // d),
             "-host_device_count", str(ncpu), 
-            "-seed", str(seed)
+            "-seed", str(rep)
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
     
     
 if args.model in ["gp-smc", "all"]:
@@ -224,6 +253,7 @@ if args.model in ["gp-smc", "all"]:
     
     
 def run_urn_dice():
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} Urn Dice ... ", end="" if smoketest else "\n", flush=True)
     
     for _ in range(repetitions):
@@ -237,17 +267,19 @@ def run_urn_dice():
             "10" if smoketest else "19"
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
     
 if args.model in ["dice"]:
     run_urn_dice()
     
 def run_urn_upix():
+    t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} Urn UPIX VE-DCC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 2 if smoketest else 1
 
-    for seed in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "uv", "run", 
             "-p", "python3.13", 
@@ -258,12 +290,13 @@ def run_urn_upix():
             "sequential", "vmap_local",
             str(20 // d), 
             "--jit_inf",
-            "-seed", str(seed)
+            "-seed", str(rep)
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
-    if smoketest: print("ok")
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
+    if smoketest: print("ok. ", end="")
+    print(f"Finished in {monotonic()-t0:.3f}s")
     
 
 if args.model in ["urn", "all"]:
     run_urn_upix()
-    

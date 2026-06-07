@@ -129,6 +129,9 @@ def cdf_cruncher(qs, batch_size, num_batches, n_iter, vectorisation, n_devices, 
 
 # GTX 1070
 # uv run --python python3 --extra cuda --locked --with PyQt6 evaluation/pedestrian/ground_truth.py sequential vmap_global 100 1_000_000 10 1_000 0 --show_plots
+# l40s ~1h
+# uv run --python python3.13 --extra=cuda evaluation/pedestrian/ground_truth.py sequential vmap_global 100 1_000_000 1_000 1_000 0
+
 
 start_linspace = jnp.linspace(0., 3., args.n_qs)
 N_SAMPLES = args.num_batches * args.batch_size * args.n_iter
