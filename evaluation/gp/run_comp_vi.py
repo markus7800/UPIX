@@ -42,21 +42,18 @@ if __name__ == "__main__":
     result, timings = timed(vi_dcc_obj.run)(jax.random.key(args.seed))
     result.pprint()
 
-    # set > 1 to compute LPPD estimation std
-    lppds_reps = 1
-    pells_lppds = [compute_lppd(result, xs, ys, xs_val, ys_val, 1000, i) for i in range(lppds_reps)]
+    pells_lppds = [compute_lppd(result, xs, ys, xs_val, ys_val, 1000, i) for i in range(5)]
     pell, lppd = pells_lppds[0] # save first independent of lppd_reps
     
-    if lppds_reps > 1:
-        pells = jnp.array([pell for pell, _ in pells_lppds], float)
-        lppds = jnp.array([lppd for _, lppd in pells_lppds], float)
-        print(f"pell: {float(pells.mean())} +/- {float(pells.std())}", f"lppd: {float(lppds.mean())} +/- {float(lppds.std())}")
-    else:
-        print("pell:", pell, "lppd:", lppd)
+    pells = jnp.array([pell for pell, _ in pells_lppds], float)
+    lppds = jnp.array([lppd for _, lppd in pells_lppds], float)
+    pell, pell_std = float(pells[0]), float(pells.std()) # save first one independent of std
+    lppd, lppd_std = float(lppds[0]), float(lppds.std())
+    print(f"pell: {float(pells.mean())} +/- {pell_std}", f"lppd: {float(lppds.mean())} +/- {lppd_std}")
     
     if args.show_plots:
         plot_results(result, xs, ys, xs_val, ys_val)
     
     if not args.no_save:
-        save_results(args, result, vi_dcc_obj, timings, pell, lppd, "comp")
+        save_results(args, result, vi_dcc_obj, timings, pell, pell_std, lppd, lppd_std, "comp")
 

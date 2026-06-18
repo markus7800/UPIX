@@ -54,6 +54,7 @@ class RJMCMCDCC(MCMCDCC[DCC_COLLECT_TYPE]):
     
     @abstractmethod
     def get_index(self, trace: Trace) -> IntArray:
+        # TODO: this can be automated by assigning SLPs index
         raise NotImplementedError
     
     @abstractmethod

@@ -63,8 +63,9 @@ if __name__ == "__main__":
         set_local_global(n_runs)
         elbos = []
         for seed in range(repetitions):
+            # recompilation warnings can be ignored when switching from smap_local to smap_global
             advi = ADVI(slp, vi_dcc_obj.get_guide(slp), Adam(0.005), L, n_runs, pconfig=vi_dcc_obj.pconfig,
-                        show_progress=True,
+                        show_progress=not args.no_progress,
                         shared_progressbar=None)
             last_state, advi_elbo = advi.run(jax.random.key(seed), n_iter=n_iter)
             p = advi.optimizer.get_params_fn(last_state.optimizer_state)

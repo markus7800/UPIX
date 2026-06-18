@@ -381,7 +381,7 @@ def main(cfg):
     }
         
     # set >1 to compute LPPD estimation std
-    lppd_reps = 1
+    lppd_reps = 5
     
     logging.info(f"Estimating LPPD with {cfg.posterior_predictive_num_samples} posterior samples.")
     
@@ -402,10 +402,13 @@ def main(cfg):
         lppds.append(lppd)
 
     pell, lppd = pells[0], lppds[0] # save first independent of lppd_reps
+    pell_std, lppd_std = None, None
     
     if lppd_reps > 1:
         pells = torch.tensor(pells)
         lppds = torch.tensor(lppds)
+        pell_std = torch.std(pells).item()
+        lppd_std = torch.std(lppds).item()
         logging.info(f"PELL: {torch.mean(pells).item()} +/- {torch.std(pells).item()} LPPD: {torch.mean(lppds).item()} +/- {torch.std(lppds).item()}")
     else:
         logging.info(f"PELL: {pell} LPPD: {lppd}")
@@ -472,7 +475,7 @@ def main(cfg):
             },
             "result_metrics": {
                 "pell": pell,
-                "lppd": lppd
+                "lppd": lppd,
             },
             "timings": {
                 "inference_time": sdvi.inference_time,
@@ -486,6 +489,11 @@ def main(cfg):
                 "command": sys.argv[0]
             }
         }
+        if pell_std is not None:
+            json_result["result_metrics"]["pell_std"] = pell_std
+        if lppd_std is not None:
+            json_result["result_metrics"]["lppd_std"] = lppd_std
+            
         now = datetime.today().strftime('%Y-%m-%d_%H-%M')
         fpath = pathlib.Path("..", "..", "..",
             f"L_{sdvi.exclusive_kl_num_particles:07d}_{platform}_{num_workers:02d}_date_{now}_{id_str[:8]}.json")

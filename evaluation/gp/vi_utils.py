@@ -60,7 +60,7 @@ def compute_lppd(result: VIDCCResult, xs, ys, xs_val, ys_val, n, seed):
     return float(pell / n), float(lppd - jnp.log(n))
         
 
-def save_results(args, result: VIDCCResult, vi_dcc_obj: VIDCC, timings: dict, pell: float, lppd: float, folder: str):
+def save_results(args, result: VIDCCResult, vi_dcc_obj: VIDCC, timings: dict, pell: float, pell_std: Optional[float], lppd: float, lppd_std: Optional[float], folder: str):
     K = int(vi_dcc_obj.advi_n_runs) * int(vi_dcc_obj.advi_L)
     workload = {
         "K": K,
@@ -77,6 +77,10 @@ def save_results(args, result: VIDCCResult, vi_dcc_obj: VIDCC, timings: dict, pe
         "pell": pell,
         "lppd": lppd
     }
+    if pell_std is not None:
+        result_metrics["pell_std"] = pell_std
+    if lppd_std is not None:
+        result_metrics["lppd_std"] = lppd_std
         
     json_result = {
         "workload": workload,

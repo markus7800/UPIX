@@ -65,7 +65,7 @@ def compute_lppd(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, n, seed):
     return float(pell / n), float(lppd - jnp.log(n))
 
 
-def save_results(args, result: MCDCCResult, smc_dcc_obj: SMCDCC, timings: dict, pell: float, lppd: float, folder: str):
+def save_results(args, result: MCDCCResult, smc_dcc_obj: SMCDCC, timings: dict, pell: float, pell_std: Optional[float], lppd: float, lppd_std: Optional[float], folder: str):
     workload = {
         "n_particles": smc_dcc_obj.smc_n_particles,
         "n_slps": len(result.get_slps()),
@@ -78,6 +78,10 @@ def save_results(args, result: MCDCCResult, smc_dcc_obj: SMCDCC, timings: dict, 
         "pell": pell,
         "lppd": lppd
     }
+    if pell_std is not None:
+        result_metrics["pell_std"] = pell_std
+    if lppd_std is not None:
+        result_metrics["lppd_std"] = lppd_std
         
     json_result = {
         "workload": workload,

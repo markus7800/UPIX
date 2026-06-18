@@ -59,4 +59,4 @@ if __name__ == "__main__":
         plot_results(m, result, xs, ys, xs_val, ys_val, rescale_x, rescale_y)
     
     if not args.no_save:
-        save_results(args, result, smc_dcc_obj, timings, pell, lppd, "scale")
+        save_results(args, result, smc_dcc_obj, timings, pell, None, lppd, None, "scale")

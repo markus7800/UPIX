@@ -149,9 +149,11 @@ else:
 gt_pdf = jnp.hstack([jnp.array(0.),jnp.diff(gt_cdf)]) / (start_linspace[1] - start_linspace[0])
 
 if not args.no_save:
-    jnp.save(f"evaluation/pedestrian/gt_xs-{args.n_qs}.npy", start_linspace)
-    jnp.save(f"evaluation/pedestrian/gt_pdf_est-{args.n_qs}-{N_SAMPLES:_}-{SEED}.npy", gt_pdf)
-    jnp.save(f"evaluation/pedestrian/gt_cdf-{args.n_qs}-{N_SAMPLES:_}-{SEED}.npy", gt_cdf)
+    folder = "experiments/data/pedestrian/groundtruth"
+    os.makedirs(folder, exist_ok=True)
+    jnp.save(f"{folder}/gt_xs-{args.n_qs}.npy", start_linspace)
+    jnp.save(f"{folder}/gt_pdf_est-{args.n_qs}-{N_SAMPLES:_}-{SEED}.npy", gt_pdf)
+    jnp.save(f"{folder}/gt_cdf-{args.n_qs}-{N_SAMPLES:_}-{SEED}.npy", gt_cdf)
 
 if args.show_plots:
     t0 = time()

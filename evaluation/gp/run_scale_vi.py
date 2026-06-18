@@ -66,4 +66,4 @@ if __name__ == "__main__":
         plot_results(result, xs, ys, xs_val, ys_val)
 
     if not args.no_save:
-        save_results(args, result, vi_dcc_obj, timings, pell, lppd, "scale")
+        save_results(args, result, vi_dcc_obj, timings, pell, None, lppd, None, "scale")
