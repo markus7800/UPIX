@@ -20,12 +20,15 @@ RUN /root/.local/bin/uv sync --frozen -p python3.13 --extra=cpu
 
 RUN julia --project=evaluation/gmm/gen -e "import Pkg; Pkg.instantiate(); Pkg.precompile()"
 
-RUN PYTHON=./.venv/bin/python3 julia --project=evaluation/gp/autogp -e "import Pkg; Pkg.instantiate(); Pkg.precompile()"
+ENV PYTHON="/.venv/bin/python3"
+RUN julia --project=evaluation/gp/autogp -e "import Pkg; Pkg.instantiate(); Pkg.precompile()"
 
 COPY . .
 
 # For running urn with BLOG (Milch)
 # RUN apt-get install -y g++ cmake libopenblas-dev liblapack-dev libarmadillo-dev
 # RUN make compile -C evaluation/urn/milch/swift/
+
+RUN mkdir /root/tmp
 
 ENTRYPOINT [ "bash" ]

@@ -1,5 +1,6 @@
 
 import argparse
+import os
 
 MAX_TIME_S = 2000
 
@@ -27,5 +28,6 @@ def get_scale_args():
     minpow = int(args.minpow)
     maxpow = int(args.maxpow)
     parallelisation = str(args.parallelisation)
+    checkenv = os.environ.get("NOCHECKENV") is None
     
-    return platform, ndevices, minpow, maxpow, parallelisation, flags
+    return platform, ndevices, minpow, maxpow, parallelisation, flags, checkenv

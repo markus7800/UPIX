@@ -2,7 +2,7 @@ import subprocess
 import time
 from scale_args import get_scale_args, MAX_TIME_S
 
-platform, ndevices, minpow, maxpow, parallelisation, flags = get_scale_args()
+platform, ndevices, minpow, maxpow, parallelisation, flags, checkenv = get_scale_args()
 
 n_slps = 8
 
@@ -12,8 +12,9 @@ print(f"{NPARTICLES=}")
 RUNNER_T0 = time.monotonic()
 
 if platform == "cpu":
-    check_cmd = f"uv run --frozen -p python3.13 --extra=cpu experiments/runners/check_environ.py cpu {ndevices}"
-    subprocess.run(check_cmd, shell=True, check=True)
+    if checkenv:
+        check_cmd = f"uv run --frozen -p python3.13 --extra=cpu experiments/runners/check_environ.py cpu {ndevices}"
+        subprocess.run(check_cmd, shell=True, check=True)
     
     assert parallelisation == "sequential"
     vectorisation = "smap_local"
@@ -28,8 +29,9 @@ if platform == "cpu":
             break
         
 if platform == "cuda":
-    check_cmd = f"uv run --frozen -p python3.13 --extra=cuda experiments/runners/check_environ.py gpu {ndevices}"
-    subprocess.run(check_cmd, shell=True, check=True)
+    if checkenv:
+        check_cmd = f"uv run --frozen -p python3.13 --extra=cuda experiments/runners/check_environ.py gpu {ndevices}"
+        subprocess.run(check_cmd, shell=True, check=True)
     
     assert parallelisation in ("sequential", "jax_devices")
 

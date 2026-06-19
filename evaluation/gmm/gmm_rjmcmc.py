@@ -65,8 +65,8 @@ def get_distance_to_gt(result: MCDCCResult):
     ps = ps / ps.sum()
     ps = jax.lax.concatenate((ps, jnp.zeros((len(gt_ps)-len(ps),))), 0)
     cdf_est = jnp.cumsum(ps)
-    for i in range(len(ps)):
-        print(f"{i:2d}: {ps[i]:.8f} - {gt_ps[i]:.8f} = {ps[i] - gt_ps[i]:.8f}")
+    # for i in range(len(ps)):
+    #     print(f"{i:2d}: {ps[i]:.8f} - {gt_ps[i]:.8f} = {ps[i] - gt_ps[i]:.8f}")
 
     W1_distance = jnp.trapezoid(jnp.abs(cdf_est - gt_cdf), jnp.arange(0,len(gt_cdf)))
     infty_distance = jnp.max(jnp.abs(cdf_est - gt_cdf))
