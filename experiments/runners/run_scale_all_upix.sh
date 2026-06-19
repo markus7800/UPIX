@@ -1,5 +1,5 @@
 #! /bin/bash
-# platform ndevices name
+# platform (cpu|cuda) ndevices name
 
 export UV_PROJECT_ENVIRONMENT=.venv-$1_$2_$3
 export TMPDIR=~/tmp
