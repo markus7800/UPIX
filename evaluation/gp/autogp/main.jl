@@ -13,6 +13,7 @@ function main()
     n_particles = parse(Int, ARGS[1])
     show_plots = parse(Bool, ARGS[2])
     seed = parse(Int, ARGS[3])
+    scale = parse(Bool, ARGS[4])
     n_threads = Threads.nthreads()
     println("#Threads: ", n_threads)
     println("#Particles: ", n_particles)
@@ -160,8 +161,9 @@ function main()
   }
 }
 """
-    mkpath(@sprintf("experiments/data/gp/autogp/cpu_%02d", n_threads))
-    open(@sprintf("experiments/data/gp/autogp/cpu_%02d/nparticles_%07d_cpu_%02d_date_%s_%s.json", n_threads, n_particles, n_threads, date, id[1:8]), "w") do f
+    folder = scale ? "scale" : "comp"
+    mkpath(@sprintf("experiments/data/gp/autogp/%s/cpu_%02d", folder, n_threads))
+    open(@sprintf("experiments/data/gp/autogp/%s/cpu_%02d/nparticles_%07d_cpu_%02d_date_%s_%s.json", folder, n_threads, n_particles, n_threads, date, id[1:8]), "w") do f
         write(f, json)
     end
 end

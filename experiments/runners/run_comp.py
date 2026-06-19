@@ -32,9 +32,12 @@ def run_pedestrian_npdhmc():
             "--no-project", 
             "--with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt", 
             "evaluation/pedestrian/nonparametric-hmc/pedestrian.py", 
-            "NP-DHMC", str(ncpu), str(1000 // d), "100", 
+            "NP-DHMC",
+            str(ncpu),
+            str(1000 // d),
+            "100",
             "-n_processes", str(ncpu), 
-            "--disable_bar", 
+            "--disable_bar",
             "-seed", str(rep)
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
@@ -84,7 +87,8 @@ def run_gp_sdvi():
             "evaluation/gp/sdvi/run_comp.sh", 
             str(ncpu), 
             str(rep),
-            str(1_000_000 // d)
+            str(1_000_000 // d),
+            "false"
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
@@ -141,12 +145,13 @@ def run_gmm_gen():
     for rep in range(repetitions):
         cmd = [
             "julia",
-            "-t", str(ncpu),
+            "-p", str(ncpu),
             "--project=evaluation/gmm/gen",
             "evaluation/gmm/gen/gmm.jl",
             str(ncpu), 
             str(25_000 // d),
             str(rep),
+            "false",
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
@@ -214,6 +219,7 @@ def run_gp_autogp():
             str(128 // d), 
             "false",
             str(rep),
+            "false",
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")

@@ -85,7 +85,7 @@ json_result = {
 }
 now = datetime.today().strftime('%Y-%m-%d_%H-%M')
 fpath = pathlib.Path(
-    "experiments", "data", "urn", "dice", f"{platform}_{num_workers:02d}",
+    "experiments", "data", "urn", "dice", "comp", f"{platform}_{num_workers:02d}",
     f"date_{now}_{id_str[:8]}.json")
 fpath.parent.mkdir(exist_ok=True, parents=True)
 with open(fpath, "w") as f:

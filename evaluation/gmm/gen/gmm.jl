@@ -114,6 +114,7 @@ function main()
     n_chains = parse(Int, ARGS[1])
     n_samples_per_chain = parse(Int, ARGS[2])
     seed = parse(Int, ARGS[3])
+    scale = parse(Bool, ARGS[4])
     num_workers = nworkers()
     println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, num_workers=$num_workers, seed=$seed")
     N = n_samples_per_chain
@@ -179,8 +180,9 @@ function main()
   }
 }
 """
-    mkpath(@sprintf("experiments/data/gmm/rjmcmc/cpu_%02d", num_workers))
-    open(@sprintf("experiments/data/gmm/rjmcmc/cpu_%02d/nchains_%07d_niter_%d_cpu_%02d_date_%s_%s.json", num_workers, n_chains, n_samples_per_chain, num_workers, date, id[1:8]), "w") do f
+    folder = scale ? "scale" : "comp"
+    mkpath(@sprintf("experiments/data/gmm/rjmcmc/%s/cpu_%02d", folder, num_workers))
+    open(@sprintf("experiments/data/gmm/rjmcmc/%s/cpu_%02d/nchains_%07d_niter_%d_cpu_%02d_date_%s_%s.json", folder, num_workers, n_chains, n_samples_per_chain, num_workers, date, id[1:8]), "w") do f
         write(f, json)
     end
 end
