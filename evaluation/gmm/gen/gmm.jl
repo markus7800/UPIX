@@ -1,4 +1,8 @@
 # adapted from https://github.com/mugamma/gmm.git
+using Distributed
+
+@everywhere begin
+
 using Logging: global_logger
 using TerminalLoggers: TerminalLogger
 using Gen
@@ -8,6 +12,11 @@ using Dates
 using Hwloc
 using Printf
 using Trapz
+
+end
+
+@everywhere begin
+
 global_logger(TerminalLogger(right_justify=120))
 
 include("dirichlet.jl")
@@ -93,24 +102,26 @@ function run_inference(seed::Int, N::Int)
     return Int[sum(Ks .== i) for i in 1:maximum(Ks)]
 end
 
+end # End of @everywhere
+
 
 function main()
     t0 = time_ns()
     Base.cumulative_compile_timing(true)
     t0_comp = Base.cumulative_compile_time_ns()
-    run_inference(0, 100) # run short chain to compile on main thread
+    @everywhere run_inference(0, 100) # run short chain to measure compile time
 
     n_chains = parse(Int, ARGS[1])
     n_samples_per_chain = parse(Int, ARGS[2])
     seed = parse(Int, ARGS[3])
-    nthreads = Threads.nthreads()
-    println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, nthreads=$nthreads, seed=$seed")
+    num_workers = nworkers()
+    println("n_chains=$n_chains, n_samples_per_chain=$n_samples_per_chain, num_workers=$num_workers, seed=$seed")
     N = n_samples_per_chain
-    result = Vector{Vector{Int}}(undef, n_chains)
 
-    Threads.@threads for i in 1:n_chains
-        result[i] = run_inference(i + 100*seed, N)
+    result = pmap(1:n_chains) do i
+        run_inference(i + 100*seed, N)
     end
+
     max_k = maximum(length(r) for r in result)
     cumulative_result = zeros(Int, max_k)
     for r in result
@@ -159,7 +170,7 @@ function main()
     "platform": "cpu",
     "cpu-brand": "$(Sys.cpu_info()[1].model)",
     "cpu_count": $(Hwloc.num_virtual_cores()),
-    "threads": $nthreads
+    "num_workers": $num_workers
   },
   "result": {
     "counts": $(repr(cumulative_result)),
@@ -168,8 +179,8 @@ function main()
   }
 }
 """
-    mkpath(@sprintf("experiments/data/gmm/rjmcmc/cpu_%02d", nthreads))
-    open(@sprintf("experiments/data/gmm/rjmcmc/cpu_%02d/nchains_%07d_niter_%d_cpu_%02d_date_%s_%s.json", nthreads, n_chains, n_samples_per_chain, nthreads, date, id[1:8]), "w") do f
+    mkpath(@sprintf("experiments/data/gmm/rjmcmc/cpu_%02d", num_workers))
+    open(@sprintf("experiments/data/gmm/rjmcmc/cpu_%02d/nchains_%07d_niter_%d_cpu_%02d_date_%s_%s.json", num_workers, n_chains, n_samples_per_chain, num_workers, date, id[1:8]), "w") do f
         write(f, json)
     end
 end
