@@ -157,7 +157,7 @@ def _make_slp_unconstrained_log_prior_likeli_pathcond(slp: "SLP", model: Model, 
 #                 model()
 #                 return ctx.X_unconstrained
 
-#         traced_f = trace_decisions(_transform_unconstrained_to_support_with_ctx, decisions, retrace=True)
+#         traced_f = retrace_decisions(_transform_unconstrained_to_support_with_ctx, decisions)
         
 #         X_unconstrained = traced_f(X_unconstrained)
 

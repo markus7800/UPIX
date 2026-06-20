@@ -23,7 +23,7 @@ def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, 
     
 from upix.core.concretize_tracer import trace_decisions, retrace_decisions
 def lppd_particles_enum(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, ys, xs_val, ys_val, slp: SLP):
-    _, kernel_decisions = trace_decisions(get_gp_kernel, slp.decision_representative)
+    _, kernel_decisions = trace_decisions(get_gp_kernel)(slp.decision_representative)
     _get_gp_kernel_static = retrace_decisions(get_gp_kernel, kernel_decisions)
     
     # pell = 0.0

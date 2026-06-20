@@ -214,9 +214,12 @@ def retrace_decisions_2(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], decisions: Decis
             return out, trace.path_decisions
     return _f
 
-def trace_decisions(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], *args):
-    decisions = Decisions()
-    with jax_core.take_current_trace() as parent_trace:
-        trace = ConcretizeTrace(parent_trace, decisions, retrace=False)
-        out = execute_tracing_with_trace(trace, f, args)
-        return out, decisions
+def trace_decisions(f: Callable[FUNC_PARAM_SPEC, RET_TYPE]) -> Callable[FUNC_PARAM_SPEC, Tuple[RET_TYPE,Decisions]]:
+    def _f(*args, **kwargs) -> Tuple[RET_TYPE,Decisions]:
+        assert len(kwargs) == 0
+        decisions = Decisions()
+        with jax_core.take_current_trace() as parent_trace:
+            trace = ConcretizeTrace(parent_trace, decisions, retrace=False)
+            out = execute_tracing_with_trace(trace, f, args)
+            return out, decisions
+    return _f
