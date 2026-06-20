@@ -4,7 +4,7 @@ from typing import Callable, Optional, Any, Set, Tuple, Dict, TypeVar, ParamSpec
 from upix.core.samplecontext import LogprobCtx, LogprobTraceCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx, AnnealingMask
 from upix.types import Trace, PRNGKey, FloatArray, BoolArray
 from upix.utils import JitVariationTracker, maybe_jit_warning
-from upix.core.branching_tracer import Decisions, trace_decisions, retrace_decisions
+from upix.core.concretize_tracer import Decisions, trace_decisions, retrace_decisions
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:

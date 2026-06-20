@@ -5,7 +5,7 @@ from typing import List, Tuple, Any, Optional, Callable, TypeVar, Set, Dict, cas
 from functools import reduce
 from upix.core.samplecontext import SampleContext
 from upix.core.model_slp import Model, SLP
-from upix.core.branching_tracer import retrace_decisions_2
+from upix.core.concretize_tracer import retrace_decisions_2
 from upix.types import Trace, FloatArray, PRNGKey, FloatArrayLike, IntArray
 from upix.distributions import Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE
 import jax.numpy as jnp

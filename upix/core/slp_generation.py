@@ -3,7 +3,7 @@ from typing import Set, Tuple
 from upix.types import Trace, PRNGKey
 from upix.core.model_slp import Model, SLP
 from upix.core.samplecontext import LogprobCtx, GenerateCtx
-from upix.core.branching_tracer import Decisions, trace_decisions
+from upix.core.concretize_tracer import Decisions, trace_decisions
 
 __all__ = [
     "sample_from_prior",
