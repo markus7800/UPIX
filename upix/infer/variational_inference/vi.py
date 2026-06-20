@@ -13,7 +13,7 @@ from upix.core.model_slp import Model, SLP
 from upix.progress_bar import _add_progress_bar, ProgressbarManager
 from upix.infer.variational_inference.optimizers import OPTIMIZER_STATE, Optimizer
 from math import prod
-from upix.infer.gibbs_model import GibbsModel
+from upix.infer.gibbs_slp import GibbsSLP
 import jax.experimental
 from upix.infer.variable_selector import VariableSelector, PredicateSelector
 from upix.utils import broadcast_jaxtree
@@ -228,7 +228,7 @@ class ADVIState(NamedTuple, Generic[OPTIMIZER_STATE]):
 
 def make_advi_step(slp: SLP, guide: Guide, optimizer: Optimizer[OPTIMIZER_STATE], L: int, vectorisation: str, vmap_batch_size: int):
     assert vectorisation in ("none", "vmap", "smap", "psum")
-    # log_prob_fn = gibbs_model.tempered_log_prob(jnp.array(1.,float), {})
+    # log_prob_fn = gibbs_slp.tempered_log_prob(jnp.array(1.,float), {})
     log_prob_fn = slp.log_prob
     def elbo_fn(params: jax.Array, rng_key: PRNGKey) -> FloatArray:
         guide.update_params(params)

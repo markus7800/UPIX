@@ -7,7 +7,6 @@ from upix.types import _unstack_sample_data
 from typing import Any, Dict
 from dataclasses import dataclass
 from upix.parallelisation import VectorisationType, parallel_run, parallel_map
-from upix.core.branching_tracer import trace_branching, retrace_branching
 from upix.core import Model, SLP
 from upix.types import FloatArray, Trace, IntArray, PRNGKey
 from upix.infer.dcc import LogWeightEstimate, MCMCDCC, DCC_COLLECT_TYPE, EstimateLogWeightTask, MCMCInferenceResult

@@ -10,7 +10,7 @@ def diamond_rec():
     # Z = sample(str(U), dist.Normal(0.,1.))
     Z = sample(str(U.item()), dist.Normal(0.,1.))
     # Z = sample(str(float(U)), dist.Normal(0.,1.))
-    # Z = sample(str(branching(U)), dist.Normal(0.,1.))
+    # Z = sample(str(concretize(U)), dist.Normal(0.,1.))
 
 
 m = diamond_rec()

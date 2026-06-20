@@ -6,7 +6,7 @@ import upix.distributions as dist
 from upix.infer.mcmc.mcmc_core import InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, CarryStats, AnnealingMask
 import math
 from upix.utils import JitVariationTracker, maybe_jit_warning
-from upix.infer.gibbs_model import GibbsModel
+from upix.infer.gibbs_slp import GibbsSLP
 from abc import ABC, abstractmethod
 from multipledispatch import dispatch
 from upix.parallelisation import SHARDING_AXIS
@@ -180,10 +180,10 @@ class RandomWalk(MCMCInferenceAlgorithm):
         else:
             return MHInfo(jnp.array(0,float))
     
-    def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
-        X_repr, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
+    def make_kernel(self, gibbs_slp: GibbsSLP, step_number: int, collect_inferenence_info: bool) -> Kernel:
+        X_repr, _ = gibbs_slp.split_trace(gibbs_slp.slp.decision_representative)
         n_dim = sum(values.size for _, values in X_repr.items())
-        is_discrete_map = gibbs_model.slp.get_is_discrete_map()
+        is_discrete_map = gibbs_slp.slp.get_is_discrete_map()
         # for type stability either all discrete or all continuous
         assert all(is_discrete_map[addr] for addr, _ in X_repr.items()) or all(not is_discrete_map[addr] for addr, _ in X_repr.items()), "All variables must be either discrete or continuous."
 
@@ -201,7 +201,7 @@ class RandomWalk(MCMCInferenceAlgorithm):
         def _rw_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, (temperature, data_annealing, state))
             
-            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
+            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_slp, temperature, data_annealing, state)
 
             if not self.elementwise:
                 if self.sparse:
@@ -214,7 +214,7 @@ class RandomWalk(MCMCInferenceAlgorithm):
                 next_X_flat, next_log_prob, n_accepted = rw_kernel_elementwise(rng_key, X_flat, log_prob, target_fn, self.proposer, n_dim)
                 accepted = n_accepted.sum() / n_dim
 
-            next_stats = self.default_postprocess_from_flat(gibbs_model, next_X_flat, next_log_prob, unravel_fn)
+            next_stats = self.default_postprocess_from_flat(gibbs_slp, next_X_flat, next_log_prob, unravel_fn)
 
             mh_info = state.info
             if collect_inferenence_info:
@@ -271,7 +271,7 @@ class MetropolisHastings(MCMCInferenceAlgorithm):
         s = f"MH(proposal={self.proposal}), at {hex(id(self))}"
         return s
     
-    def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
+    def make_kernel(self, gibbs_slp: GibbsSLP, step_number: int, collect_inferenence_info: bool) -> Kernel:
         jit_tracker = JitVariationTracker(f"_mh_kernel for Inference step {step_number}: <MetropolisHastings at {hex(id(self))}>")
         @jax.jit
         def _mh_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
@@ -279,19 +279,19 @@ class MetropolisHastings(MCMCInferenceAlgorithm):
             assert "position" in state.carry_stats
             assert "log_prob" in state.carry_stats
 
-            X, Y = gibbs_model.split_trace(state.carry_stats["position"])
-            gibbs_model.set_Y(Y)
+            X, Y = gibbs_slp.split_trace(state.carry_stats["position"])
+            gibbs_slp.set_Y(Y)
             
             log_prob = state.carry_stats["log_prob"]
             
-            next_X, next_log_prob, accepted = mh_kernel(rng_key, X, log_prob, gibbs_model.tempered_log_prob(temperature, data_annealing), self.proposal, gibbs_model.Y)
+            next_X, next_log_prob, accepted = mh_kernel(rng_key, X, log_prob, gibbs_slp.tempered_log_prob(temperature, data_annealing), self.proposal, gibbs_slp.Y)
 
             mh_info = state.info
             if collect_inferenence_info:
                 assert isinstance(mh_info, MHInfo)
                 mh_info = MHInfo(mh_info.accepted + accepted)
 
-            return KernelState(CarryStats(position=gibbs_model.combine_to_trace(next_X, Y), log_prob=next_log_prob), mh_info)
+            return KernelState(CarryStats(position=gibbs_slp.combine_to_trace(next_X, Y), log_prob=next_log_prob), mh_info)
         
         return _mh_kernel
     

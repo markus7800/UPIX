@@ -5,7 +5,7 @@ from upix.types import PRNGKey, Trace, FloatArray, BoolArray, IntArray
 from upix.infer.mcmc.mcmc_core import MCMCState, InferenceInfo, KernelState, MCMCInferenceAlgorithm, Kernel, AnnealingMask
 from multipledispatch import dispatch
 from jax.flatten_util import ravel_pytree
-from upix.infer.gibbs_model import GibbsModel, SLP
+from upix.infer.gibbs_slp import GibbsSLP, SLP
 from upix.utils import JitVariationTracker, maybe_jit_warning
 from upix.infer.variable_selector import VariableSelector, AllVariables
 
@@ -134,9 +134,9 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
         s = f"HMC(L={self.L}, eps={self.eps}, at {hex(id(self))})"
         return s
 
-    def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
-        X_repr, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
-        is_discrete_map = gibbs_model.slp.get_is_discrete_map()
+    def make_kernel(self, gibbs_slp: GibbsSLP, step_number: int, collect_inferenence_info: bool) -> Kernel:
+        X_repr, _ = gibbs_slp.split_trace(gibbs_slp.slp.decision_representative)
+        is_discrete_map = gibbs_slp.slp.get_is_discrete_map()
         assert all(not is_discrete_map[addr] for addr in X_repr.keys()), "No discrete parameters allowed in HMC."
 
         jit_tracker = JitVariationTracker(f"_hmc_kernel for Inference step {step_number}: <HMC at {hex(id(self))}>")
@@ -145,12 +145,12 @@ class HamiltonianMonteCarlo(MCMCInferenceAlgorithm):
             maybe_jit_warning(jit_tracker, (temperature, state))
             # jax.debug.print("key={k}", k=rng_key)
             
-            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
+            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_slp, temperature, data_annealing, state)
 
             proposed_X, proposed_log_prob, accept, diverged = hmc_kernel(rng_key, X_flat, log_prob, target_fn, self.L, self.eps)
             next_X_flat, next_log_prob = jax.lax.cond(accept, lambda _: (proposed_X, proposed_log_prob), lambda _: (X_flat, log_prob), operand=None)
             
-            next_stats = self.default_postprocess_from_flat(gibbs_model, next_X_flat, next_log_prob, unravel_fn)
+            next_stats = self.default_postprocess_from_flat(gibbs_slp, next_X_flat, next_log_prob, unravel_fn)
 
             hmc_info = state.info
             if collect_inferenence_info:
@@ -306,16 +306,16 @@ class DiscontinuousHamiltonianMonteCarlo(MCMCInferenceAlgorithm):
         s = f"DHMC(L={self.L}, eps=[{self.eps_min},{self.eps_max}], discont={self.discontinuous}, at {hex(id(self))})"
         return s
 
-    def make_kernel(self, gibbs_model: GibbsModel, step_number: int, collect_inferenence_info: bool) -> Kernel:
-        X_repr, _ = gibbs_model.split_trace(gibbs_model.slp.decision_representative)
-        is_discrete_map = gibbs_model.slp.get_is_discrete_map()
+    def make_kernel(self, gibbs_slp: GibbsSLP, step_number: int, collect_inferenence_info: bool) -> Kernel:
+        X_repr, _ = gibbs_slp.split_trace(gibbs_slp.slp.decision_representative)
+        is_discrete_map = gibbs_slp.slp.get_is_discrete_map()
         assert all(not is_discrete_map[addr] for addr in X_repr.keys()), "No discrete parameters allowed in DHMC."
         X_repr_is_discontinuous = {addr: self.discontinuous.contains(addr) for addr in X_repr.keys()}
         all_discontinuous = all(X_repr_is_discontinuous.values())
         any_discontinuous = any(X_repr_is_discontinuous.values())
 
         if not any_discontinuous:
-            return HMC(self.L, (self.eps_min + self.eps_max) / 2, self.unconstrained).make_kernel(gibbs_model, step_number, collect_inferenence_info)
+            return HMC(self.L, (self.eps_min + self.eps_max) / 2, self.unconstrained).make_kernel(gibbs_slp, step_number, collect_inferenence_info)
 
         discontinuous_mask, _ = ravel_pytree(X_repr_is_discontinuous)
         discontinuous_ixs = jax.lax.pvary(jnp.arange(0,discontinuous_mask.shape[0],dtype=int)[discontinuous_mask.astype(bool)], ("i",))
@@ -326,7 +326,7 @@ class DiscontinuousHamiltonianMonteCarlo(MCMCInferenceAlgorithm):
         def _dhmc_kernel(rng_key: PRNGKey, temperature: FloatArray, data_annealing: AnnealingMask, state: KernelState) -> KernelState:
             maybe_jit_warning(jit_tracker, (temperature, state))
             
-            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_model, temperature, data_annealing, state)
+            X_flat, log_prob, unravel_fn, target_fn = self.default_preprocess_to_flat(gibbs_slp, temperature, data_annealing, state)
 
             proposed_X, proposed_log_prob, accept, diverged = dhmc_kernel(
                 rng_key, X_flat, log_prob, target_fn, self.L, self.eps_min, self.eps_max,
@@ -334,7 +334,7 @@ class DiscontinuousHamiltonianMonteCarlo(MCMCInferenceAlgorithm):
             )
             next_X_flat, next_log_prob = jax.lax.cond(accept, lambda _: (proposed_X, proposed_log_prob), lambda _: (X_flat, log_prob), operand=None)
             
-            next_stats = self.default_postprocess_from_flat(gibbs_model, next_X_flat, next_log_prob, unravel_fn)
+            next_stats = self.default_postprocess_from_flat(gibbs_slp, next_X_flat, next_log_prob, unravel_fn)
 
             hmc_info = state.info
             if collect_inferenence_info:

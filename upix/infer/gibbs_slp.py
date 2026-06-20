@@ -17,7 +17,7 @@ __all__ = [
 #         return slp._log_prior_likeli_pathcond(X)
 #     return _gibbs_log_prior_likeli_pathcond
 
-class GibbsModel:
+class GibbsSLP:
     def __init__(self, slp: SLP, variable_selector: VariableSelector, Y: Optional[Trace] = None) -> None:
         self.slp = slp
         self.variables: Set[str] = set()
@@ -51,7 +51,7 @@ class GibbsModel:
         self.Y = Y
 
     def _check_variables(self, X: Trace):
-        assert X.keys() == self.variables, f"Attempted to evaluate GibbsModel with variables {self.variables} at {X}"
+        assert X.keys() == self.variables, f"Attempted to evaluate GibbsSLP with variables {self.variables} at {X}"
     # methods should not be called on batched traces -> use vmap instead
     def log_prior_likeli_pathcond(self, X: Trace, data_annealing: AnnealingMask) -> Tuple[FloatArray,FloatArray,BoolArray]:
         self._check_variables(X)

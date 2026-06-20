@@ -30,6 +30,7 @@ mcmc_obj = MCMC(
     # MCMCStep(AllVariables(), HMC(10, 0.1, unconstrained=True)),
     MCMCStep(AllVariables(), DHMC(10, 0.005, 0.015)),
     n_chains,
+    pconfig=ParallelisationConfig(),
     collect_inference_info=True,
     return_map=lambda x: x.position,
     show_progress=True

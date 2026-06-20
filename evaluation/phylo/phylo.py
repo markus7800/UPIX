@@ -207,4 +207,4 @@ for i in range(10):
     print(len(X), lp)
 
 # slp = slp_from_decision_representative(m, X)
-# print(len(slp.branching_decisions.decisions))
+# print(len(slp.decisions))

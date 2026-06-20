@@ -1,6 +1,6 @@
 
 from upix.all import *
-from upix.core.branching_tracer import trace_branching, retrace_branching, BranchingDecisions
+from upix.core.branching_tracer import trace_branching, retrace_branching, Decisions
 import upix.distributions as dist
 import jax
 import jax.numpy as jnp
@@ -36,7 +36,7 @@ def log1pexp_jvp2(primals, tangents):
 
 def f(x):
   a = log1pexp2(x)
-  return branching(a)
+  return concretize(a)
 
 print("GT CUSTOM_JVP")
 # print(make_jaxpr((f))(1.))
@@ -44,7 +44,7 @@ f(1)
 f(1)
 
 print("BRANCHING CUSTOM_JVP")
-decisions = trace_branching(f, 1.)
+_, decisions = trace_branching(f, 1.)
 print("retrace_branching=", retrace_branching(f, decisions)(1.))
 print(make_jaxpr((retrace_branching(f, decisions)))(1.))
 print(decisions.to_human_readable())

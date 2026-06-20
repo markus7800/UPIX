@@ -3,11 +3,9 @@ from typing import NamedTuple, Tuple, Set, Dict, Callable, Optional
 from upix.types import PRNGKey, Trace, FloatArray, IntArray, StackedTrace, BoolArray
 from upix.core.model_slp import SLP, AnnealingMask
 from upix.infer.mcmc.mcmc_core import MCMCKernel, MCMCState, CarryStats, MCMCRegime, get_mcmc_kernel, InferenceInfos, init_inference_infos_for_chains, vectorise_kernel_over_chains
-from upix.utils import broadcast_jaxtree
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
 from jax.flatten_util import ravel_pytree
-import jax.experimental
 from upix.progress_bar import _add_progress_bar, ProgressbarManager
 from tqdm.auto import tqdm
 from upix.parallelisation import ParallelisationConfig, ParallelisationType, VectorisationType, vectorise_scan, parallel_run, smap_vmap, SHARDING_AXIS, batched_vmap

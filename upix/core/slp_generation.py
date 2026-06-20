@@ -3,7 +3,7 @@ from typing import Set, Tuple
 from upix.types import Trace, PRNGKey
 from upix.core.model_slp import Model, SLP
 from upix.core.samplecontext import LogprobCtx, GenerateCtx
-from upix.core.branching_tracer import BranchingDecisions, trace_branching
+from upix.core.branching_tracer import Decisions, trace_decisions
 
 __all__ = [
     "sample_from_prior",
@@ -19,9 +19,9 @@ def slp_from_decision_representative(model: Model, decision_representative: Trac
             model()
             return ctx.log_prior + ctx.log_likelihood
 
-    _, branching_decisions = trace_branching(f, decision_representative)
+    _, decisions = trace_decisions(f, decision_representative)
 
-    return SLP(model, decision_representative, branching_decisions)
+    return SLP(model, decision_representative, decisions)
 
 
 def sample_from_prior(model: Model, rng_key: PRNGKey) -> Trace:
@@ -30,18 +30,18 @@ def sample_from_prior(model: Model, rng_key: PRNGKey) -> Trace:
         model()
     return ctx.X
 
-def sample_from_prior_with_decisions(model: Model, rng_key: PRNGKey) -> Tuple[Trace,BranchingDecisions]:
+def sample_from_prior_with_decisions(model: Model, rng_key: PRNGKey) -> Tuple[Trace,Decisions]:
     def f(rng_key: PRNGKey):
         ctx = GenerateCtx(rng_key)
         with ctx:
             model()
         return ctx.X
-    return trace_branching(f, rng_key)
+    return trace_decisions(f, rng_key)
     
 
 # assumes model has no branching
 def SLP_from_branchless_model(model: Model) -> SLP:
     X = sample_from_prior(model, jax.random.key(0))
     slp = slp_from_decision_representative(model, X)
-    assert len(slp.branching_decisions.decisions) == 0
+    assert len(slp.decisions) == 0
     return slp

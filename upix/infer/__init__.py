@@ -4,7 +4,7 @@ from .importance_sampling import *
 from .mcmc import *
 from .smc import *
 from .variational_inference import *
-from .gibbs_model import *
+from .gibbs_slp import *
 from .variable_selector import *
 from .involutive import *
 del dcc
@@ -13,6 +13,6 @@ del importance_sampling
 del mcmc
 del smc
 del variational_inference
-del gibbs_model
+del gibbs_slp
 del variable_selector
 del involutive

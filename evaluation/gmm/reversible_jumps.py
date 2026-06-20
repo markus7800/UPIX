@@ -194,7 +194,7 @@ def get_merge_move(K: int) -> Callable[[Trace,Trace,Trace,Trace],None]:
     
 # def involution(old_model_trace: Trace, old_aux_trace: Trace, new_model_trace: Trace, new_aux_trace: Trace):
 #     split = read_discrete(old_aux_trace, "split")
-#     K = int(branching(old_model_trace["K"]))
+#     K = int(concretize(old_model_trace["K"]))
 #     if split == 1:
 #         split_involution(old_model_trace, old_aux_trace, new_model_trace, new_aux_trace, K)
 #         write_discrete(new_aux_trace, "split", 0)
@@ -205,7 +205,7 @@ def get_merge_move(K: int) -> Callable[[Trace,Trace,Trace,Trace],None]:
    
 # @model
 # def aux(model_trace: Trace):
-#     K = int(branching(model_trace["K"]))
+#     K = int(concretize(model_trace["K"]))
 #     split = sample("split", dist.Bernoulli(jax.lax.select(K == 0, 1., 0.5)))
 #     if split == 1:
 #         split_aux(model_trace, ys, K)
