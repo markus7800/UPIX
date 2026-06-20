@@ -6,6 +6,7 @@ from upix.types import FloatArrayLike, FloatArray
 import upix.distributions as dist
 from typing import List
 
+@jax.tree_util.register_dataclass
 @dataclass
 class GPKernel(ABC):
     def __init__(*params):
@@ -74,6 +75,7 @@ class PrimitiveGPKernel(GPKernel):
 class CompositiveGPKernel(GPKernel):
     pass
 
+@jax.tree_util.register_dataclass
 @dataclass
 class Constant(PrimitiveGPKernel):
     value: jax.Array
@@ -91,6 +93,7 @@ class Constant(PrimitiveGPKernel):
     def name() -> str:
         return "Constant"
  
+@jax.tree_util.register_dataclass
 @dataclass
 class Linear(PrimitiveGPKernel):
     intercept: jax.Array
@@ -113,6 +116,7 @@ class Linear(PrimitiveGPKernel):
     def name() -> str:
         return "Linear"
     
+@jax.tree_util.register_dataclass
 @dataclass
 class SquaredExponential(PrimitiveGPKernel):
     lengthscale: jax.Array
@@ -143,6 +147,7 @@ _gamma_exponential_cov.defjvps(
     lambda g_dot, primal_out, dt, l, g: jnp.where(dt == 0., 0., -primal_out * (dt/l)**g * jax.lax.log(dt/l)) * g_dot,
 )
 
+@jax.tree_util.register_dataclass
 @dataclass
 class GammaExponential(PrimitiveGPKernel):
     lengthscale: jax.Array
@@ -175,6 +180,7 @@ class GammaExponential(PrimitiveGPKernel):
     def name() -> str:
         return "GammaExponential"
 
+@jax.tree_util.register_dataclass
 @dataclass
 class Periodic(PrimitiveGPKernel):
     lengthscale: jax.Array
@@ -200,6 +206,7 @@ class Periodic(PrimitiveGPKernel):
     def name() -> str:
         return "Periodic"
 
+@jax.tree_util.register_dataclass
 @dataclass
 class Plus(CompositiveGPKernel):
     left: GPKernel
@@ -222,6 +229,7 @@ class Plus(CompositiveGPKernel):
     def name() -> str:
         return "Plus"
    
+@jax.tree_util.register_dataclass
 @dataclass 
 class Times(CompositiveGPKernel):
     left: GPKernel
@@ -274,6 +282,7 @@ _rational_quadratic_cov.defjvps(
     lambda s_dot, primal_out, dt, s: (primal_out * ((-s - 0.5*dt) * jax.lax.log(1 + 0.5/s * dt) + 0.5*dt) / (s + 0.5*dt)) * s_dot
 )
 
+@jax.tree_util.register_dataclass
 @dataclass
 class RationalQuadratic(PrimitiveGPKernel):
     lengthscale: jax.Array
@@ -319,6 +328,7 @@ class RationalQuadratic(PrimitiveGPKernel):
 #     def name() -> str:
 #         return "RadialBasisFunction"
 
+@jax.tree_util.register_dataclass
 @dataclass
 class Polynomial(PrimitiveGPKernel):
     bias: jax.Array
@@ -341,6 +351,7 @@ class Polynomial(PrimitiveGPKernel):
         return "Polynomial"
 
 
+@jax.tree_util.register_dataclass
 @dataclass
 class UnitRationalQuadratic(PrimitiveGPKernel):
     lengthscale: jax.Array
@@ -359,6 +370,7 @@ class UnitRationalQuadratic(PrimitiveGPKernel):
     def name() -> str:
         return "UnitRationalQuadratic"
     
+@jax.tree_util.register_dataclass
 @dataclass
 class UnitPolynomialDegreeOne(PrimitiveGPKernel):
     bias: jax.Array
@@ -375,7 +387,8 @@ class UnitPolynomialDegreeOne(PrimitiveGPKernel):
     @staticmethod
     def name() -> str:
         return "UnitPolynomialDegreeOne"
-    
+  
+@jax.tree_util.register_dataclass  
 @dataclass
 class UnitPeriodic(PrimitiveGPKernel):
     lengthscale: jax.Array
@@ -393,7 +406,8 @@ class UnitPeriodic(PrimitiveGPKernel):
     @staticmethod
     def name() -> str:
         return "UnitPeriodic"
-    
+  
+@jax.tree_util.register_dataclass  
 @dataclass
 class UnitSquaredExponential(PrimitiveGPKernel):
     lengthscale: jax.Array

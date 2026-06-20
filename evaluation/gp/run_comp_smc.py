@@ -12,7 +12,7 @@ from upix.viz import *
 from setup_parallelisation import get_parallelisation_config
 
 from gp_smc import *
-from smc_utils import plot_results, compute_lppd, save_results
+from smc_utils import plot_results, compute_lppd, save_results, compute_lppd_enum
 
 import logging
 setup_logging(logging.WARN)
@@ -48,7 +48,8 @@ if __name__ == "__main__":
     result, timings = timed(smc_dcc_obj.run)(jax.random.key(args.seed))
     result.pprint()
     
-    pells_lppds = [compute_lppd(result, xs, ys, xs_val, ys_val, 1000, i) for i in range(5)]
+    # pells_lppds = [compute_lppd(result, xs, ys, xs_val, ys_val, 1000, i) for i in range(5)]
+    pells_lppds = [compute_lppd_enum(result, xs, ys, xs_val, ys_val)]
     
     pells = jnp.array([pell for pell, _ in pells_lppds], float)
     lppds = jnp.array([lppd for _, lppd in pells_lppds], float)

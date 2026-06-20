@@ -21,8 +21,31 @@ def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, 
         lppd = jnp.logaddexp(lppd, lp)
     return pell / n, lppd - jnp.log(n)
     
+from upix.core.concretize_tracer import trace_decisions, retrace_decisions
+def lppd_particles_enum(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, ys, xs_val, ys_val, slp: SLP):
+    _, kernel_decisions = trace_decisions(get_gp_kernel, slp.decision_representative)
+    _get_gp_kernel_static = retrace_decisions(get_gp_kernel, kernel_decisions)
     
-def compute_lppd_old(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, n, seed):
+    # pell = 0.0
+    # lppd = -jnp.inf
+    # for i in range(weighted_samples.N):
+    def compute_lp(trace: Trace):
+        # trace, weight = weighted_samples.get_ix(i)
+        # k = get_gp_kernel(trace)
+        k, _ = _get_gp_kernel_static(trace)
+        noise = transform_param("noise", trace["noise"]) + 1e-5
+        mvn = k.posterior_predictive(xs, ys, noise, xs_val, noise)
+        lp = mvn.log_prob(ys_val)
+        # pell += weight*lp
+        # lppd = jnp.logaddexp(lppd, jnp.log(weight)+lp)
+        return lp
+    traces, weights = weighted_samples.get()
+    lps = jax.vmap(compute_lp)(traces)
+    pell = jnp.dot(weights, lps)
+    lppd = jax.scipy.special.logsumexp(jnp.log(weights) + lps)
+    return pell, lppd
+
+def compute_lppd_enum(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val):
     slp_weights = list(result.get_slp_weights().items())
     slp_weights.sort(key=lambda v: v[1])
 
@@ -31,7 +54,7 @@ def compute_lppd_old(result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, n, seed
     for i in range(len(slp_weights)):
         slp, weight = slp_weights[-(i+1)]
         weighted_samples = result.get_samples_for_slp(slp).unstack()
-        pell_p, lppd_p = lppd_particles(weighted_samples, xs, ys, xs_val, ys_val, n, 1000*seed+i)
+        pell_p, lppd_p = lppd_particles_enum(weighted_samples, xs, ys, xs_val, ys_val, slp)
         pell += pell_p * weight
         lppd = jnp.logaddexp(lppd, lppd_p + jnp.log(weight))
 

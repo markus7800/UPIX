@@ -17,7 +17,7 @@ from setup_parallelisation import get_parallelisation_config
 from upix.infer import InferenceResult, LogWeightEstimate
 
 from gp_smc import *
-from smc_utils import plot_results, compute_lppd, save_results
+from smc_utils import plot_results, compute_lppd, save_results, compute_lppd_enum
 
 from enumerate_slps import find_active_slps_through_enumeration
 
@@ -54,7 +54,8 @@ if __name__ == "__main__":
     result.pprint()
 
     try:
-        pell, lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 1000, 0)
+        # pell, lppd = compute_lppd(result, xs, ys, xs_val, ys_val, 1000, 0)
+        pell, lppd = compute_lppd_enum(result, xs, ys, xs_val, ys_val)
         print("pell:", pell, "lppd:", lppd)
     except:
         pell, lppd = float("nan"), float("nan")
