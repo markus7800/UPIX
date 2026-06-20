@@ -151,7 +151,7 @@ def run_gmm_gen():
             str(ncpu), 
             str(25_000 // d),
             str(rep),
-            "false",
+            "comp",
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
