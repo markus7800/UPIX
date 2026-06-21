@@ -4,7 +4,7 @@ from typing import Callable, Optional, Any, Set, Tuple, Dict, TypeVar, ParamSpec
 from upix.core.samplecontext import LogprobCtx, LogprobTraceCtx, GenerateCtx, ReplayCtx, UnconstrainedLogprobCtx, TransformToUnconstrainedCtx, TransformToConstrainedCtx, CollectDistributionTypesCtx, AnnealingMask
 from upix.types import Trace, PRNGKey, FloatArray, BoolArray
 from upix.utils import JitVariationTracker, maybe_jit_warning
-from upix.core.concretize_tracer import Decisions, trace_decisions, retrace_decisions
+from upix.core.concretize_tracer import Decisions, track_decisions, replay_decisions
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -105,7 +105,7 @@ def _make_slp_path_indicator(slp: "SLP",  model: Model, decisions: Decisions) ->
         def _replay(_X: Trace):
             with ReplayCtx(_X):
                 model()
-        slp_model_logprob = retrace_decisions(_replay, decisions)
+        slp_model_logprob = replay_decisions(_replay, decisions)
         _, path_condition = slp_model_logprob(X)
         return path_condition
 
@@ -123,7 +123,7 @@ def _make_slp_log_prior_likeli_pathcond(slp: "SLP", model: Model, decisions: Dec
                 model()
                 return ctx.log_prior, ctx.log_likelihood
             
-        slp_model_logprob = retrace_decisions(_logprob, decisions)
+        slp_model_logprob = replay_decisions(_logprob, decisions)
         (log_prior, log_likelihood), path_condition = slp_model_logprob(X, annealing_masks)
         return log_prior, log_likelihood, path_condition
 
@@ -140,7 +140,7 @@ def _make_slp_unconstrained_log_prior_likeli_pathcond(slp: "SLP", model: Model, 
                 model()
                 return ctx.log_prior, ctx.log_likelihood, ctx.X_constrained
 
-        traced_f = retrace_decisions(_unconstrained_log_prior_likeli_pathcond_with_ctx, decisions)
+        traced_f = replay_decisions(_unconstrained_log_prior_likeli_pathcond_with_ctx, decisions)
         
         (log_prior, log_likelihood, X_constrained), path_condition = traced_f(X_unconstrained, annealing_masks)
 
@@ -157,7 +157,7 @@ def _make_slp_unconstrained_log_prior_likeli_pathcond(slp: "SLP", model: Model, 
 #                 model()
 #                 return ctx.X_unconstrained
 
-#         traced_f = retrace_decisions(_transform_unconstrained_to_support_with_ctx, decisions)
+#         traced_f = replay_decisions(_transform_unconstrained_to_support_with_ctx, decisions)
         
 #         X_unconstrained = traced_f(X_unconstrained)
 
@@ -171,13 +171,13 @@ def _make_slp_gen_likelihood_weight(slp: "SLP", model: Model, decisions: Decisio
     def _gen_likelihood_weight(key: PRNGKey):
         maybe_jit_warning(jit_tracker, key)
 
-        # cannot do @jax.jit here because model can do branching and has to be controlled by trace_decisions transformation, before jitting
+        # cannot do @jax.jit here because model can do branching and has to be controlled by track_decisions transformation, before jitting
         def _gen_log_likelihood_and_X_from_prior(key: PRNGKey):
             with GenerateCtx(key) as ctx:
                 model()
                 return ctx.log_likelihood
                         
-        gen_log_likelihood_and_X_from_prior = retrace_decisions(_gen_log_likelihood_and_X_from_prior, decisions)
+        gen_log_likelihood_and_X_from_prior = replay_decisions(_gen_log_likelihood_and_X_from_prior, decisions)
         log_likelihood, path_condition = gen_log_likelihood_and_X_from_prior(key)
         
         return jax.lax.select(path_condition, log_likelihood, -jnp.inf), path_condition
@@ -289,21 +289,21 @@ class SLP:
             with TransformToConstrainedCtx(X_unconstrained) as ctx:
                 self.model()
                 return ctx.X_constrained
-        return retrace_decisions(_transform_to_constrained, self.decisions)(X_unconstrained)[0]
+        return replay_decisions(_transform_to_constrained, self.decisions)(X_unconstrained)[0]
 
     def transform_to_unconstrained(self, X: Trace) -> Trace:
         def _transform_to_unconstrained(X: Trace):
             with TransformToUnconstrainedCtx(X) as ctx:
                 self.model()
                 return ctx.X_unconstrained
-        return retrace_decisions(_transform_to_unconstrained, self.decisions)(X)[0]
+        return replay_decisions(_transform_to_unconstrained, self.decisions)(X)[0]
         
     def generate(self, rng_key: PRNGKey, Y: Trace = dict()):
         def _generate(rng_key: PRNGKey, _Y: Trace):
             with GenerateCtx(rng_key, _Y) as ctx:
                 self.model()
                 return ctx.X, ctx.log_likelihood + ctx.log_prior
-        return retrace_decisions(_generate, self.decisions)(rng_key, Y)[0]
+        return replay_decisions(_generate, self.decisions)(rng_key, Y)[0]
         
     def get_is_discrete_map(self):
         if self.is_discrete_map is None:

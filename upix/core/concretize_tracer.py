@@ -196,7 +196,7 @@ def execute_tracing_with_trace(trace: ConcretizeTrace, f: Callable[..., RET_TYPE
         out = jax.tree.map(lambda x:  x.val if isinstance(x, ConcretizeTracer) else x, out_tracers)
         return out
 
-def retrace_decisions(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], decisions: Decisions) -> Callable[FUNC_PARAM_SPEC, Tuple[RET_TYPE,bool]]:
+def replay_decisions(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], decisions: Decisions) -> Callable[FUNC_PARAM_SPEC, Tuple[RET_TYPE,bool]]:
     def _f(*args, **kwargs) -> Tuple[RET_TYPE,bool]:
         assert len(kwargs) == 0
         with jax_core.take_current_trace() as parent_trace:
@@ -205,7 +205,7 @@ def retrace_decisions(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], decisions: Decisio
             return out, trace.path_condition
     return _f
 
-def retrace_decisions_2(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], decisions: Decisions) -> Callable[FUNC_PARAM_SPEC, Tuple[RET_TYPE,List[bool]]]:
+def replay_decisions_2(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], decisions: Decisions) -> Callable[FUNC_PARAM_SPEC, Tuple[RET_TYPE,List[bool]]]:
     def _f(*args, **kwargs) -> Tuple[RET_TYPE,List[bool]]:
         assert len(kwargs) == 0
         with jax_core.take_current_trace() as parent_trace:
@@ -214,7 +214,7 @@ def retrace_decisions_2(f: Callable[FUNC_PARAM_SPEC, RET_TYPE], decisions: Decis
             return out, trace.path_decisions
     return _f
 
-def trace_decisions(f: Callable[FUNC_PARAM_SPEC, RET_TYPE]) -> Callable[FUNC_PARAM_SPEC, Tuple[RET_TYPE,Decisions]]:
+def track_decisions(f: Callable[FUNC_PARAM_SPEC, RET_TYPE]) -> Callable[FUNC_PARAM_SPEC, Tuple[RET_TYPE,Decisions]]:
     def _f(*args, **kwargs) -> Tuple[RET_TYPE,Decisions]:
         assert len(kwargs) == 0
         decisions = Decisions()

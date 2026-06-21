@@ -3,7 +3,7 @@ from typing import Set, Tuple
 from upix.types import Trace, PRNGKey
 from upix.core.model_slp import Model, SLP
 from upix.core.samplecontext import LogprobCtx, GenerateCtx
-from upix.core.concretize_tracer import Decisions, trace_decisions
+from upix.core.concretize_tracer import Decisions, track_decisions
 
 __all__ = [
     "sample_from_prior",
@@ -19,7 +19,7 @@ def slp_from_decision_representative(model: Model, decision_representative: Trac
             model()
             return ctx.log_prior + ctx.log_likelihood
 
-    _, decisions = trace_decisions(f)(decision_representative)
+    _, decisions = track_decisions(f)(decision_representative)
 
     return SLP(model, decision_representative, decisions)
 
@@ -36,7 +36,7 @@ def sample_from_prior_with_decisions(model: Model, rng_key: PRNGKey) -> Tuple[Tr
         with ctx:
             model()
         return ctx.X
-    return trace_decisions(f)(rng_key)
+    return track_decisions(f)(rng_key)
     
 
 # assumes model has no branching

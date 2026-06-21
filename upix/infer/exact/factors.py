@@ -5,7 +5,7 @@ from typing import List, Tuple, Any, Optional, Callable, TypeVar, Set, Dict, cas
 from functools import reduce
 from upix.core.samplecontext import SampleContext
 from upix.core.model_slp import Model, SLP
-from upix.core.concretize_tracer import retrace_decisions_2
+from upix.core.concretize_tracer import replay_decisions_2
 from upix.types import Trace, FloatArray, PRNGKey, FloatArrayLike, IntArray
 from upix.distributions import Distribution, DIST_SUPPORT, DIST_SUPPORT_LIKE
 import jax.numpy as jnp
@@ -130,7 +130,7 @@ def make_all_factors_fn(slp: SLP):
             with jax_core.set_current_trace(trace):
                 in_tracers = {addr: NamedTracer(trace, val, {addr}) for addr, val in _X.items()}
                 
-                _fs_retraced = retrace_decisions_2(_fs, slp.decisions)
+                _fs_retraced = replay_decisions_2(_fs, slp.decisions)
                 out_tracers, path_decision_tracers = _fs_retraced(in_tracers)
                 path_decision_tracers = [jax.lax.select(tracer, jnp.array(0.,float), jnp.array(-jnp.inf,float)) for tracer in path_decision_tracers]
                 
