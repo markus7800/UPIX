@@ -21,10 +21,10 @@ def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, 
         lppd = jnp.logaddexp(lppd, lp)
     return pell / n, lppd - jnp.log(n)
     
-from upix.core.concretize_tracer import trace_decisions, retrace_decisions
+from upix.core.concretize_tracer import track_decisions, replay_decisions
 def lppd_particles_enum(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, ys, xs_val, ys_val, slp: SLP):
-    _, kernel_decisions = trace_decisions(get_gp_kernel)(slp.decision_representative)
-    _get_gp_kernel_static = retrace_decisions(get_gp_kernel, kernel_decisions)
+    _, kernel_decisions = track_decisions(get_gp_kernel)(slp.decision_representative)
+    _get_gp_kernel_static = replay_decisions(get_gp_kernel, kernel_decisions)
     
     # pell = 0.0
     # lppd = -jnp.inf
