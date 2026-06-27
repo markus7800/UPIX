@@ -1,0 +1,58 @@
+
+fun index(n: int(5), xs: list(bool)): bool {
+    if n == int(5,0) then
+        head xs
+    else
+        index(n - int(5, 1), tail xs)
+}
+
+fun pickball(N: int(5)): int(5) {
+    if N == int(5,0) then int(5,0)
+    else if N == int(5, 1) then int(5,0)
+    else if N == int(5,2) then uniform(5,0,2)
+    else if N == int(5,3) then uniform(5,0,3)
+    else if N == int(5,4) then uniform(5,0,4)
+    else if N == int(5,5) then uniform(5,0,5)
+    else if N == int(5,6) then uniform(5,0,6)
+    else if N == int(5,7) then uniform(5,0,7)
+    else if N == int(5,8) then uniform(5,0,8)
+    else if N == int(5,9) then uniform(5,0,9)
+    else if N == int(5,10) then uniform(5,0,10)
+    else if N == int(5,11) then uniform(5,0,11)
+    else if N == int(5,12) then uniform(5,0,12)
+    else if N == int(5,13) then uniform(5,0,13)
+    else if N == int(5,14) then uniform(5,0,14)
+    else if N == int(5,15) then uniform(5,0,15)
+    else if N == int(5,16) then uniform(5,0,16)
+    else if N == int(5,17) then uniform(5,0,17)
+    else if N == int(5,18) then uniform(5,0,18)
+    else if N == int(5,19) then uniform(5,0,19)
+    else if N == int(5,20) then uniform(5,0,20)
+    else int(5,0)
+}
+
+fun draw(xs: list(bool), obs: bool, N: int(5)) {
+    let d = pickball(N) in
+    let x = index(d, xs) in
+    observe(if x <=> obs then flip 0.8 else flip 0.2)
+}
+
+let N1 = discrete(0.002478894736996278, 0.014873376804367264, 0.04462011923658233, 0.08924017141404789, 0.1338602645720848, 0.16063232046690695, 0.16063224595677722, 0.13768480992385723, 0.10326375273764593, 0.06884230064774698, 0.04130536101601445, 0.022530227737925186, 0.011265109212079483, 0.005199273078993741, 0.0022282603566856287, 0.0008913061800606116, 0.00033423919903044144, 0.00011796672219757568, 0.0, 0.0, 0.0) in
+let N2 = discrete(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.708955358678975, 0.22388064217207604, 0.06716399914894901) in
+let N = if flip 0.9999419706146 then N1 else N2 in
+let tmp = observe(N > int(5,0)) in
+
+let xs = [flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5] in
+
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+N
+    

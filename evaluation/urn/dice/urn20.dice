@@ -1,80 +1,95 @@
 
-fun index(n: int(5), xs: list(bool)): bool {
-    if n == int(5,0) then
-        head xs
-    else
-        index(n - int(5, 1), tail xs)
+fun index(N: int(5), x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool, x11: bool, x12: bool, x13: bool, x14: bool, x15: bool, x16: bool, x17: bool, x18: bool, x19: bool, x20: bool): bool {
+    if N == int(5,0) then x0
+    else if N == int(5,1) then x1
+    else if N == int(5,2) then x2
+    else if N == int(5,3) then x3
+    else if N == int(5,4) then x4
+    else if N == int(5,5) then x5
+    else if N == int(5,6) then x6
+    else if N == int(5,7) then x7
+    else if N == int(5,8) then x8
+    else if N == int(5,9) then x9
+    else if N == int(5,10) then x10
+    else if N == int(5,11) then x11
+    else if N == int(5,12) then x12
+    else if N == int(5,13) then x13
+    else if N == int(5,14) then x14
+    else if N == int(5,15) then x15
+    else if N == int(5,16) then x16
+    else if N == int(5,17) then x17
+    else if N == int(5,18) then x18
+    else if N == int(5,19) then x19
+    else x20
 }
 
 fun pickball(N: int(5)): int(5) {
-    if N == int(5,0) then
-        int(5,0)
-    else if N == int(5, 1) then
-        int(5,0)
-    else if N == int(5,2) then
-        uniform(5,0,2)
-    else if N == int(5,3) then
-        uniform(5,0,3)
-    else if N == int(5,4) then
-        uniform(5,0,4)
-    else if N == int(5,5) then
-        uniform(5,0,5)
-    else if N == int(5,6) then
-        uniform(5,0,6)
-    else if N == int(5,7) then
-        uniform(5,0,7)
-    else if N == int(5,8) then
-        uniform(5,0,8)
-    else if N == int(5,9) then
-        uniform(5,0,9)
-    else if N == int(5,10) then
-        uniform(5,0,10)
-    else if N == int(5,11) then
-        uniform(5,0,11)
-    else if N == int(5,12) then
-        uniform(5,0,12)
-    else if N == int(5,13) then
-        uniform(5,0,13)
-    else if N == int(5,14) then
-        uniform(5,0,14)
-    else if N == int(5,15) then
-        uniform(5,0,15)
-    else if N == int(5,16) then
-        uniform(5,0,16)
-    else if N == int(5,17) then
-        uniform(5,0,17)
-    else if N == int(5,18) then
-        uniform(5,0,18)
-    else if N == int(5,19) then
-        uniform(5,0,19)
-    else if N == int(5,20) then
-        uniform(5,0,20)
-    else
-        int(5, 0)
+    if N == int(5,0) then int(5,0)
+    else if N == int(5, 1) then int(5,0)
+    else if N == int(5,2) then uniform(5,0,2)
+    else if N == int(5,3) then uniform(5,0,3)
+    else if N == int(5,4) then uniform(5,0,4)
+    else if N == int(5,5) then uniform(5,0,5)
+    else if N == int(5,6) then uniform(5,0,6)
+    else if N == int(5,7) then uniform(5,0,7)
+    else if N == int(5,8) then uniform(5,0,8)
+    else if N == int(5,9) then uniform(5,0,9)
+    else if N == int(5,10) then uniform(5,0,10)
+    else if N == int(5,11) then uniform(5,0,11)
+    else if N == int(5,12) then uniform(5,0,12)
+    else if N == int(5,13) then uniform(5,0,13)
+    else if N == int(5,14) then uniform(5,0,14)
+    else if N == int(5,15) then uniform(5,0,15)
+    else if N == int(5,16) then uniform(5,0,16)
+    else if N == int(5,17) then uniform(5,0,17)
+    else if N == int(5,18) then uniform(5,0,18)
+    else if N == int(5,19) then uniform(5,0,19)
+    else if N == int(5,20) then uniform(5,0,20)
+    else int(5,0)
 }
 
-fun draw(xs: list(bool), obs: bool, N: int(5)) {
+fun draw(N: int(5), obs: bool, x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool, x11: bool, x12: bool, x13: bool, x14: bool, x15: bool, x16: bool, x17: bool, x18: bool, x19: bool, x20: bool) {
     let d = pickball(N) in
-    let x = index(d, xs) in
-    let y = if x then flip 0.8 else flip 0.2 in
-    observe(y <=> obs)
+    let x = index(d, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+    observe(if x <=> obs then flip 0.8 else flip 0.2)
 }
 
 let N1 = discrete(0.002478894736996278, 0.014873376804367264, 0.04462011923658233, 0.08924017141404789, 0.1338602645720848, 0.16063232046690695, 0.16063224595677722, 0.13768480992385723, 0.10326375273764593, 0.06884230064774698, 0.04130536101601445, 0.022530227737925186, 0.011265109212079483, 0.005199273078993741, 0.0022282603566856287, 0.0008913061800606116, 0.00033423919903044144, 0.00011796672219757568, 0.0, 0.0, 0.0) in
 let N2 = discrete(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.708955358678975, 0.22388064217207604, 0.06716399914894901) in
 let N = if flip 0.9999419706146 then N1 else N2 in
 let tmp = observe(N > int(5,0)) in
-let xs = [flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5] in
 
-let tmp = draw(xs, true, N) in
-let tmp = draw(xs, false, N) in
-let tmp = draw(xs, true, N) in
-let tmp = draw(xs, false, N) in
-let tmp = draw(xs, true, N) in
-let tmp = draw(xs, false, N) in
-let tmp = draw(xs, true, N) in
-let tmp = draw(xs, false, N) in
-let tmp = draw(xs, true, N) in
-let tmp = draw(xs, false, N) in
+let x0 = flip 0.5 in
+let x1 = flip 0.5 in
+let x2 = flip 0.5 in
+let x3 = flip 0.5 in
+let x4 = flip 0.5 in
+let x5 = flip 0.5 in
+let x6 = flip 0.5 in
+let x7 = flip 0.5 in
+let x8 = flip 0.5 in
+let x9 = flip 0.5 in
+let x10 = flip 0.5 in
+let x11 = flip 0.5 in
+let x12 = flip 0.5 in
+let x13 = flip 0.5 in
+let x14 = flip 0.5 in
+let x15 = flip 0.5 in
+let x16 = flip 0.5 in
+let x17 = flip 0.5 in
+let x18 = flip 0.5 in
+let x19 = flip 0.5 in
+let x20 = flip 0.5 in
+
+
+let tmp = draw(N, true,  x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+let tmp = draw(N, false, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+let tmp = draw(N, true,  x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+let tmp = draw(N, false, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+let tmp = draw(N, true,  x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+let tmp = draw(N, false, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+let tmp = draw(N, true,  x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+let tmp = draw(N, false, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+let tmp = draw(N, true,  x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
+let tmp = draw(N, false, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x20) in
 N
-

@@ -1,0 +1,46 @@
+
+fun index(n: int(4), xs: list(bool)): bool {
+    if n == int(4,0) then
+        head xs
+    else
+        index(n - int(4, 1), tail xs)
+}
+
+fun pickball(N: int(4)): int(4) {
+    if N == int(4,0) then int(4,0)
+    else if N == int(4, 1) then int(4,0)
+    else if N == int(4,2) then uniform(4,0,2)
+    else if N == int(4,3) then uniform(4,0,3)
+    else if N == int(4,4) then uniform(4,0,4)
+    else if N == int(4,5) then uniform(4,0,5)
+    else if N == int(4,6) then uniform(4,0,6)
+    else if N == int(4,7) then uniform(4,0,7)
+    else if N == int(4,8) then uniform(4,0,8)
+    else if N == int(4,9) then uniform(4,0,9)
+    else if N == int(4,10) then uniform(4,0,10)
+    else int(4,0)
+}
+
+fun draw(xs: list(bool), obs: bool, N: int(4)) {
+    let d = pickball(N) in
+    let x = index(d, xs) in
+    observe(if x <=> obs then flip 0.8 else flip 0.2)
+}
+
+let N = discrete(0.0025891035071813205, 0.015534629798148788, 0.046603877721031875, 0.09320768540157683, 0.13981153588464157, 0.1677738461744804, 0.16777376835171715, 0.14380611606421248, 0.10785473880254771, 0.07190294908023769, 0.043141749214224166) in
+let tmp = observe(N > int(4,0)) in
+
+let xs = [flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5] in
+
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+let tmp = draw(xs, true, N) in
+let tmp = draw(xs, false, N) in
+N
+    

@@ -4,13 +4,17 @@ from textwrap import indent
 
 parser = argparse.ArgumentParser()
 parser.add_argument("N", type=int)
+parser.add_argument("--lists", action="store_true")
 args = parser.parse_args()
 
 bits = int(math.ceil(math.log2(args.N+1)))
 
 s = ""
 
-index_fn = f"""
+fn_args = ", ".join([f"x{i}: bool" for i in range(args.N + 1)])
+
+if args.lists:
+    index_fn = f"""
 fun index(n: int({bits}), xs: list(bool)): bool {{
     if n == int({bits},0) then
         head xs
@@ -18,53 +22,53 @@ fun index(n: int({bits}), xs: list(bool)): bool {{
         index(n - int({bits}, 1), tail xs)
 }}\n
 """
+else:
+    index_fn = f"""
+fun index(N: int({bits}), {fn_args}): bool {{
+"""
+    index_fn_body = f"if N == int({bits},0) then x0\n"
+    for i in range(1,args.N):
+        index_fn_body += f"else if N == int({bits},{i}) then x{i}\n" 
+    index_fn_body += f"else x{args.N}"
+
+    index_fn += indent(index_fn_body, "    ")
+    index_fn += "\n}\n\n"
+
 s += index_fn
-
-get_balls_fn = f"fun drawurn(N: int({bits})): list(bool)"
-get_balls_fn += " {\n"
-get_balls_fn_fn_body = f"""if N == int({bits},0) then
-    ([] : list(bool))
-"""
-for i in range(1,args.N+1):
-    get_balls_fn_fn_body += f"else if N == int({bits},{i}) then\n" 
-    get_balls_fn_fn_body += "    " + "[" + ", ".join(["flip 0.5"]*i) + "]\n"
-get_balls_fn_fn_body += f"""else
-    ([] : list(bool))
-"""
-get_balls_fn += indent(get_balls_fn_fn_body, "    ")
-get_balls_fn += "}\n"
-
-
-# s += get_balls_fn
 
 pickball_fn = f"fun pickball(N: int({bits})): int({bits})"
 pickball_fn += " {\n"
-pickball_fn_body = f"""if N == int({bits},0) then
-    int({bits},0)
-else if N == int({bits}, 1) then
-    int({bits},0)
+pickball_fn_body = f"""if N == int({bits},0) then int({bits},0)
+else if N == int({bits}, 1) then int({bits},0)
 """
 ps = [0.0] * 2**bits
 for i in range(2,args.N+1):
     for j in range(i):
         ps[j] = 1/i
-    pickball_fn_body += f"else if N == int({bits},{i}) then\n" 
-    # pickball_fn_body += "    discrete(" + ", ".join(map(str,ps)) + ")\n"
-    pickball_fn_body += f"    uniform({bits},0,{i})\n"
-pickball_fn_body += f"""else
-    int({bits}, 0)
+    pickball_fn_body += f"else if N == int({bits},{i}) then uniform({bits},0,{i})\n" 
+pickball_fn_body += f"""else int({bits},0)
 """
 pickball_fn += indent(pickball_fn_body, "    ")
 pickball_fn += "}\n"
 
 s += pickball_fn
 
-draw_fn = f"""
+call_args = fn_args.replace(': bool', '')
+
+if args.lists:
+    draw_fn = f"""
 fun draw(xs: list(bool), obs: bool, N: int({bits})) {{
     let d = pickball(N) in
     let x = index(d, xs) in
-    let y = if x then flip 0.8 else flip 0.2 in
-    observe(y <=> obs)
+    observe(if x <=> obs then flip 0.8 else flip 0.2)
+}}\n
+"""
+else:
+    draw_fn = f"""
+fun draw(N: int({bits}), obs: bool, {fn_args}) {{
+    let d = pickball(N) in
+    let x = index(d, {call_args}) in
+    observe(if x <=> obs then flip 0.8 else flip 0.2)
 }}\n
 """
 s += draw_fn
@@ -95,11 +99,13 @@ for i in range(args.N+1):
 # main += "let N = discrete(" + ", ".join(map(str, ps)) + ") in\n"
 
 main += f"let tmp = observe(N > int({bits},0)) in\n"
-# main += "let xs = drawurn(N) in"
-main += "let xs = [" + ", ".join(["flip 0.5"]*(args.N+1)) + "] in\n"
 
+main += "\n"
 
-main += """
+if args.lists:
+    main += "let xs = [" + ", ".join(["flip 0.5"]*(args.N+1)) + "] in\n"
+
+    main += """
 let tmp = draw(xs, true, N) in
 let tmp = draw(xs, false, N) in
 let tmp = draw(xs, true, N) in
@@ -111,11 +117,35 @@ let tmp = draw(xs, false, N) in
 let tmp = draw(xs, true, N) in
 let tmp = draw(xs, false, N) in
 N
+    """
+else:
+    for i in range(args.N+1):
+        main += f"let x{i} = flip 0.5 in\n"
+
+    main += "\n"
+
+    main += f"""
+let tmp = draw(N, true,  {call_args}) in
+let tmp = draw(N, false, {call_args}) in
+let tmp = draw(N, true,  {call_args}) in
+let tmp = draw(N, false, {call_args}) in
+let tmp = draw(N, true,  {call_args}) in
+let tmp = draw(N, false, {call_args}) in
+let tmp = draw(N, true,  {call_args}) in
+let tmp = draw(N, false, {call_args}) in
+let tmp = draw(N, true,  {call_args}) in
+let tmp = draw(N, false, {call_args}) in
+N
 """
 
 s += main
 
-print(s)
+filename = f"evaluation/urn/dice/urn{args.N}"
+if args.lists:
+    filename += "_lists"
+filename += ".dice"
+with open(filename, "w") as f:
+    f.write(s)
 
 
 # docker run -it -v.:/home/opam/dice sholtzen/dice

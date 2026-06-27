@@ -9,12 +9,12 @@ import time
 parser = argparse.ArgumentParser()
 parser.add_argument("N", help="nballs")
 parser.add_argument("--show_plots", action="store_true")
+parser.add_argument("--no_save", action="store_true")
 args = parser.parse_args()
 
 N = args.N
-# subprocess.run("python3 ", capture_output=True, shell=True)
 
-cmd = f"docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice bash run_dice_urn.sh {N}"
+cmd = f"docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice bash run_dice_urn.sh {N} false false"
 
 res = subprocess.run(cmd, capture_output=True, shell=True)
 
@@ -83,10 +83,12 @@ json_result = {
         "git_commit": _get_last_git_commit(),
     }
 }
-now = datetime.today().strftime('%Y-%m-%d_%H-%M')
-fpath = pathlib.Path(
-    "experiments", "data", "urn", "dice", f"{platform}_{num_workers:02d}",
-    f"date_{now}_{id_str[:8]}.json")
-fpath.parent.mkdir(exist_ok=True, parents=True)
-with open(fpath, "w") as f:
-    json.dump(json_result, f, indent=2)
+
+if not args.no_save:
+    now = datetime.today().strftime('%Y-%m-%d_%H-%M')
+    fpath = pathlib.Path(
+        "experiments", "data", "urn", "dice", f"{platform}_{num_workers:02d}",
+        f"date_{now}_{id_str[:8]}.json")
+    fpath.parent.mkdir(exist_ok=True, parents=True)
+    with open(fpath, "w") as f:
+        json.dump(json_result, f, indent=2)

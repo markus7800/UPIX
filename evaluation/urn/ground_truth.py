@@ -32,9 +32,9 @@ def log_Z(N: int):
             # observed n_obs0 white, n_obs1 black
             lp_n_black += n_obs0 * l0 + n_obs1 * l1
         else:
-            # picked white = observed white
+            # picked white, observed white
             l0 = scipy.stats.bernoulli.logpmf(0, r)
-            # picked black = observed black
+            # picked black, observed black
             l1 = scipy.stats.bernoulli.logpmf(1, r)
             lp_n_black += n_obs0 * l0 + n_obs1 * l1
         lp = np.logaddexp(lp, lp_n_black)
