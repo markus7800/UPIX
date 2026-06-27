@@ -24,7 +24,7 @@ cdf_ests = np.vstack(cdf_ests)
 print("Pedestrian cdf std (averaged over grid) =", cdf_ests.std(axis=0).mean(), "+/-", cdf_ests.std(axis=0).std())
 
 
-gmm_ground_truth = pathlib.Path(folder, "gmm", "groundtruth")
+gmm_ground_truth = pathlib.Path(folder, "gmm", "rjmcmc", "groundtruth")
 
 pdf_counts = []
 for dirpath, _, files in os.walk(gmm_ground_truth):

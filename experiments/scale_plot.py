@@ -66,7 +66,6 @@ colors = {
     "COMP": "tab:green"
 }
 
-
 linestyles = {
     "NVIDIA L40S": "solid",
     "NVIDIA A40": "dashed",
@@ -80,11 +79,7 @@ def get_shade(color, i, n):
     return (1 - i/(n-1)) * np.array([1,1,1]) + (i/(n-1)) * rgb
 
 def get_color(kind, n_devices):
-    if kind == "CPU":
-        s = (np.log2(n_devices) - 1) * 2 # maps [8,16,32,64] to [4,6,8,10]
-    else:
-        s = (np.log2(n_devices) + 2) * 2 # maps [1,2,4,8] to [4,6,8,10]
-    return colors[kind] # get_shade(colors[kind], s, 10)
+    return colors.get(kind, "black")
 
 for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     ("pedestrian", "n_chains", "pedestrian/nonparametric", "NP-DHMC", "inference_time"),
@@ -92,10 +87,9 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     ("gp/vi", "n_runs*L", "gp/sdvi", "SDVI", "inference_time"),
     ("gp/smc", "n_particles", "gp/autogp", "AutoGP", "wall_time"),
     ]):
+    print(model_path, SCALE_COL, comp_path, COMP_NAME, comp_time)
     
     df = df_from_json_dir(pathlib.Path(folder, model_path, "scale"), ["workload", "timings", "dcc_timings", "pconfig", "environment_info"], ["environ", "jax_environment"])
-    # if model_path == "gmm":
-    #     df = df[df["n_samples_per_chain"] == 2048]
     
     df["kind"] = df["gpu-brand"].map(lambda x: x[0][len("GPU 0: "):])
     df.loc[df["kind"] == "NVIDIA A100-SXM4-40GB", "kind"] = "NVIDIA A100S"
@@ -105,7 +99,8 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
         df[SCALE_COL] = df["n_runs"] * df["L"]
         
     df = df[["platform", "kind", "num_workers", SCALE_COL, "total_time", "inference_time", "jax_total_jit_time", "n_available_devices"]]
-    df = df.set_index(["platform", "kind", "num_workers", SCALE_COL], verify_integrity=True)
+    df = df.set_index(["platform", "kind", "num_workers", SCALE_COL])
+    assert df.index.is_unique
     df = df.sort_index()
     df = df.reset_index()
         
@@ -143,21 +138,23 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
         ax.plot(np.arange(len(group["METRIC"]))+1, group["METRIC"],
                 #  label=f"{n_devices} {platform} {kind}", 
                 c=get_color(kind, n_devices),
-                marker=markers[(platform, n_devices)],
-                linestyle=linestyles[kind],
+                marker=markers.get((platform, n_devices), M[0]),
+                linestyle=linestyles.get(kind, "solid"),
                 markersize=4,
                 alpha=0.5
         )
     
-    comp_df = df_from_json_dir(pathlib.Path(folder, comp_path), ["workload", "timings", "environment_info"], [])
+    comp_df = df_from_json_dir(pathlib.Path(folder, comp_path, "scale"), ["workload", "timings", "environment_info"], [])
     comp_df["METRIC"] = comp_df[comp_time]
-    comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
+    if comp_path != "gmm/rjmcmc":
+        comp_df = comp_df.rename(columns={"cpu_count": "num_workers"})
     if model_path == "gp/vi":
         comp_df["n_runs"] = 1
         comp_df[SCALE_COL] = comp_df["n_runs"] * comp_df["L"]
         
     comp_df["kind"] = "COMP"
-    comp_df = comp_df.set_index(["platform", "kind", "num_workers", SCALE_COL], verify_integrity=True)
+    comp_df = comp_df.set_index(["platform", "kind", "num_workers", SCALE_COL])
+    assert comp_df.index.is_unique
     comp_df = comp_df.sort_index()
     comp_df = comp_df.reset_index()
     
@@ -165,7 +162,7 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
         ax.plot(np.arange(len(group["METRIC"]))+1, group["METRIC"],
                 # label=f"{n_devices} {platform} {kind}", 
                 c=get_color(kind, n_devices),
-                marker=markers[(platform, n_devices)],
+                marker=markers.get((platform, n_devices), M[0]),
                 linestyle=linestyles["COMP"],
                 markersize=4,
                 alpha=0.5
@@ -197,8 +194,8 @@ axs[4,1].yaxis.set_label_position("right")
 
 
 for (i, file) in enumerate([
-    "viz_ped_mcmc_scale_data.pkl",
-    "viz_gmm_mcmc_scale_data.pkl"
+    "pedestrian/scale/viz_ped_mcmc_scale_data.pkl",
+    "gmm/scale/viz_gmm_mcmc_scale_data.pkl"
 ]):
     with open(pathlib.Path(folder, file), "rb") as f:
         res = pickle.load(f)
@@ -215,8 +212,8 @@ for (i, file) in enumerate([
 
 
 for (i, (file,label,xticksformat)) in enumerate([
-    ("viz_gp_vi_elbo_scale_data_autogp.pkl", "log Z", "{:,} x {:,}"),
-    ("viz_gp_smc_particle_scale_data.pkl", "log Z", "{:,}")
+    ("gp/vi/scale/viz_gp_vi_elbo_scale_data.pkl", "log Z", "{:,} x {:,}"),
+    ("gp/smc/scale/viz_gp_smc_particle_scale_data.pkl", "log Z", "{:,}")
 ]):
     with open(pathlib.Path(folder, file), "rb") as f:
         res = pickle.load(f)
@@ -263,6 +260,6 @@ fig.legend(handles=[legend_elements[i] for i in [0,4,1,5,2,6,3,7]], loc="upper c
 
 # plt.savefig("scale_figure.png")
 plt.savefig("scale_figure.pdf")
-# plt.show()
+plt.show()
         
         

@@ -262,7 +262,7 @@ def run_urn_dice():
     t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} Urn Dice ... ", end="" if smoketest else "\n", flush=True)
     
-    for _ in range(repetitions):
+    for rep in range(repetitions):
         cmd = [
             "uv", "run", 
             "-p", "python3.13", 
@@ -273,6 +273,7 @@ def run_urn_dice():
             "10" if smoketest else "19"
         ]
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
+        if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
     print(f"Finished in {monotonic()-t0:.3f}s")
     
