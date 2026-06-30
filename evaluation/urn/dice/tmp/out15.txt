@@ -1,0 +1,80 @@
+================[ Joint Distribution ]================
+Value   Probability
+0       0.
+1       0.00214106339051
+2       0.0331218968282
+3       0.0763756691103
+4       0.125701759757
+5       0.160245643256
+6       0.167217189114
+7       0.147944003081
+8       0.113715209457
+9       0.0773097676969
+10      0.0471345331792
+11      0.0260549862216
+12      0.0131753457849
+13      0.00614004365817
+14      0.00265361639406
+15      0.00106927307135
+
+================[ Number of recursive calls ]================
+61580236.000000
+================[ Final compiled BDD size ]================
+5402800
+
+cpu 25.669 total
+
+
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -eager-eval -flip-lifting -num-recursive-calls -show-size urn15_unrolled.dice 
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+================[ Joint Distribution ]================
+Value   Probability
+0       0.
+1       0.00214106339051
+2       0.0331218968282
+3       0.0763756691103
+4       0.125701759757
+5       0.160245643256
+6       0.167217189114
+7       0.147944003081
+8       0.113715209457
+9       0.0773097676969
+10      0.0471345331792
+11      0.0260549862216
+12      0.0131753457849
+13      0.00614004365817
+14      0.00265361639406
+15      0.00106927307135
+
+================[ Number of recursive calls ]================
+45981292.000000
+================[ Final compiled BDD size ]================
+5402800
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice    0.02s user 0.01s system 0% cpu 23.942 total
+
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -num-recursive-calls -show-size urn15_unrolled.dice     
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+================[ Joint Distribution ]================
+Value   Probability
+0       0.
+1       0.00214106339051
+2       0.0331218968282
+3       0.0763756691103
+4       0.125701759757
+5       0.160245643256
+6       0.167217189114
+7       0.147944003081
+8       0.113715209457
+9       0.0773097676969
+10      0.0471345331792
+11      0.0260549862216
+12      0.0131753457849
+13      0.00614004365817
+14      0.00265361639406
+15      0.00106927307135
+
+================[ Number of recursive calls ]================
+67146278.000000
+================[ Final compiled BDD size ]================
+5983320
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice    0.02s user 0.01s system 0% cpu 27.408 total

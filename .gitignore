@@ -13,7 +13,8 @@ upix.egg-info
 build
 *.out
 *.err
-tmp*
+tmp/*
+!tmp/.gitkeep
 experiments/data*
 .vscode
 Manifest.toml

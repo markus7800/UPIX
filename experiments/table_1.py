@@ -26,8 +26,8 @@ results = [
     ("urn/dice/cpu_01", "timings/wall_time", "result_metrics/L_inf"),
     ("urn/ve/cpu_01", "timings/wall_time", "result_metrics/L_inf"),
     
-    ("gp/sdvi/comp", "timings/wall_time", "result_metrics/lppd_std"),
-    ("gp/vi/comp/cpu_08", "timings/wall_time", "result_metrics/lppd_std"),
+    # ("gp/sdvi/comp", "timings/wall_time", "result_metrics/lppd_std"),
+    # ("gp/vi/comp/cpu_08", "timings/wall_time", "result_metrics/lppd_std"),
 ]
 
 i = 0

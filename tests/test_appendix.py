@@ -16,16 +16,15 @@ def mixture(p: float):
 m: Model = mixture(0.4)
 
 key = jax.random.key(0)
-dr, _ = m.generate(key) # {"b": Array(1), "A": Array(-0.25747764)}
+dr, lp = m.generate(key) # {"b": Array(1), "A": Array(-0.25747764)}
 _, decisions = track_decisions(m.log_prob)(dr)
 slp_log_prob = jax.jit(replay_decisions(m.log_prob, decisions))
 print(slp_log_prob(dr)) # (-2.6258543, true)
+print(slp_log_prob({"b": jnp.array(0), "A": jnp.array(-1.1)}))
+# print(slp_log_prob({"b": jnp.array(0), "B": jnp.array(-1.1)}))
 
 slp = SLP(m, dr, decisions)
-tr1 = {"b": jnp.array(1), "A": jnp.array(1.1)}
-print(slp.log_prob(tr1))  # -1.8402293
-print(slp.path_indicator(tr1)) # true
-tr2 = {"b": jnp.array(0), "B": jnp.array(-1.1)}
-print(slp.path_indicator(tr2)) # false
-tr3 = {"b": jnp.array(0), "A": jnp.array(-1.1)}
-print(slp.path_indicator(tr3)) # false
+print(slp.log_prob({"b": jnp.array(1), "A": jnp.array(1.1)}))  # -1.8402293
+print(slp.path_indicator({"b": jnp.array(1), "A": jnp.array(1.1)})) # true
+print(slp.path_indicator({"b": jnp.array(0), "B": jnp.array(-1.1)})) # false
+print(slp.path_indicator({"b": jnp.array(0), "A": jnp.array(-1.1)})) # false

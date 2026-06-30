@@ -1,0 +1,30 @@
+
+fun index(n: int(5), xs: list(bool)): bool {
+    if n == int(5,0) then
+        head xs
+    else
+        index(n - int(5, 1), tail xs)
+}
+
+fun draw(xs: list(bool), obs: bool) {
+    let d = uniform(5,0,20) in
+    let x = index(d, xs) in
+    let y = if x then flip 0.8 else flip 0.2 in
+    y <=> obs
+}
+
+let xs = [flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5, flip 0.5] in
+
+let tmp = true in
+let tmp = tmp && draw(xs, true) in
+let tmp = tmp && draw(xs, false) in
+let tmp = tmp && draw(xs, true) in
+let tmp = tmp && draw(xs, false) in
+let tmp = tmp && draw(xs, true) in
+let tmp = tmp && draw(xs, false) in
+let tmp = tmp && draw(xs, true) in
+let tmp = tmp && draw(xs, false) in
+let tmp = tmp && draw(xs, true) in
+let tmp = tmp && draw(xs, false) in
+tmp
+

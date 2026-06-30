@@ -29,6 +29,7 @@ COPY . .
 # RUN apt-get install -y g++ cmake libopenblas-dev liblapack-dev libarmadillo-dev
 # RUN make compile -C evaluation/urn/milch/swift/
 
-RUN mkdir /root/tmp
+RUN mkdir -p /tmp
+ENV TMPDIR="/tmp"
 
 ENTRYPOINT [ "bash" ]

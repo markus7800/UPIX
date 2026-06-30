@@ -123,76 +123,176 @@ We can see that this approximation is close to the ground truth.
 
 [3] Reichelt, Tim, Luke Ong, and Thomas Rainforth. "Rethinking variational inference for probabilistic programs with stochastic support." Advances in Neural Information Processing Systems 35 (2022): 15160-15175.
 
-## Reproducing Paper Results
+### Installation (Kick-the-tires instructions)
 
-### Setup
+#### Hardware Requirements
+
+- For reproducing Section 4
+  - MacOS / Linux
+  - >= 8 CPU cores
+  - >= 32 GB RAM
+  - 5 - 6 hours runtime
+- For reproducing Section 5 fully
+  - Linux
+  - 64 CPU cores
+  - 8 Nvidia GPUs with 48 GB VRAM
+  - ~100 hours runtime
+- For reproducing Section 5 partially
+  - Linux
+  - 8 CPU cores
+  - 1 Nvidia GPU
+  - ~10 hours runtime
+
+#### Docker (Recommended)
+
+Install [docker](https://www.docker.com).
+
+You can download and load the docker image provided at [Zenodo](TODO) with
+```
+docker load -i upix-amd64.tar
+``` 
+or
+```
+docker load -i upix-arm64.tar
+```
+depending on your system, which was saved with (Docker version 28.3.0)
+```
+docker buildx build --platform linux/amd64 -t upix-amd64 .
+docker buildx build --platform linux/arm64 -t upix-arm64 .
+docker image save upix-amd64 > upix-amd64.tar
+docker image save upix-arm64 > upix-arm64.tar
+```
+Run those images with
+```
+mkdir -p experiments/data
+docker run -it -v $(pwd)/experiments/data:/experiments/data --name upix-amd64 --rm upix-amd64
+```
+or
+```
+mkdir -p experiments/data
+docker run -it -v $(pwd)/experiments/data:/experiments/data --name upix-arm64 --rm upix-arm64
+```
+
+
+Alternatively, build the upix image from scratch (this may take several minutes):
+```
+docker build -t upix .
+```
+
+If the build was successful, run the docker image:
+```
+mkdir -p experiments/data
+docker run -it --rm -v $(pwd)/experiments/data:/experiments/data --name upix --rm upix
+```
+
+Make sure to make all CPUs and RAM available in the container.  
+To make GPUs in the container available, see https://docs.docker.com/engine/containers/gpu/.
+Runtimes using the docker container may be different compared to running locally.
+
+The installation of the `sholtzen/dice` image is also required.
+```
+docker pull sholtzen/dice@sha256:5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65d011ddc1e6969fa2e
+```
 
 #### Manual
 
-To run the experiments in on your machine you need uv, Julia 1.9, and a C++ compiler.
+To run the experiments on your machine you need uv, Julia 1.9, and [docker](https://www.docker.com).  
+If you want to run experiments on Nvidia GPU, you need CUDA (used version: 13.2).
 
 Install [uv](https://github.com/astral-sh/uv), e.g. with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
 
 Install [julia 1.9](), e.g. with `curl -fsSL https://install.julialang.org | sh -s -- --yes --default-channel=1.9`.
 
-
-#### Docker
-
-If you want to run the experiments in a docker container instead, build and run it with:
 ```
-docker build . -t upix
-docker run -it --name upix --rm upix
-```
-Make sure to make all CPUs available in the container.  
-To make GPUs in the container available, see https://docs.docker.com/engine/containers/resource_constraints/#gpu .  
-Runtimes using the docker container may be different compared 
-to running locally.
-
-#### Test the Setup
-
-Run example on CPU
-```
-uv run --frozen -p python3.13 --extra=cpu evaluation/pedestrian/run_example.py sequential vmap_local
+uv sync -p python3.13 --frozen --extra=cpu
+mkdir -p $(pwd)/tmp
+export TMPDIR=$(pwd)/tmp
+export PYTHON=$(pwd)/.venv/bin/python3
+julia --project=evaluation/gmm/gen -e "import Pkg; Pkg.instantiate()"
+julia --project=evaluation/gp/autogp -e "import Pkg; Pkg.instantiate()"
+docker pull sholtzen/dice@sha256:5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65d011ddc1e6969fa2e
 ```
 
-Run example on CUDA GPU (if available)
+#### Sanity Check
+
+Make sure `export TMPDIR=$(pwd)/tmp` is set.
+
+Run inside Docker container (if used), runtime ~10min:
 ```
-uv run --frozen -p python3.13 --extra=cuda evaluation/pedestrian/run_example.py sequential vmap_local
+python3 experiments/runners/run_comp.py all 8 --smoketest
+```
+Run outside of Docker container, runtime ~20s if dice image installed:
+```
+python3 experiments/runners/run_comp.py dice 1 --smoketest
 ```
 
-Run example on TPU (if available)
+For reference output see [sanity_check.txt](sanity_check.txt).
+
+Outputs are stored in `experiments/data`.
+
+To test execution with GPU, run
 ```
-uv run --frozen -p python3.13 --extra=tpu evaluation/pedestrian/run_example.py sequential vmap_local
+uv run -p python3.13 --frozen --extra=gpu evaluation/pedestrian/run_comp.py sequential vmap_global
+```
+which should list your GPU devices at the beginning, e.g.
+```
+Start DCC:
+parallelisation=Sequential(vmap, 
+  devices=
+    cuda:0
+  #workers=1
+)
+```
+and exit without error.
+
+Delete the data folder after completing the sanity check:
+```
+rm -rf experiments/data
 ```
 
-### Section 4: Example DCC
+### Reproducing Section 4: DCC instantiations
 
-Run following commands from the *root directory* to reproduce the experiments from Section 4.
+Run following commands from the *root directory* to reproduce all experiments from Section 4.  
+Output will be stored in `experiments/data`. **Delete this folder beforehand if it exists already, otherwise the analysis scripts may break.**
 
-Experiments where run on a M2 Pro Macbook (without Docker).
+Experiments were run on a M2 Pro Macbook (without Docker).
+
+Run inside Docker container (if used), runtime ~4h:
+```
+python3 experiments/runners/run_comp.py all 8
+```
+Run outside of Docker container, runtime ~2h:
+```
+python3 experiments/runners/run_comp.py dice 8
+```
+
+The experiment results from the paper are included in the artifact.
+
+Use `uv run --with=pandas experiments/table_1.py experiments/data` to print statistics as in Table 1.
+
+In the following, the individual commands executed with `run_comp.py` are listed.
 
 #### Section 4.1: MCMC - Pedestrian Model
 
 Run NP-DHMC baseline (with 8 parallel processes)
 ```
-uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 8 1000 100 -n_processes 8
+uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 8 1000 100 -n_processes 8 -seed 0
 ```
 
 Run UPIX-MCMC-DCC (with 8 CPU devices)
 ```
-uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap --show_plots -host_device_count 8
-```
+uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap -n_chains 8 -n_samples_per_chain 25000 --cpu -host_device_count 8 -seed 0```
 
 #### Section 4.2: SDVI - Gaussian Process Model
 
-Run SDVI baseline (original implementation by Reichelt et al. 2022, with 10 parallel processes)
+Run SDVI baseline (original implementation by Reichelt et al. 2022, with 8 parallel processes)
 ```
-bash evaluation/gp/sdvi/run_comp.sh 10
+bash evaluation/gp/sdvi/run_comp.sh 8 0 1000000 false
 ```
 
-Run UPIX-SDVI (with 10 parallel processes)
+Run UPIX-SDVI (with 8 parallel processes)
 ```
-uv run -p python3.13 --frozen --extra=cpu --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local -num_workers 10
+uv run -p python3.13 --frozen --extra=cpu --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local -sh_iterations 1000000 --cpu -num_workers 8 -seed 0
 ```
 
 #### Section 4.3: RJMCMC - Gaussian Mixture Model
@@ -201,14 +301,14 @@ If you do not use the docker image, install the julia packages
 julia --project=evaluation/gmm/gen -e "import Pkg; Pkg.instantiate()"
 ```
 
-Run RJMCMC Gen baseline (with 8 threads)
+Run RJMCMC Gen baseline (with 8 processes)
 ```
-julia -t 8 --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl 8 25000 0
+julia -p 8 --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl 8 25000 0 comp
 ```
 
-Run UPIX-RJMCMC-DCC (with 8 CPU devices)
+Run UPIX-RJMCMC-DCC
 ```
-uv run -p python3.13 --frozen --extra=cpu evaluation/gmm/run_comp.py sequential pmap -host_device_count 8
+uv run -p python3.13 --frozen --extra=cpu evaluation/gmm/run_comp.py sequential pmap -n_chains 8 -n_samples_per_chain 25000 --cpu -host_device_count 8 -seed 0
 ```
 
 
@@ -218,42 +318,34 @@ If you do not use the docker image, install the julia packages
 ```
 julia --project=evaluation/gp/autogp -e "import Pkg; Pkg.instantiate()"
 ```
-
-Run AutoGP baseline (with 10 threads)
+Run AutoGP baseline (with 8 threads)
 ```
-julia -t 10 --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl 100 false 0
+julia -t 8 --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl 128 false 0 false
 ```
 
 
-Run UPIX-SMC-DCC (with 10 CPU devices)
+Run UPIX-SMC-DCC
 ```
-uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -host_device_count 10 --show_plots
+uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -n_particles 128 --cpu -host_device_count 8 -seed 0
 ```
 
 
 #### Section 4.5: VE - Urn Model
 
-If you do not use the docker image, compile the [Swift](https://github.com/lileicc/swift) compiler.
-E.g. on Linux
-```
-apt-get install -y g++ cmake libopenblas-dev liblapack-dev libarmadillo-dev
-make compile -C evaluation/urn/milch/swift/
-```
-
 Run the Dice baseline with its [docker image](https://hub.docker.com/layers/sholtzen/dice/latest/images/sha256-5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65d011ddc1e6969fa2e) (on the M2 Pro this image performed better than a local install)
 ```
-docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -eager-eval -flip-lifting -num-recursive-calls -show-size -recursion-limit 21 -max-list-length 21 urn19.dice
+uv run evaluation/urn/dice/run.py 19
 ```
 
 Run UPIX-VE-DCC
 ```
-uv run -p python3.13 --frozen --extra=cpu evaluation/urn/run_comp.py sequential vmap_local 20 --jit_inf
+uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/urn/run_comp.py sequential vmap_local 20 --cpu --jit_inf
 ```
 
-### Section 5: Scaling Experiments
+### Reproducing Section 5: Scaling Experiments
 
 We have implemented scripts to launch the `run_scale.py` scripts for each model with varying hardware and workload.
-Set the `$platform, $ndevices = cpu | cuda` arguments depending on your hardware.
+Set `$platform = cpu | cuda` arguments depending on your hardware.
 `$ndevices` **has to be a power of 2**.
 If you do not have a CPU with a processor count that is a power of 2, then you may prefix the following commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 python3 experiments/...` to use 8 CPUs (only works on Linux).
 We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA GPUs (without Docker) using following configurations:
@@ -263,7 +355,7 @@ We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA G
     (cuda, 1) | (cuda, 2) | (cuda, 4) | (cuda, 8)
 ```
 
-The script arguments following `$platform, $ndevices` set the workload range for each experimeent in log2 base.
+The script arguments following `$platform, $ndevices` set the workload range for each of the four scaling experiments in log2 base.
 
 For instance
 ```
@@ -275,38 +367,20 @@ If you have less powerful hardware or do not want to run long experiments (they 
 
 For instance, with arguments `cuda 1 0 19 sequential` the experiment should take half the time, with `cuda 1 0 18 sequential` it should take a quarter of the time, and so on.
 
-#### Scaling MCMC - Pedestrian Model
+
+TODO TMPDIR=~/tmp explain, make sure tmp dir exists!
+TODO check_environ taskset forces assert args.ndevices == info["n_available_devices"]
+
 ```
-python3 experiments/runners/run_pedestrian_scale.py $platform $ndevices 0 20 sequential
+bash experiments/runners/run_scale_all_references.sh ncpu logsuffix 20 14 15 18
 ```
-#### Scaling RJMCMC - Gaussian Mixture Model
 ```
-python3 experiments/runners/run_gmm_scale.py $platform $ndevices 0 18 sequential
+bash experiments/runners/run_scale_all_upix.sh cpu ncpu logsuffix 20 14 15 18
 ```
-#### Scaling SDVI - Gaussian Process Model
 ```
-python3 experiments/runners/run_gp_vi_scale.py $platform $ndevices 0 14 sequential
+bash experiments/runners/run_scale_all_upix.sh cuda ncuda logsuffix 20 14 15 18
 ```
-#### Scaling SMC - Gaussian Process Model
 ```
-python3 experiments/runners/run_gp_smc_scale.py $platform $ndevices 0 15 sequential
-```
-#### MCMC Reference NP-DHMC - Pedestrian Model
-```
-python3 experiments/runners/run_npdhmc_scale.py $ndevices 0 20
+bash experiments/runners/run_scale_all_accuracy.sh 20 14 15 18
 ```
 
-#### RJMCMC Reference Gen RJMCMC - Gaussian Mixture Model
-```
-python3 experiments/runners/run_rjmcmc_scale.py $ndevices 0 15
-```
-
-#### SDVI Reference Original SDVI - Gaussian Process Model
-```
-python3 experiments/runners/run_sdvi_scale.py 1 0 3
-```
-
-#### SMC Reference AutoGP - Gaussian Process Model
-```
-python3 experiments/runners/run_autogp_scale.py $ndevices 0 15
-```

@@ -1,0 +1,115 @@
+================[ Joint Distribution ]================
+Value   Probability
+0       0.
+1       0.00213974151714
+2       0.0331014476658
+3       0.0763285154562
+4       0.125624152617
+5       0.160146709031
+6       0.167113950719
+7       0.147852663779
+8       0.113645002705
+9       0.0772620373387
+10      0.0471054327406
+11      0.0260389001064
+12      0.0131672114444
+13      0.00613625285021
+14      0.00265197807506
+15      0.00106861291173
+16      0.000403335685045
+17      0.000143176936934
+18      5.3807430062e-05
+19      1.7070991948e-05
+20      0.
+21      0.
+22      0.
+23      0.
+24      0.
+25      0.
+26      0.
+27      0.
+28      0.
+29      0.
+30      0.
+31      0.
+
+================[ Number of recursive calls ]================
+3069158248.000000
+================[ Final compiled BDD size ]================
+102648948
+
+real    45m47.033s
+user    45m33.208s
+sys     0m13.487s
+
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice urn19_unrolled.dice
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+================[ Joint Distribution ]================
+Value   Probability
+0       0.
+1       0.00213974151714
+2       0.0331014476658
+3       0.0763285154562
+4       0.125624152617
+5       0.160146709031
+6       0.167113950719
+7       0.147852663779
+8       0.113645002705
+9       0.0772620373387
+10      0.0471054327406
+11      0.0260389001064
+12      0.0131672114444
+13      0.00613625285021
+14      0.00265197807506
+15      0.00106861291173
+16      0.000403335685045
+17      0.000143176936934
+18      5.3807430062e-05
+19      1.7070991948e-05
+20      0.
+21      0.
+22      0.
+23      0.
+24      0.
+25      0.
+26      0.
+27      0.
+28      0.
+29      0.
+30      0.
+31      0.
+
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice   0.06s user 0.06s system 0% cpu 21:40.83 total
+
+
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -num-recursive-calls -show-size urn19_unrolled.dice
+================[ Number of recursive calls ]================
+1039522354.000000
+================[ Final compiled BDD size ]================
+106625169
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice    0.09s user 0.06s system 0% cpu 31:10.60 total
+
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -recursion-limit 20 -max-list-length 20 urn19.dice     
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice    0.15s user 0.24s system 0% cpu 1:02:13.54 total (killed)
+
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -flip-lifting urn19_unrolled.dice
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice    0.05s user 0.06s system 0% cpu 20:41.27 total
+
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -flip-lifting -num-recursive-calls -show-size urn19_unrolled.dice
+================[ Number of recursive calls ]================
+1034578492.000000
+================[ Final compiled BDD size ]================
+102648948
+
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice    0.08s user 0.05s system 0% cpu 29:29.39 total
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -eager-eval -flip-lifting -recursion-limit 20 -max-list-length 20 urn19.dice 
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice    0.07s user 0.05s system 0% cpu 26:10.71 total
+
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -flip-lifting -recursion-limit 20 -max-list-length 20 urn19.dice
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice    0.14s user 0.25s system 0% cpu 58:42.32 total (killed)
+
+markus@Markuss-MacBook-Pro-14 DCCxJAX % time docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice -determinism -flip-lifting urn20_unrolled.dice
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+docker run --rm -v ./evaluation/urn/dice:/home/opam/dice sholtzen/dice dice    0.06s user 0.17s system 0% cpu 20:33.53 total (killed)

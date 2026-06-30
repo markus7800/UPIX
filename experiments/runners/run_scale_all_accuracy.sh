@@ -1,7 +1,7 @@
 #! /bin/bash
 # npcu
 
-export TMPDIR=~/tmp
+export TMPDIR=$(pwd)/tmp
 export OMP_NUM_THREADS=1
 
 # l40s 150min

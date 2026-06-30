@@ -19,6 +19,8 @@ stderr_behavior = None if args.verbose else subprocess.DEVNULL
     
 print(f"{smoketest=} {repetitions=} {ncpu=}")
     
+PRINT_CMDS = False    
+    
 def run_pedestrian_npdhmc():
     t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} Pedestrian NPDHMC ... ", end="" if smoketest else "\n", flush=True)
@@ -40,6 +42,7 @@ def run_pedestrian_npdhmc():
             "--disable_bar",
             "-seed", str(rep)
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
@@ -61,9 +64,11 @@ def run_pedestrian_upix():
             "sequential", "pmap", 
             "-n_chains", str(ncpu),
             "-n_samples_per_chain", str(25_000 // d),
+            "--cpu",
             "-host_device_count", str(ncpu), 
             "-seed", str(rep)
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
@@ -90,6 +95,7 @@ def run_gp_sdvi():
             str(1_000_000 // d),
             "false"
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
@@ -110,9 +116,11 @@ def run_gp_vi_upix():
             "evaluation/gp/run_comp_vi.py", 
             "cpu_multiprocess", "vmap_local",
             "-sh_iterations", str(1_000_000),
+            "--cpu",
             "-num_workers", str(ncpu), 
             "-seed", str(rep)
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
@@ -153,6 +161,7 @@ def run_gmm_gen():
             str(rep),
             "comp",
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
@@ -175,9 +184,11 @@ def run_gmm_upix():
             "sequential", "pmap",
             "-n_chains", str(ncpu),
             "-n_samples_per_chain", str(25_000 // d),
+            "--cpu",
             "-host_device_count", str(ncpu), 
             "-seed", str(rep)
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
@@ -221,6 +232,7 @@ def run_gp_autogp():
             str(rep),
             "false",
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
@@ -243,9 +255,11 @@ def run_gp_smc_upix():
             "evaluation/gp/run_comp_smc.py", 
             "sequential", "smap_local",
             "-n_particles", str(128 // d),
+            "--cpu",
             "-host_device_count", str(ncpu), 
             "-seed", str(rep)
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
@@ -272,6 +286,7 @@ def run_urn_dice():
             "evaluation/urn/dice/run.py", 
             "10" if smoketest else "19"
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")
@@ -296,9 +311,11 @@ def run_urn_upix():
             "evaluation/urn/run_comp.py", 
             "sequential", "vmap_local",
             str(20 // d), 
+            "--cpu",
             "--jit_inf",
             "-seed", str(rep)
         ]
+        if PRINT_CMDS: print(" ".join(cmd))
         subprocess.run(cmd, stdout=stdout_behavior, stderr=stderr_behavior, check=True)
         if repetitions > 1: print(f"{rep+1}/{repetitions}")
     if smoketest: print("ok. ", end="")

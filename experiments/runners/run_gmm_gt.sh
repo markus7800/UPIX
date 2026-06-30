@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-export TMPDIR=~/tmp
+export TMPDIR=$(pwd)/tmp
 
 # ~25h total on 32 cpu
 for seed in {0..4}; do

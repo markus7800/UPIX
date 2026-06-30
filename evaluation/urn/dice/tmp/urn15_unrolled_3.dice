@@ -1,0 +1,77 @@
+// Chain of helper functions to completely bypass the Dice compiler's nesting limits
+fun pick_2(x0: bool, x1: bool): bool { if flip 0.5 then x0 else x1 }
+fun pick_3(x0: bool, x1: bool, x2: bool): bool { if flip 0.3333333333333 then x0 else pick_2(x1, x2) }
+fun pick_4(x0: bool, x1: bool, x2: bool, x3: bool): bool { if flip 0.25 then x0 else pick_3(x1, x2, x3) }
+fun pick_5(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool): bool { if flip 0.2 then x0 else pick_4(x1, x2, x3, x4) }
+fun pick_6(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool): bool { if flip 0.1666666666666 then x0 else pick_5(x1, x2, x3, x4, x5) }
+fun pick_7(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool): bool { if flip 0.1428571428571 then x0 else pick_6(x1, x2, x3, x4, x5, x6) }
+fun pick_8(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool): bool { if flip 0.125 then x0 else pick_7(x1, x2, x3, x4, x5, x6, x7) }
+fun pick_9(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool): bool { if flip 0.1111111111111 then x0 else pick_8(x1, x2, x3, x4, x5, x6, x7, x8) }
+fun pick_10(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool): bool { if flip 0.1 then x0 else pick_9(x1, x2, x3, x4, x5, x6, x7, x8, x9) }
+fun pick_11(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool): bool { if flip 0.0909090909090 then x0 else pick_10(x1, x2, x3, x4, x5, x6, x7, x8, x9, x10) }
+fun pick_12(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool, x11: bool): bool { if flip 0.0833333333333 then x0 else pick_11(x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11) }
+fun pick_13(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool, x11: bool, x12: bool): bool { if flip 0.0769230769230 then x0 else pick_12(x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12) }
+fun pick_14(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool, x11: bool, x12: bool, x13: bool): bool { if flip 0.0714285714285 then x0 else pick_13(x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13) }
+fun pick_15(x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool, x11: bool, x12: bool, x13: bool, x14: bool): bool { if flip 0.0666666666666 then x0 else pick_14(x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14) }
+
+fun pick_x(N: int(4), x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool, x11: bool, x12: bool, x13: bool, x14: bool, x15: bool): bool {
+    if N == int(4,0) then x0
+    else if N == int(4,1) then x0
+    else if N == int(4,2) then pick_2(x0, x1)
+    else if N == int(4,3) then pick_3(x0, x1, x2)
+    else if N == int(4,4) then pick_4(x0, x1, x2, x3)
+    else if N == int(4,5) then pick_5(x0, x1, x2, x3, x4)
+    else if N == int(4,6) then pick_6(x0, x1, x2, x3, x4, x5)
+    else if N == int(4,7) then pick_7(x0, x1, x2, x3, x4, x5, x6)
+    else if N == int(4,8) then pick_8(x0, x1, x2, x3, x4, x5, x6, x7)
+    else if N == int(4,9) then pick_9(x0, x1, x2, x3, x4, x5, x6, x7, x8)
+    else if N == int(4,10) then pick_10(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9)
+    else if N == int(4,11) then pick_11(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10)
+    else if N == int(4,12) then pick_12(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11)
+    else if N == int(4,13) then pick_13(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12)
+    else if N == int(4,14) then pick_14(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13)
+    else if N == int(4,15) then pick_15(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14)
+    else x0
+}
+
+fun draw_true(N: int(4), x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool, x11: bool, x12: bool, x13: bool, x14: bool, x15: bool) {
+    let x = pick_x(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+    observe(if x then flip 0.8 else flip 0.2)
+}
+
+fun draw_false(N: int(4), x0: bool, x1: bool, x2: bool, x3: bool, x4: bool, x5: bool, x6: bool, x7: bool, x8: bool, x9: bool, x10: bool, x11: bool, x12: bool, x13: bool, x14: bool, x15: bool) {
+    let x = pick_x(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+    observe(if x then flip 0.2 else flip 0.8)
+}
+
+let N = discrete(0.0024800162150134487, 0.01488010567626257, 0.04464030584721187, 0.08928054460496872, 0.13392082436183697, 0.1607049922159579, 0.160704917672119, 0.1377470999780993, 0.10331047034406036, 0.06887344562767518, 0.04132404799520699, 0.02254042064960991, 0.011270205665815023, 0.005201625284747513, 0.002229268445076499, 0.0008917094163386948) in
+let t_init = observe(N > int(4,0)) in
+
+let x0 = flip 0.5 in
+let x1 = flip 0.5 in
+let x2 = flip 0.5 in
+let x3 = flip 0.5 in
+let x4 = flip 0.5 in
+let x5 = flip 0.5 in
+let x6 = flip 0.5 in
+let x7 = flip 0.5 in
+let x8 = flip 0.5 in
+let x9 = flip 0.5 in
+let x10 = flip 0.5 in
+let x11 = flip 0.5 in
+let x12 = flip 0.5 in
+let x13 = flip 0.5 in
+let x14 = flip 0.5 in
+let x15 = flip 0.5 in
+
+let t1 = draw_true(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+let t2 = draw_false(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+let t3 = draw_true(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+let t4 = draw_false(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+let t5 = draw_true(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+let t6 = draw_false(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+let t7 = draw_true(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+let t8 = draw_false(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+let t9 = draw_true(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+let t10 = draw_false(N, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15) in
+N
