@@ -11,13 +11,13 @@ folder = args.folder
 
 # log_m2 = open(pathlib.Path(folder, "log_m2.txt"), "r").read()
 
-log_cpu = open(pathlib.Path(folder, "log_cpu.txt"), "r").read()
+log_cpu = open(pathlib.Path(folder, "urn/log_256gb_cpu.txt"), "r").read()
 
-log_l40s = open(pathlib.Path(folder, "log_l40s.txt"), "r").read()
+log_l40s = open(pathlib.Path(folder, "urn/log_l40s.txt"), "r").read()
 
-log_a40 = open(pathlib.Path(folder, "log_a40.txt"), "r").read()
+log_a40 = open(pathlib.Path(folder, "urn/log_a40.txt"), "r").read()
 
-log_a100 = open(pathlib.Path(folder, "log_a100.txt"), "r").read()
+log_a100 = open(pathlib.Path(folder, "urn/log_a100.txt"), "r").read()
 
 import re
 import matplotlib.pyplot as plt

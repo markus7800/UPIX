@@ -1,8 +1,8 @@
 import pickle
-
+import os
 from eval_utils import *
 
-file_template = "samples_produced/walk_model{i}__count1000_eps0.1_leapfrogsteps50.pickle"
+file_template = "evaluation/pedestrian/nonparametric-hmc/samples_produced/walk_model{i}_seed_{i}_count1000_eps0.1_leapfrogsteps50.pickle"
 method = "hmc"
 
 # file_template = "lookahead_samples/walk_model_{i}__count1000_eps0.1_L5_alpha0.1_K2.pickle"
@@ -10,11 +10,11 @@ method = "hmc"
 # method = ("npladhmc-persistent", config)
 
 runs = []
-num_chains = 8
+num_chains = len(os.listdir("evaluation/pedestrian/nonparametric-hmc/samples_produced"))
 for i in range(num_chains):
     with open(file_template.format(i=i), "rb") as f:
         runs.append(pickle.load(f))
-        print(len(runs[i]["hmc"]["samples"]))
+        # print(len(runs[i]["hmc"]["samples"]))
 
 # print(runs)
 if method == "hmc":
@@ -34,9 +34,9 @@ else:
 
 import matplotlib.pyplot as plt
 import numpy as np
-gt_xs = np.load("../gt_xs-100.npy")
-gt_cdf = np.load("../gt_cdf-100-1_000_000_000_000.npy")
-gt_pdf = np.load("../gt_pdf_est-100-1_000_000_000_000.npy")
+gt_xs = np.load("evaluation/pedestrian/gt_xs-100.npy")
+gt_cdf = np.load("evaluation/pedestrian/gt_cdf-100-1_000_000_000_000.npy")
+gt_pdf = np.load("evaluation/pedestrian/gt_pdf_est-100-1_000_000_000_000.npy")
 
 hmc_values = np.array(values[method])
 print(f"{hmc_values.shape=}")
@@ -67,5 +67,5 @@ leg = plt.legend()
 leg.get_frame().set_linewidth(0.0)
 leg.get_frame().set_facecolor('none')
 plt.tight_layout()
-plt.savefig("result_nonparametric-hmc.pdf")
+plt.savefig("result_pedestrian_nonparametric-hmc.pdf")
 # plt.show()

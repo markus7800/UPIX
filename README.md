@@ -247,7 +247,7 @@ Delete the data folder after completing the sanity check:
 rm -rf experiments/data
 ```
 
-### Reproducing Section 4: DCC instantiations
+### Reproducing Section 4: Evaluation - Table 1
 
 Run following commands from the *root directory* to reproduce all experiments from Section 4.  
 Output will be stored in `experiments/data`. **Delete this folder beforehand if it exists already, otherwise the analysis scripts may break.**
@@ -270,10 +270,11 @@ The script will error if the number of available CPUs exceeds `<ncpu>`. You can 
 
 The experiment results from the paper are included in the artifact.
 
-Use `uv run --with=pandas experiments/table_1.py experiments/data` to print statistics as in Table 1.
+Use `uv run --with=pandas experiments/table_1.py <experiments/data folder>` to print statistics as in Table 1.
 
 In the following, the individual commands executed with `run_comp.py` are listed.  
-For these commands we use the `NCPU` environment variable
+**For artifact evaluation, you may skip these sections.**  
+For these commands we use the `NCPU` environment variable.
 
 #### Section 4.1: MCMC - Pedestrian Model
 
@@ -347,12 +348,13 @@ Run UPIX-VE-DCC
 uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/urn/run_comp.py sequential vmap_local 20 --cpu --jit_inf
 ```
 
-### Reproducing Section 5: Scaling Experiments
+### Reproducing Section 5: Scaling Experiments - Figure 8
 
 We have implemented scripts to launch the scaling experiments for each model with varying hardware and workload.
 Set `$platform = cpu | cuda` arguments depending on your hardware.
 `$ndevices` **has to be a power of 2**.
-If you do not have a CPU with a processor count that is a power of 2, then you may prefix the following commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 python3 experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings.
+If you do not have a CPU with a processor count that is a power of 2, then you may prefix the following commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 bash experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings.
+Similarly, for GPUs, you may set `CUDA_VISIBLE_DEVICES` and see https://docs.docker.com/engine/containers/gpu/ for Docker.
 We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA GPUs (without Docker) using following configurations:
 ```
 ($platform, $ndevices) =
@@ -368,6 +370,19 @@ python3 experiments/runners/run_pedestrian_scale.py cuda 1 0 20 sequential
 ```
 runs the scaling experiment for the Pedestrian model with number of MCMC chains varying from `2^0=1` to `2^20=1048576` on a single GPU.
 
+**For artifact evaluation, we recommend running following command, which performs a partial scaling experiment.**
+```
+bash experiments/runners/run_scale_all_experiments.sh <ncpu> <ncuda> 10 10 10 10
+```
+It runs all experiments only up to `2**10` workload for one CPU and one CUDA configuration.  
+With `<ncpu> = 8` and `<ncuda> = 1`, it takes around 10 hours to complete.
+
+Use `uv run --with pandas experiments/scale_plot.py <experiments/data folder>` to generate the scaling figure.
+
+Again, the experiment results from the paper are included in the artifact.
+
+For those results, we ran following commands (as launched in `run_scale_all_experiments.sh`) with `<ncpu> = 8 | 16 | 32 | 64` and `<ncuda> = 1 | 2 | 4 | 8` (the `<logsuffix>` is appended to the generated log files).
+This takes > 100 hours to complete.
 ```
 bash experiments/runners/run_scale_all_references.sh <ncpu> <logsuffix> 20 14 15 18
 ```
@@ -382,7 +397,33 @@ bash experiments/runners/run_scale_all_accuracy.sh 20 14 15 18
 ```
 
 
-For convience
-```
-bash experiments/runners/run_scale_all_experiments.sh <ncpu> <ncuda> 10 10 10 10
-```
+## Reproducing Minor Figures
+
+### Figure 7
+
+uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 10 1000 100 -n_processes 10 -seed 0 --store_samples
+
+uv run evaluation/pedestrian/nonparametric-hmc/check_results.py
+
+result_pedestrian_nonparametric-hmc.pdf
+
+uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap -n_chains 10 -n_samples_per_chain 25000 --cpu -host_device_count 10 -seed 0 --show_plots
+
+result_pedestrian_upix.pdf
+
+
+### Figure 9a
+
+uv run --frozen -p python3.13 --extra=cpu --with=pandas evaluation/gp/viz_vi_elbo_scale_prelim.py sequential smap_local --cpu -host_device_count 8
+
+elbo_scaling_L.pdf
+
+### Figure 9b
+
+uv run evaluation/urn/viz_factor_size.py
+
+factor_size_scaling.pdf
+
+logs created with 
+uv run -p python3.13 --frozen --extra=cpu evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf --cpu
+uv run -p python3.13 --frozen --extra=cuda evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf
