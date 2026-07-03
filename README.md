@@ -165,12 +165,12 @@ docker image save upix-arm64 > upix-arm64.tar
 Run those images with
 ```
 mkdir -p experiments/data
-docker run -it -v $(pwd)/experiments/data:/experiments/data --name upix-amd64 --rm upix-amd64
+docker run -it -v $(pwd)/experiments/data:/experiments/data --shm-size=2g --name upix-amd64 --rm upix-amd64
 ```
 or
 ```
 mkdir -p experiments/data
-docker run -it -v $(pwd)/experiments/data:/experiments/data --name upix-arm64 --rm upix-arm64
+docker run -it -v $(pwd)/experiments/data:/experiments/data --shm-size=2g --name upix-arm64 --rm upix-arm64
 ```
 
 
@@ -182,7 +182,7 @@ docker build -t upix .
 If the build was successful, run the docker image:
 ```
 mkdir -p experiments/data
-docker run -it --rm -v $(pwd)/experiments/data:/experiments/data --name upix --rm upix
+docker run -it --rm -v $(pwd)/experiments/data:/experiments/data --shm-size=2g --name upix --rm upix
 ```
 
 Make sure to make all CPUs and RAM available in the container.  
@@ -217,9 +217,9 @@ docker pull sholtzen/dice@sha256:5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65
 
 Make sure `export TMPDIR=$(pwd)/tmp` is set.
 
-Run inside Docker container (if used), runtime ~10min:
+Run inside Docker container (if used) with `<ncpu>` set to the number of available CPU cores in your machine, runtime ~10min:
 ```
-python3 experiments/runners/run_comp.py all 8 --smoketest
+python3 experiments/runners/run_comp.py all <ncpu> --smoketest
 ```
 Run outside of Docker container, runtime ~20s if dice image installed:
 ```
@@ -232,16 +232,13 @@ Outputs are stored in `experiments/data`.
 
 To test execution with GPU, run
 ```
-uv run -p python3.13 --frozen --extra=gpu evaluation/pedestrian/run_comp.py sequential vmap_global
+uv run -p python3.13 --frozen --extra=cuda evaluation/pedestrian/run_comp.py sequential pmap
 ```
 which should list your GPU devices at the beginning, e.g.
 ```
 Start DCC:
-parallelisation=Sequential(vmap, 
-  devices=
-    cuda:0
-  #workers=1
-)
+parallelisation=Sequential(global vmap, device=cuda:0)
+...
 ```
 and exit without error.
 
@@ -255,44 +252,52 @@ rm -rf experiments/data
 Run following commands from the *root directory* to reproduce all experiments from Section 4.  
 Output will be stored in `experiments/data`. **Delete this folder beforehand if it exists already, otherwise the analysis scripts may break.**
 
-Experiments were run on a M2 Pro Macbook (without Docker).
+Experiments were run on a M2 Pro Macbook with ncpu=10 (without Docker).
 
 Run inside Docker container (if used), runtime ~4h:
 ```
-python3 experiments/runners/run_comp.py all 8
+python3 experiments/runners/run_comp.py all <ncpu>
 ```
 Run outside of Docker container, runtime ~2h:
 ```
-python3 experiments/runners/run_comp.py dice 8
+python3 experiments/runners/run_comp.py dice 1
 ```
+Set `<ncpu>` to the number of available CPU cores in your machine. The script will adjust the workload based on the available cores (see below).   
+If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
+E.g. `taskset -c 0-3 python3 experiments/runners/run_comp.py all 4`.  
+Otherwise, JAX, PyTorch, BLAS, etc will use all the available CPUs under the hood.  
+The script will error if the number of available CPUs exceeds `<ncpu>`. You can silence this error by setting `export NOCHECKENV=true`.
 
 The experiment results from the paper are included in the artifact.
 
 Use `uv run --with=pandas experiments/table_1.py experiments/data` to print statistics as in Table 1.
 
-In the following, the individual commands executed with `run_comp.py` are listed.
+In the following, the individual commands executed with `run_comp.py` are listed.  
+For these commands we use the `NCPU` environment variable
 
 #### Section 4.1: MCMC - Pedestrian Model
 
-Run NP-DHMC baseline (with 8 parallel processes)
+Run NP-DHMC baseline (with `$NCPU` parallel processes for `$NCPU` chains)
 ```
-uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 8 1000 100 -n_processes 8 -seed 0
+uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC $NCPU 1000 100 -n_processes $NCPU -seed 0
 ```
 
-Run UPIX-MCMC-DCC (with 8 CPU devices)
+Run UPIX-MCMC-DCC (with `$NCPU` CPU devices for `$NCPU` chains)
+
 ```
-uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap -n_chains 8 -n_samples_per_chain 25000 --cpu -host_device_count 8 -seed 0```
+uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap -n_chains $NCPU -n_samples_per_chain 25000 --cpu -host_device_count $NCPU -seed 0
+```
 
 #### Section 4.2: SDVI - Gaussian Process Model
 
-Run SDVI baseline (original implementation by Reichelt et al. 2022, with 8 parallel processes)
+Run SDVI baseline (original implementation by Reichelt et al. 2022, with `$NCPU` parallel processes)
 ```
-bash evaluation/gp/sdvi/run_comp.sh 8 0 1000000 false
+bash evaluation/gp/sdvi/run_comp.sh $NCPU 0 1000000 false
 ```
 
-Run UPIX-SDVI (with 8 parallel processes)
+Run UPIX-SDVI (with `$NCPU` parallel processes)
 ```
-uv run -p python3.13 --frozen --extra=cpu --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local -sh_iterations 1000000 --cpu -num_workers 8 -seed 0
+uv run -p python3.13 --frozen --extra=cpu --with pandas evaluation/gp/run_comp_vi.py cpu_multiprocess vmap_local -sh_iterations 1000000 --cpu -num_workers $NCPU -seed 0
 ```
 
 #### Section 4.3: RJMCMC - Gaussian Mixture Model
@@ -301,14 +306,14 @@ If you do not use the docker image, install the julia packages
 julia --project=evaluation/gmm/gen -e "import Pkg; Pkg.instantiate()"
 ```
 
-Run RJMCMC Gen baseline (with 8 processes)
+Run RJMCMC Gen baseline (with `$NCPU` processes for `$NCPU` chains)
 ```
-julia -p 8 --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl 8 25000 0 comp
+julia -p $NCPU --project=evaluation/gmm/gen evaluation/gmm/gen/gmm.jl $NCPU 25000 0 comp
 ```
 
-Run UPIX-RJMCMC-DCC
+Run UPIX-RJMCMC-DCC (with `$NCPU` cpu devices for `$NCPU` chains)
 ```
-uv run -p python3.13 --frozen --extra=cpu evaluation/gmm/run_comp.py sequential pmap -n_chains 8 -n_samples_per_chain 25000 --cpu -host_device_count 8 -seed 0
+uv run -p python3.13 --frozen --extra=cpu evaluation/gmm/run_comp.py sequential pmap -n_chains $NCPU -n_samples_per_chain 25000 --cpu -host_device_count $NCPU -seed 0
 ```
 
 
@@ -318,15 +323,15 @@ If you do not use the docker image, install the julia packages
 ```
 julia --project=evaluation/gp/autogp -e "import Pkg; Pkg.instantiate()"
 ```
-Run AutoGP baseline (with 8 threads)
+Run AutoGP baseline (with `$NCPU` threads and `$NCPU * 10` particles)
 ```
-julia -t 8 --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl 128 false 0 false
+julia -t $NCPU --project=evaluation/gp/autogp evaluation/gp/autogp/main.jl $((NCPU * 10)) false 0 false
 ```
 
 
-Run UPIX-SMC-DCC
+Run UPIX-SMC-DCC (with `$NCPU` cpu devices and `$NCPU * 10` particles)
 ```
-uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -n_particles 128 --cpu -host_device_count 8 -seed 0
+uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/gp/run_comp_smc.py sequential smap_local -n_particles $((NCPU * 10)) --cpu -host_device_count $NCPU -seed 0
 ```
 
 
@@ -344,10 +349,10 @@ uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/urn/run_comp.
 
 ### Reproducing Section 5: Scaling Experiments
 
-We have implemented scripts to launch the `run_scale.py` scripts for each model with varying hardware and workload.
+We have implemented scripts to launch the scaling experiments for each model with varying hardware and workload.
 Set `$platform = cpu | cuda` arguments depending on your hardware.
 `$ndevices` **has to be a power of 2**.
-If you do not have a CPU with a processor count that is a power of 2, then you may prefix the following commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 python3 experiments/...` to use 8 CPUs (only works on Linux).
+If you do not have a CPU with a processor count that is a power of 2, then you may prefix the following commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 python3 experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings.
 We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA GPUs (without Docker) using following configurations:
 ```
 ($platform, $ndevices) =
@@ -363,24 +368,21 @@ python3 experiments/runners/run_pedestrian_scale.py cuda 1 0 20 sequential
 ```
 runs the scaling experiment for the Pedestrian model with number of MCMC chains varying from `2^0=1` to `2^20=1048576` on a single GPU.
 
-If you have less powerful hardware or do not want to run long experiments (they run up to 5 hours), you may lower the workloads.
-
-For instance, with arguments `cuda 1 0 19 sequential` the experiment should take half the time, with `cuda 1 0 18 sequential` it should take a quarter of the time, and so on.
-
-
-TODO TMPDIR=~/tmp explain, make sure tmp dir exists!
-TODO check_environ taskset forces assert args.ndevices == info["n_available_devices"]
-
 ```
-bash experiments/runners/run_scale_all_references.sh ncpu logsuffix 20 14 15 18
+bash experiments/runners/run_scale_all_references.sh <ncpu> <logsuffix> 20 14 15 18
 ```
 ```
-bash experiments/runners/run_scale_all_upix.sh cpu ncpu logsuffix 20 14 15 18
+bash experiments/runners/run_scale_all_upix.sh cpu <ncpu> <logsuffix> 20 14 15 18
 ```
 ```
-bash experiments/runners/run_scale_all_upix.sh cuda ncuda logsuffix 20 14 15 18
+bash experiments/runners/run_scale_all_upix.sh cuda <ncuda> <logsuffix> 20 14 15 18
 ```
 ```
 bash experiments/runners/run_scale_all_accuracy.sh 20 14 15 18
 ```
 
+
+For convience
+```
+bash experiments/runners/run_scale_all_experiments.sh <ncpu> <ncuda> 10 10 10 10
+```
