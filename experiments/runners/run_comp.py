@@ -2,6 +2,7 @@
 import subprocess
 import argparse
 from time import monotonic
+import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument("model", choices=["pedestrian", "gp-vi", "gp-smc", "gmm", "urn", "all", "dice"],  help="Model to run")
@@ -18,6 +19,11 @@ stdout_behavior = None if args.verbose else subprocess.DEVNULL
 stderr_behavior = None if args.verbose else subprocess.DEVNULL
     
 print(f"{smoketest=} {repetitions=} {ncpu=}")
+
+checkenv = (os.environ.get("NOCHECKENV") is None) and (args.model != "dice")
+if checkenv:
+    check_cmd = f"uv run --frozen -p python3.13 --extra=cpu experiments/runners/check_environ.py cpu {ncpu}"
+    subprocess.run(check_cmd, shell=True, check=True)
     
 PRINT_CMDS = False    
     
@@ -26,6 +32,7 @@ def run_pedestrian_npdhmc():
     print(f"{'Testing' if smoketest else 'Running'} Pedestrian NPDHMC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 10 if smoketest else 1
+    nchains = ncpu
     
     for rep in range(repetitions):
         cmd = [
@@ -35,7 +42,7 @@ def run_pedestrian_npdhmc():
             "--with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt", 
             "evaluation/pedestrian/nonparametric-hmc/pedestrian.py", 
             "NP-DHMC",
-            str(ncpu),
+            str(nchains),
             str(1000 // d),
             "100",
             "-n_processes", str(ncpu), 
@@ -53,6 +60,7 @@ def run_pedestrian_upix():
     print(f"{'Testing' if smoketest else 'Running'} Pedestrian UPIX MCMC-DCC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 10 if smoketest else 1
+    nchains = ncpu
     
     for rep in range(repetitions):
         cmd = [
@@ -62,7 +70,7 @@ def run_pedestrian_upix():
             "--extra=cpu", 
             "evaluation/pedestrian/run_comp.py", 
             "sequential", "pmap", 
-            "-n_chains", str(ncpu),
+            "-n_chains", str(nchains),
             "-n_samples_per_chain", str(25_000 // d),
             "--cpu",
             "-host_device_count", str(ncpu), 
@@ -106,6 +114,8 @@ def run_gp_vi_upix():
     t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} GP UPIX VI-DCC ... ", end="" if smoketest else "\n", flush=True)
     
+    d = 100 if smoketest else 1
+    
     for rep in range(repetitions):
         cmd = [
             "uv", "run", 
@@ -115,7 +125,7 @@ def run_gp_vi_upix():
             "--with", "pandas", 
             "evaluation/gp/run_comp_vi.py", 
             "cpu_multiprocess", "vmap_local",
-            "-sh_iterations", str(1_000_000),
+            "-sh_iterations", str(1_000_000 // d),
             "--cpu",
             "-num_workers", str(ncpu), 
             "-seed", str(rep)
@@ -149,6 +159,7 @@ def run_gmm_gen():
     print(f"{'Testing' if smoketest else 'Running'} Gen RJMCMC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 10 if smoketest else 1
+    nchains = ncpu
 
     for rep in range(repetitions):
         cmd = [
@@ -156,7 +167,7 @@ def run_gmm_gen():
             "-p", str(ncpu),
             "--project=evaluation/gmm/gen",
             "evaluation/gmm/gen/gmm.jl",
-            str(ncpu), 
+            str(nchains), 
             str(25_000 // d),
             str(rep),
             "comp",
@@ -173,6 +184,7 @@ def run_gmm_upix():
     print(f"{'Testing' if smoketest else 'Running'} GP UPIX RJ-DCC ... ", end="" if smoketest else "\n", flush=True)
     
     d = 10 if smoketest else 1
+    nchains = ncpu
 
     for rep in range(repetitions):
         cmd = [
@@ -182,7 +194,7 @@ def run_gmm_upix():
             "--extra=cpu", 
             "evaluation/gmm/run_comp.py", 
             "sequential", "pmap",
-            "-n_chains", str(ncpu),
+            "-n_chains", str(nchains),
             "-n_samples_per_chain", str(25_000 // d),
             "--cpu",
             "-host_device_count", str(ncpu), 
@@ -219,7 +231,7 @@ def run_gp_autogp():
     t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} AutoGP.jl ... ", end="" if smoketest else "\n", flush=True)
     
-    d = 16 if smoketest else 1
+    nparticles = ncpu if smoketest else 10 * ncpu
 
     for rep in range(repetitions):
         cmd = [
@@ -227,7 +239,7 @@ def run_gp_autogp():
             "-t", str(ncpu),
             "--project=evaluation/gp/autogp",
             "evaluation/gp/autogp/main.jl",
-            str(128 // d), 
+            str(nparticles), 
             "false",
             str(rep),
             "false",
@@ -243,7 +255,7 @@ def run_gp_smc_upix():
     t0 = monotonic()
     print(f"{'Testing' if smoketest else 'Running'} GP UPIX SMC-DCC ... ", end="" if smoketest else "\n", flush=True)
     
-    d = 16 if smoketest else 1
+    nparticles = ncpu if smoketest else 10 * ncpu
 
     for rep in range(repetitions):
         cmd = [
@@ -254,7 +266,7 @@ def run_gp_smc_upix():
             "--with=pandas",
             "evaluation/gp/run_comp_smc.py", 
             "sequential", "smap_local",
-            "-n_particles", str(128 // d),
+            "-n_particles", str(nparticles),
             "--cpu",
             "-host_device_count", str(ncpu), 
             "-seed", str(rep)
