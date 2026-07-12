@@ -73,13 +73,29 @@ linestyles = {
     "COMP": "dashdot"
 }
 
-def get_shade(color, i, n):
-    i = i - 1
-    rgb = np.array(mcolors.to_rgb(color))
-    return (1 - i/(n-1)) * np.array([1,1,1]) + (i/(n-1)) * rgb
+has_series = {}
 
+def get_marker(kind, platform, n_devices):
+    return markers.get((platform, n_devices), M[0])
+
+def get_linestyle(kind, n_devices):
+    if kind not in linestyles:
+        linestyles[kind] = "solid"
+    return linestyles[kind]
+
+available_colors = [
+    "tab:gray"
+    "tab:olive",
+    "tab:cyan",
+    "tab:purple",
+]
 def get_color(kind, n_devices):
-    return colors.get(kind, "black")
+    has_series[kind] = True
+    if kind not in linestyles:
+        colors[kind] = available_colors.pop()
+    return colors[kind]
+
+CPU_NAME = "2x AMD EPYC 9355"
 
 for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     ("pedestrian", "n_chains", "pedestrian/nonparametric", "NP-DHMC", "inference_time"),
@@ -94,6 +110,10 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
     df["kind"] = df["gpu-brand"].map(lambda x: x[0][len("GPU 0: "):])
     df.loc[df["kind"] == "NVIDIA A100-SXM4-40GB", "kind"] = "NVIDIA A100S"
     df.loc[df["platform"] == "cpu", "kind"] = "CPU"
+    
+    if (df["platform"] == "cpu").any():
+        if (df["cpu-brand"] != "AMD EPYC 9355 32-Core Processor").any():
+            CPU_NAME = "CPU"
         
     if model_path == "gp/vi":
         df[SCALE_COL] = df["n_runs"] * df["L"]
@@ -138,8 +158,8 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
         ax.plot(np.arange(len(group["METRIC"]))+1, group["METRIC"],
                 #  label=f"{n_devices} {platform} {kind}", 
                 c=get_color(kind, n_devices),
-                marker=markers.get((platform, n_devices), M[0]),
-                linestyle=linestyles.get(kind, "solid"),
+                marker=get_marker(kind, platform, n_devices),
+                linestyle=get_linestyle(kind, n_devices),
                 markersize=4,
                 alpha=0.5
         )
@@ -162,7 +182,7 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
         ax.plot(np.arange(len(group["METRIC"]))+1, group["METRIC"],
                 # label=f"{n_devices} {platform} {kind}", 
                 c=get_color(kind, n_devices),
-                marker=markers.get((platform, n_devices), M[0]),
+                marker=get_marker(kind, platform, n_devices),
                 linestyle=linestyles["COMP"],
                 markersize=4,
                 alpha=0.5
@@ -240,22 +260,29 @@ axs[4,1].set_xlabel("number of SMC particles")
 
 legend_elements = []
 for kind, color in colors.items():
+    if not has_series.get(kind, False):
+        continue
     if kind == "COMP":
         label = "Reference on CPU"
     elif kind == "CPU":
-        label = "UPIX 2x AMD EPYC 9355"
+        label = f"UPIX {CPU_NAME}"
     else:
         label = "UPIX " + kind
     legend_elements.append(Line2D([0], [0], color=color, linestyle=linestyles[kind], lw=2, label=label))
+legend_elements.extend([Line2D([0],[0],alpha=0.)]*(4-len(legend_elements)))
+ncols = len(legend_elements)
+
 for i in range(4):
     n_cpu = 2**(i+3)
     n_gpu = 2**(i)
     legend_elements.append(Line2D([0],[0], marker=M[i], lw=0, color="black", label=f"{n_gpu} {"GPUs" if n_gpu > 1 else "GPU"} / {n_cpu} CPUs"))
-
+legend_elements.extend([Line2D([0],[0],alpha=0.)]*(2*ncols-len(legend_elements)))
 
 # plt.tight_layout()
+half = len(legend_elements) // 2
+reorder = [i // 2 if i % 2 == 0 else half + i // 2 for i in range(len(legend_elements))]
 
-fig.legend(handles=[legend_elements[i] for i in [0,4,1,5,2,6,3,7]], loc="upper center", ncols=4)
+fig.legend(handles=[legend_elements[i] for i in reorder], loc="upper center", ncols=ncols)
 # fig.subplots_adjust(top=0.9)
 
 # plt.savefig("scale_figure.png")

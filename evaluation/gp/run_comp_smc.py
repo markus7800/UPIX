@@ -36,7 +36,7 @@ if __name__ == "__main__":
         smc_n_particles=args.n_particles,
         smc_collect_inference_info=True,
         max_iterations = 5,
-        n_lmh_update_samples = 250,
+        n_update_samples = 25,
         max_active_slps = 5,
         max_new_active_slps = 5,
         one_inference_run_per_slp = True,

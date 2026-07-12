@@ -19,8 +19,6 @@ UPIX provides constructs to for **programmable inference**: we enable the user t
 
 ## Usage
 
-This is a work in progress. Instructions are coming soon.
-
 Install options: `[cpu]`, `[cuda]`, and `[tpu]`.
 
 For now, we refer to the example programs in the `evaluation` folder.
@@ -48,7 +46,7 @@ def pedestrian():
 ```
 Above we have implemented the Pedestrian model from Mak et al. [2].
 The syntax resemples NumPyro with the criticial difference that the while loop depends on `position` and `distance`, two quantities that are computed from the random variables `f"step_{t}"`.
-Thus, the number of while loop iteration depends on the values sampled during execution, resulting in a stochastic support.
+Thus, the number of while loop iteration and, by extension the number of random variables, depend on the values sampled during execution, resulting in a stochastic support.
 Each straight-line program SLP corresponds to a sub-model where the loop is run for a fixed number of times.
 
 ```python
@@ -87,13 +85,13 @@ We use a Metropolis-Hastings kernel `RW` for the `start` variable, which simply 
 For the step variables, we apply discontinuous HMC `DHMC`, a variant of Hamiltonian Monte Carlo which can deal with discontinuities.
 
 In `initialise_active_slps` and `update_active_slps`, we may specify how we find SLPs and for which of them inference should be run.
-In the former, we simply draw 250 samples from the program prior which instantiates SLPs, then weigh them with importance sampling, and make the most probable SLPs active.
+In the former, we simply draw 250 samples from the program prior which instantiates SLPs, then weighs them with importance sampling, and makes the most probable SLPs active.
 For this simple model, in `update_active_slps` we simply make all SLPs inactive after running inference once.
 For more complex model, we may implement more sophisticated routines here that discard low probability SLPs and slighlty mutate high probability SLPs resulting in multiple DCC phases.
 
 Lastly, building on features of JAX, we allow the user to customise parallelisation and vectorisation for inference.
 In UPIX, you can run inference for multiple SLPs in parallel on multi-core CPUs or on different accelerator devices like GPUs or TPUs.
-But we also have the option to use mutliple devices to accelerate inference for a single SLP.
+But we also have the option to use multiple devices to accelerate inference for a single SLP.
 This is especially useful for inference routines which can be efficiently parallelised like many-chain MCMC, multiple-run VI, or SMC, see the scaling section below.
 
 On the right, you can see the inference result as an approximation to the posterior of the variable `start`.
@@ -129,23 +127,24 @@ We can see that this approximation is close to the ground truth.
 
 - For reproducing Section 4
   - MacOS / Linux
-  - >= 8 CPU cores
-  - >= 32 GB RAM
+  - at least 8 CPU cores
+  - at least 32 GB RAM
   - 5 - 6 hours runtime
 - For reproducing Section 5 fully
-  - Linux
+  - Linux (or Docker)
   - 64 CPU cores
   - 8 Nvidia GPUs with 48 GB VRAM
   - ~100 hours runtime
 - For reproducing Section 5 partially
-  - Linux
+  - Linux (or Docker)
   - 8 CPU cores
   - 1 Nvidia GPU
   - ~10 hours runtime
 
 #### Docker (Recommended)
 
-Install [docker](https://www.docker.com).
+Install [docker](https://www.docker.com).  
+If you want to run experiments on a Nvidia GPU, you need CUDA (used version: 13.2).
 
 You can download and load the docker image provided at [Zenodo](TODO) with
 ```
@@ -217,7 +216,7 @@ docker pull sholtzen/dice@sha256:5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65
 
 Make sure `export TMPDIR=$(pwd)/tmp` is set.
 
-Run inside Docker container (if used) with `<ncpu>` set to the number of available CPU cores in your machine, runtime ~10min:
+Run inside Docker container (if used) with `<ncpu>` set to the number of available CPU cores, runtime ~10min:
 ```
 python3 experiments/runners/run_comp.py all <ncpu> --smoketest
 ```
@@ -225,12 +224,13 @@ Run outside of Docker container, runtime ~20s if dice image installed:
 ```
 python3 experiments/runners/run_comp.py dice 1 --smoketest
 ```
+If you want to restrict the number of used CPUs, see <a name="restricting-cpus">here</a>.
 
 For reference output see [sanity_check.txt](sanity_check.txt).
 
 Outputs are stored in `experiments/data`.
 
-To test execution with GPU, run
+To test execution with GPU, first make sure `nvidia-smi` prints the GPUs you want to use and run
 ```
 uv run -p python3.13 --frozen --extra=cuda evaluation/pedestrian/run_comp.py sequential pmap
 ```
@@ -240,7 +240,7 @@ Start DCC:
 parallelisation=Sequential(global vmap, device=cuda:0)
 ...
 ```
-and exit without error.
+and exit without error. If you want to restrict the number of used GPUs, adjust the docker settings or set `CUDA_VISIBLE_DEVICES` accordingly.
 
 Delete the data folder after completing the sanity check:
 ```
@@ -262,19 +262,23 @@ Run outside of Docker container, runtime ~2h:
 ```
 python3 experiments/runners/run_comp.py dice 1
 ```
-Set `<ncpu>` to the number of available CPU cores in your machine. The script will adjust the workload based on the available cores (see below).   
-If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
+Set `<ncpu>` to the number of available CPU cores in your machine. The script will adjust the workload based on the available cores (see below).
+
+
+<a name="restricting-cpus"></a>
+**Restricting Number of CPUs.** If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
 E.g. `taskset -c 0-3 python3 experiments/runners/run_comp.py all 4`.  
-Otherwise, JAX, PyTorch, BLAS, etc will use all the available CPUs under the hood.  
+Otherwise, JAX, PyTorch, BLAS, etc, will use all the available CPUs under the hood.  
 The script will error if the number of available CPUs exceeds `<ncpu>`. You can silence this error by setting `export NOCHECKENV=true`.
 
-The experiment results from the paper are included in the artifact.
+The `experiment/data` folder from the paper results is included in the artifact.
 
-Use `uv run --with=pandas experiments/table_1.py <experiments/data folder>` to print statistics as in Table 1.
+Use `uv run --with=pandas experiments/table_1.py <experiments/data folder> <ncpu>` to print statistics as in Table 1.  
+Absolute numbers will vary based on your hardware, but the relative differences and core conclusions should match Table 1 in the paper.
 
 In the following, the individual commands executed with `run_comp.py` are listed.  
-**For artifact evaluation, you may skip these sections.**  
-For these commands we use the `NCPU` environment variable.
+**For artifact evaluation, you may skip these sections and continue to <a href="section5">Section 5</a>.**  
+For these commands we use the `NCPU` environment variable set to the number of available CPUs.
 
 #### Section 4.1: MCMC - Pedestrian Model
 
@@ -349,11 +353,12 @@ uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/urn/run_comp.
 ```
 
 ### Reproducing Section 5: Scaling Experiments - Figure 8
+<a name="section5"><a>
 
 We have implemented scripts to launch the scaling experiments for each model with varying hardware and workload.
 Set `$platform = cpu | cuda` arguments depending on your hardware.
 `$ndevices` **has to be a power of 2**.
-If you do not have a CPU with a processor count that is a power of 2, then you may prefix the following commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 bash experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings.
+If you do not have a CPU with a processor count that is a power of 2, then you may prefix the commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 bash experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings.
 Similarly, for GPUs, you may set `CUDA_VISIBLE_DEVICES` and see https://docs.docker.com/engine/containers/gpu/ for Docker.
 We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA GPUs (without Docker) using following configurations:
 ```
@@ -370,14 +375,14 @@ python3 experiments/runners/run_pedestrian_scale.py cuda 1 0 20 sequential
 ```
 runs the scaling experiment for the Pedestrian model with number of MCMC chains varying from `2^0=1` to `2^20=1048576` on a single GPU.
 
-**For artifact evaluation, we recommend running following command, which performs a partial scaling experiment.**
+**For artifact evaluation, we recommend running following command, which performs a partial scaling experiment up to 2^10 workloads only.**
 ```
 bash experiments/runners/run_scale_all_experiments.sh <ncpu> <ncuda> 10 10 10 10
 ```
-It runs all experiments only up to `2**10` workload for one CPU and one CUDA configuration.  
+It runs all experiments only up to `2^10` workload for one CPU and one CUDA configuration.  
 With `<ncpu> = 8` and `<ncuda> = 1`, it takes around 10 hours to complete.
 
-Use `uv run --with pandas experiments/scale_plot.py <experiments/data folder>` to generate the scaling figure.
+Use `uv run --with pandas experiments/scale_plot.py <experiments/data folder>` to reproduce Figure 8.
 
 Again, the experiment results from the paper are included in the artifact.
 
@@ -396,34 +401,47 @@ bash experiments/runners/run_scale_all_upix.sh cuda <ncuda> <logsuffix> 20 14 15
 bash experiments/runners/run_scale_all_accuracy.sh 20 14 15 18
 ```
 
-
 ## Reproducing Minor Figures
 
 ### Figure 7
 
+Run to store the output of NP-DHMC
+```
 uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 10 1000 100 -n_processes 10 -seed 0 --store_samples
+```
 
+Run
+```
 uv run evaluation/pedestrian/nonparametric-hmc/check_results.py
+```
+to generate the left plot of Figure 7 at `result_pedestrian_nonparametric-hmc.pdf`
 
-result_pedestrian_nonparametric-hmc.pdf
-
+Run
+```
 uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap -n_chains 10 -n_samples_per_chain 25000 --cpu -host_device_count 10 -seed 0 --show_plots
-
-result_pedestrian_upix.pdf
+```
+to generate the right plot of Figure 7 at `result_pedestrian_upix.pdf`
 
 
 ### Figure 9a
 
+Run
+```
 uv run --frozen -p python3.13 --extra=cpu --with=pandas evaluation/gp/viz_vi_elbo_scale_prelim.py sequential smap_local --cpu -host_device_count 8
-
-elbo_scaling_L.pdf
+```
+to reproduce the left plot of Figure 9 at `elbo_scaling_L.pdf`.
 
 ### Figure 9b
 
-uv run evaluation/urn/viz_factor_size.py
+Run
+```
+uv run evaluation/urn/viz_factor_size.py <experiments/data folder>
+```
+*pointed at the provided paper results folder* to reproduce the right plot of Figure 9 at `factor_size_scaling.pdf`
 
-factor_size_scaling.pdf
-
-logs created with 
+The provided results folder contains logs in the `urn` sub-folder generated with
+```
 uv run -p python3.13 --frozen --extra=cpu evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf --cpu
 uv run -p python3.13 --frozen --extra=cuda evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf
+```
+for different hardware.

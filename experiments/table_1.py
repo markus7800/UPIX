@@ -6,28 +6,30 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("folder")
+parser.add_argument("ncpu", type=int)
 args = parser.parse_args()
 
 datafolder = args.folder
+ncpu = int(args.ncpu)
 
 results = [
-    ("pedestrian/nonparametric/comp/cpu_08", "timings/inference_time", "result_metrics/L_inf"),
-    ("pedestrian/comp/cpu_08", "timings/wall_time", "result_metrics/L_inf"),
+    (f"pedestrian/nonparametric/comp/cpu_{ncpu}", "timings/inference_time", "result_metrics/L_inf"),
+    (f"pedestrian/comp/cpu_10", "timings/wall_time", "result_metrics/L_inf"),
     
-    ("gp/sdvi/comp", "timings/wall_time", "result_metrics/lppd"),
-    ("gp/vi/comp/cpu_08", "timings/wall_time", "result_metrics/lppd"),
+    (f"gp/sdvi/comp", "timings/wall_time", "result_metrics/lppd"),
+    (f"gp/vi/comp/cpu_{ncpu}", "timings/wall_time", "result_metrics/lppd"),
     
-    ("gmm/rjmcmc/comp/cpu_08", "timings/wall_time", "result/L_inf"),
-    ("gmm/comp/cpu_08", "timings/wall_time", "result_metrics/L_inf"),
+    (f"gmm/rjmcmc/comp/cpu_{ncpu}", "timings/wall_time", "result/L_inf"),
+    (f"gmm/comp/cpu_{ncpu}", "timings/wall_time", "result_metrics/L_inf"),
     
-    ("gp/autogp/comp/cpu_08", "timings/wall_time", "result_metrics/lppd"),
-    ("gp/smc/comp/cpu_08", "timings/wall_time", "result_metrics/lppd"),
+    (f"gp/autogp/comp/cpu_{ncpu}", "timings/wall_time", "result_metrics/lppd"),
+    (f"gp/smc/comp/cpu_{ncpu}", "timings/wall_time", "result_metrics/lppd"),
     
     ("urn/dice/cpu_01", "timings/wall_time", "result_metrics/L_inf"),
     ("urn/ve/cpu_01", "timings/wall_time", "result_metrics/L_inf"),
     
-    # ("gp/sdvi/comp", "timings/wall_time", "result_metrics/lppd_std"),
-    # ("gp/vi/comp/cpu_08", "timings/wall_time", "result_metrics/lppd_std"),
+    # (f"gp/sdvi/comp", "timings/wall_time", "result_metrics/lppd_std"),
+    # (f"gp/vi/comp/cpu_{ncpu}", "timings/wall_time", "result_metrics/lppd_std"),
 ]
 
 i = 0
