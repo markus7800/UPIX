@@ -9,6 +9,9 @@ ENV PATH="/root/.juliaup/bin:${PATH}"
 ENV JULIA_DEPOT_PATH="/root/.julia"
 ENV OMP_NUM_THREADS=1
 
+COPY scripts/patch_julia_gnu_stack.py /tmp/patch_julia_gnu_stack.py
+RUN python3 /tmp/patch_julia_gnu_stack.py
+
 COPY pyproject.toml uv.lock ./
 COPY upix ./upix
 COPY evaluation/gmm/gen/Project.toml ./evaluation/gmm/gen/
