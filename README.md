@@ -224,7 +224,7 @@ Run outside of Docker container, runtime ~20s if dice image installed:
 ```
 python3 experiments/runners/run_comp.py dice 1 --smoketest
 ```
-If you want to restrict the number of used CPUs, see [here](#restricting-number-of-cpus).
+If you want to restrict the number of used CPUs, see [Section 4 instructions](#restricting-number-of-cpus).
 
 For reference output see [sanity_check.txt](sanity_check.txt).
 
@@ -271,12 +271,11 @@ python3 experiments/runners/run_comp.py dice 1
 Set `<ncpu>` to the number of available CPU cores in your machine. The script will adjust the workload based on the available cores (see below).
 
 
-<a name="restricting-cpus">
-**Restricting Number of CPUs.** If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
+#### Restricting Number of CPUs.
+If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
 E.g. `taskset -c 0-3 python3 experiments/runners/run_comp.py all 4`.  
 Otherwise, JAX, PyTorch, BLAS, etc, will use all the available CPUs under the hood.  
 The script will error if the number of available CPUs exceeds `<ncpu>`. You can silence this error by setting `export NOCHECKENV=true`, but this is not recommend for the reasons above.
-</a>
 
 The `experiment/data` folder from the paper results is included in the artifact.
 
