@@ -1,28 +1,26 @@
-time python3 experiments/runners/run_comp.py all 8 --smoketest
-smoketest=True repetitions=1 ncpu=8
-Testing Pedestrian NPDHMC ... ok. Finished in 36.824s
-Testing Pedestrian UPIX MCMC-DCC ... ok. Finished in 13.512s
-Testing SDVI  ... ok. Finished in 78.728s
-Testing GP UPIX VI-DCC ... ok. Finished in 186.233s
-Installing Gen.jl (if needed) ... ok. Finished in 1.757s
-Testing Gen RJMCMC ... ok. Finished in 54.175s
-Testing GP UPIX RJ-DCC ... ok. Finished in 63.878s
-Installing AutoGP.jl (if needed) ... ok. Finished in 1.151s
-Testing AutoGP.jl ... ok. Finished in 65.120s
-Testing GP UPIX SMC-DCC ... ok. Finished in 96.950s
-Testing Urn UPIX VE-DCC ... ok. Finished in 5.643s
-python3 experiments/runners/run_comp.py all 8 --smoketest  1745.45s user 118.48s system 308% cpu 10:04.03 total
+python3 experiments/runners/run_comp.py all 10 --smoketest
+smoketest=True repetitions=1 ncpu=10
+Testing Pedestrian NPDHMC ... ok. Finished in 45.894s
+Testing Pedestrian UPIX MCMC-DCC ... ok. Finished in 13.134s
+Testing SDVI  ... ok. Finished in 96.335s
+Testing GP UPIX VI-DCC ... ok. Finished in 79.925s
+Installing Gen.jl (if needed) ... ok. Finished in 1.833s
+Testing Gen RJMCMC ... ok. Finished in 57.901s
+Testing GP UPIX RJ-DCC ... ok. Finished in 51.287s
+Installing AutoGP.jl (if needed) ... ok. Finished in 1.138s
+Testing AutoGP.jl ... ok. Finished in 82.025s
+Testing GP UPIX SMC-DCC ... ok. Finished in 101.267s
+Testing Urn UPIX VE-DCC ... ok. Finished in 5.855s
 
-time python3 experiments/runners/run_comp.py dice 1 --smoketest
+python3 experiments/runners/run_comp.py dice 1 --smoketest            
 smoketest=True repetitions=1 ncpu=1
-Testing Urn Dice ... ok. Finished in 3.032s
-python3 experiments/runners/run_comp.py dice 1 --smoketest  0.23s user 0.18s system 13% cpu 3.167 total
+Testing Urn Dice ... ok. Finished in 1.118s
 
 find experiments/data -type f
-experiments/data/gmm/rjmcmc/comp/cpu_08/nchains_0000008_niter_2500_cpu_08_date_2026-06-27_19-57_fb970952.json
-experiments/data/gmm/comp/cpu_08/nchains_0000008_nslps_13_niter_2500_cpu_08_date_2026-06-27_19-58_ff1759e2.json
-experiments/data/gp/vi/comp/cpu_08/K_0000001_nruns_1_L_1_nslps_98_niter_20000_cpu_08_date_2026-06-27_19-56_b7c03f3b.json
-experiments/data/gp/autogp/comp/cpu_08/nparticles_0000008_cpu_08_date_2026-06-27_19-59_15e5d86b.json
+experiments/data/gmm/rjmcmc/comp/cpu_10/nchains_0000010_niter_2500_cpu_10_date_2026-07-12_19-35_7a43cd80.json
+experiments/data/gmm/comp/cpu_10/nchains_0000010_nslps_11_niter_2500_cpu_10_date_2026-07-12_19-36_35b6c97a.json
+experiments/data/gp/vi/comp/cpu_10/K_0000001_nruns_1_L_1_nslps_98_niter_200_cpu_10_date_2026-07-12_19-34_3b1e3e2a.json
+experiments/data/gp/autogp/comp/cpu_10/nparticles_0000010_cpu_10_date_2026-07-12_19-37_476e7b2d.json
 experiments/data/gp/sdvi/gp_grammar_sdvi/resource_allocation.num_total_iterations=10000_resource_allocation=successive_halving_sdvi.SCALE_EXPERIMENT=false_sdvi.elbo_estimate_num_particles=100_sdvi.learning_rate=0.005/seed=0/resource_allocation_metrics.pickle
 experiments/data/gp/sdvi/gp_grammar_sdvi/resource_allocation.num_total_iterations=10000_resource_allocation=successive_halving_sdvi.SCALE_EXPERIMENT=false_sdvi.elbo_estimate_num_particles=100_sdvi.learning_rate=0.005/seed=0/.hydra/config.yaml
 experiments/data/gp/sdvi/gp_grammar_sdvi/resource_allocation.num_total_iterations=10000_resource_allocation=successive_halving_sdvi.SCALE_EXPERIMENT=false_sdvi.elbo_estimate_num_particles=100_sdvi.learning_rate=0.005/seed=0/.hydra/hydra.yaml
@@ -31,9 +29,9 @@ experiments/data/gp/sdvi/gp_grammar_sdvi/resource_allocation.num_total_iteration
 experiments/data/gp/sdvi/gp_grammar_sdvi/resource_allocation.num_total_iterations=10000_resource_allocation=successive_halving_sdvi.SCALE_EXPERIMENT=false_sdvi.elbo_estimate_num_particles=100_sdvi.learning_rate=0.005/seed=0/sdvi.pickle
 experiments/data/gp/sdvi/gp_grammar_sdvi/resource_allocation.num_total_iterations=10000_resource_allocation=successive_halving_sdvi.SCALE_EXPERIMENT=false_sdvi.elbo_estimate_num_particles=100_sdvi.learning_rate=0.005/seed=0/run_exp_pyro_extension.log
 experiments/data/gp/sdvi/gp_grammar_sdvi/resource_allocation.num_total_iterations=10000_resource_allocation=successive_halving_sdvi.SCALE_EXPERIMENT=false_sdvi.elbo_estimate_num_particles=100_sdvi.learning_rate=0.005/seed=0/posterior_predictive.jpg
-experiments/data/gp/sdvi/comp/L_0000001_cpu_10_date_2026-06-27_19-53_3dda5302.json
-experiments/data/gp/smc/comp/cpu_08/nparticles_0000008_nslps_23_cpu_08_date_2026-06-27_20-01_f55cdb4b.json
-experiments/data/pedestrian/nonparametric/comp/cpu_08/npdhmc_nchains_0000008_niter_100_cpu_08_date_2026-06-27_19-51_54f4f3d3.json
-experiments/data/pedestrian/comp/cpu_08/nchains_0000008_nslps_6_niter_2500_cpu_08_date_2026-06-27_19-52_6f4e6287.json
-experiments/data/urn/dice/cpu_01/date_2026-06-27_20-06_1cf2a396.json
-experiments/data/urn/ve/cpu_01/nslps_10_jitinf_True_cpu_01_date_2026-06-27_20-01_2e578525.json
+experiments/data/gp/sdvi/comp/L_0000001_cpu_10_date_2026-07-12_19-32_a9d42521.json
+experiments/data/gp/smc/comp/cpu_10/nparticles_0000010_nslps_23_cpu_10_date_2026-07-12_19-39_28fcb088.json
+experiments/data/pedestrian/nonparametric/comp/cpu_10/npdhmc_nchains_0000010_niter_100_cpu_10_date_2026-07-12_19-31_885fa28b.json
+experiments/data/pedestrian/comp/cpu_10/nchains_0000010_nslps_6_niter_2500_cpu_10_date_2026-07-12_19-31_b026e24f.json
+experiments/data/urn/dice/cpu_01/date_2026-07-12_19-46_5f2657bd.json
+experiments/data/urn/ve/cpu_01/nslps_10_jitinf_True_cpu_01_date_2026-07-12_19-39_329fe928.json

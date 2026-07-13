@@ -185,7 +185,7 @@ docker run -it --rm -v $(pwd)/experiments/data:/experiments/data --shm-size=2g -
 ```
 
 Make sure to make all CPUs and RAM available in the container.  
-To make GPUs in the container available, see https://docs.docker.com/engine/containers/gpu/.
+To make GPUs in the container available, see https://docs.docker.com/engine/containers/gpu/.  
 Runtimes using the docker container may be different compared to running locally.
 
 The installation of the `sholtzen/dice` image is also required.
@@ -216,7 +216,7 @@ docker pull sholtzen/dice@sha256:5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65
 
 Make sure `export TMPDIR=$(pwd)/tmp` is set.
 
-Run inside Docker container (if used) with `<ncpu>` set to the number of available CPU cores, runtime ~10min:
+Run (inside Docker container, if used) with `<ncpu>` set to the number of available CPU cores, runtime ~10min:
 ```
 python3 experiments/runners/run_comp.py all <ncpu> --smoketest
 ```
@@ -224,7 +224,7 @@ Run outside of Docker container, runtime ~20s if dice image installed:
 ```
 python3 experiments/runners/run_comp.py dice 1 --smoketest
 ```
-If you want to restrict the number of used CPUs, see <a name="restricting-cpus">here</a>.
+If you want to restrict the number of used CPUs, see [here](#restricting-number-of-cpus).
 
 For reference output see [sanity_check.txt](sanity_check.txt).
 
@@ -232,15 +232,21 @@ Outputs are stored in `experiments/data`.
 
 To test execution with GPU, first make sure `nvidia-smi` prints the GPUs you want to use and run
 ```
-uv run -p python3.13 --frozen --extra=cuda evaluation/pedestrian/run_comp.py sequential pmap
+uv run -p python3.13 --frozen --extra=cuda evaluation/pedestrian/run_comp.py sequential pmap -n_samples_per_chain 1000
 ```
 which should list your GPU devices at the beginning, e.g.
 ```
 Start DCC:
-parallelisation=Sequential(global vmap, device=cuda:0)
+parallelisation=Sequential(pmap, 
+  devices=
+    cuda:0
+    cuda:1
+  #workers=2
+)
 ...
 ```
-and exit without error. If you want to restrict the number of used GPUs, adjust the docker settings or set `CUDA_VISIBLE_DEVICES` accordingly.
+and exit without error.  
+If you want to restrict the number of used GPUs, adjust the docker settings or set `CUDA_VISIBLE_DEVICES` accordingly.
 
 Delete the data folder after completing the sanity check:
 ```
@@ -254,7 +260,7 @@ Output will be stored in `experiments/data`. **Delete this folder beforehand if 
 
 Experiments were run on a M2 Pro Macbook with ncpu=10 (without Docker).
 
-Run inside Docker container (if used), runtime ~4h:
+Run (inside Docker container, if used), runtime ~4h:
 ```
 python3 experiments/runners/run_comp.py all <ncpu>
 ```
@@ -265,11 +271,12 @@ python3 experiments/runners/run_comp.py dice 1
 Set `<ncpu>` to the number of available CPU cores in your machine. The script will adjust the workload based on the available cores (see below).
 
 
-<a name="restricting-cpus"></a>
+<a name="restricting-cpus">
 **Restricting Number of CPUs.** If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
 E.g. `taskset -c 0-3 python3 experiments/runners/run_comp.py all 4`.  
 Otherwise, JAX, PyTorch, BLAS, etc, will use all the available CPUs under the hood.  
-The script will error if the number of available CPUs exceeds `<ncpu>`. You can silence this error by setting `export NOCHECKENV=true`.
+The script will error if the number of available CPUs exceeds `<ncpu>`. You can silence this error by setting `export NOCHECKENV=true`, but this is not recommend for the reasons above.
+</a>
 
 The `experiment/data` folder from the paper results is included in the artifact.
 
@@ -277,7 +284,7 @@ Use `uv run --with=pandas experiments/table_1.py <experiments/data folder> <ncpu
 Absolute numbers will vary based on your hardware, but the relative differences and core conclusions should match Table 1 in the paper.
 
 In the following, the individual commands executed with `run_comp.py` are listed.  
-**For artifact evaluation, you may skip these sections and continue to <a href="section5">Section 5</a>.**  
+**For artifact evaluation, you may skip these sections and continue to [Section 5](#reproducing-section-5-scaling-experiments---figure-8).**  
 For these commands we use the `NCPU` environment variable set to the number of available CPUs.
 
 #### Section 4.1: MCMC - Pedestrian Model
@@ -353,21 +360,20 @@ uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/urn/run_comp.
 ```
 
 ### Reproducing Section 5: Scaling Experiments - Figure 8
-<a name="section5"><a>
 
 We have implemented scripts to launch the scaling experiments for each model with varying hardware and workload.
-Set `$platform = cpu | cuda` arguments depending on your hardware.
-`$ndevices` **has to be a power of 2**.
+Set `<platform> = cpu | cuda` arguments depending on your hardware.
+`<ndevices>` **has to be a power of 2**.
 If you do not have a CPU with a processor count that is a power of 2, then you may prefix the commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 bash experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings.
 Similarly, for GPUs, you may set `CUDA_VISIBLE_DEVICES` and see https://docs.docker.com/engine/containers/gpu/ for Docker.
 We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA GPUs (without Docker) using following configurations:
 ```
-($platform, $ndevices) =
+(<platform>, <ndevices>) =
     (cpu, 8) | (cpu, 16) | (cpu, 32) | (cpu, 64) |
     (cuda, 1) | (cuda, 2) | (cuda, 4) | (cuda, 8)
 ```
 
-The script arguments following `$platform, $ndevices` set the workload range for each of the four scaling experiments in log2 base.
+The script arguments following `<platform>, <ndevices>` set the workload range for each of the four scaling experiments in log2 base.
 
 For instance
 ```
@@ -382,7 +388,7 @@ bash experiments/runners/run_scale_all_experiments.sh <ncpu> <ncuda> 10 10 10 10
 It runs all experiments only up to `2^10` workload for one CPU and one CUDA configuration.  
 With `<ncpu> = 8` and `<ncuda> = 1`, it takes around 10 hours to complete.
 
-Use `uv run --with pandas experiments/scale_plot.py <experiments/data folder>` to reproduce Figure 8.
+Use `uv run --with pandas experiments/scale_plot.py <experiments/data folder>` to reproduce Figure 8 t `scale_figure.pdf`.
 
 Again, the experiment results from the paper are included in the artifact.
 
