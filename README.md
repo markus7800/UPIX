@@ -277,6 +277,7 @@ E.g. `taskset -c 0-3 python3 experiments/runners/run_comp.py all 4`.
 Otherwise, JAX, PyTorch, BLAS, etc, will use all the available CPUs under the hood.  
 The script will error if the number of available CPUs exceeds `<ncpu>`. You can silence this error by setting `export NOCHECKENV=true`, but this is not recommend for the reasons above.
 
+#### Summarising the results
 The `experiment/data` folder from the paper results is included in the artifact.
 
 Use `uv run --with=pandas experiments/table_1.py <experiments/data folder> <ncpu>` to print statistics as in Table 1.  
@@ -386,6 +387,8 @@ bash experiments/runners/run_scale_all_experiments.sh <ncpu> <ncuda> 10 10 10 10
 ```
 It runs all experiments only up to `2^10` workload for one CPU and one CUDA configuration.  
 With `<ncpu> = 8` and `<ncuda> = 1`, it takes around 10 hours to complete.
+
+#### Summarising the results
 
 Use `uv run --with pandas experiments/scale_plot.py <experiments/data folder>` to reproduce Figure 8 t `scale_figure.pdf`.
 
