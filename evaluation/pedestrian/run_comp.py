@@ -148,7 +148,8 @@ if __name__ == "__main__":
         leg.get_frame().set_linewidth(0.0)
         leg.get_frame().set_facecolor('none')
         plt.tight_layout()
-        plt.savefig("result_pedestrian_upix.pdf")
+        os.makedirs("experiments/data/figures", exist_ok=True)
+        plt.savefig("experiments/data/figures/result_pedestrian_upix.pdf")
         plt.show()
 
 

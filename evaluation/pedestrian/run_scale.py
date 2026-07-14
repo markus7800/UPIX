@@ -133,7 +133,8 @@ if __name__ == "__main__":
         fig = plt.gcf()
         ax = fig.axes[0]
         ax.plot(gt_xs, gt_pdf)
-        plt.savefig("evaluation/pedestrian/result_upix.pdf")
+        os.makedirs("experiments/data/figures", exist_ok=True)
+        plt.savefig("experiments/data/figures/result_upix.pdf")
         plt.show()
 
 

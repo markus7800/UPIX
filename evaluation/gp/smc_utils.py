@@ -1,6 +1,7 @@
 from gp_smc import *
 import matplotlib.pyplot as plt
 from upix.infer.dcc.mc_dcc import MCDCCResult
+import os
 
 def lppd_particles(weighted_samples: SampleValues[Tuple[Trace,FloatArray]], xs, ys, xs_val, ys_val, n, seed):
     key = jax.random.key(seed)
@@ -210,5 +211,6 @@ def plot_results(m: Model, result: MCDCCResult[Trace], xs, ys, xs_val, ys_val, r
     plt.ylabel("Monthly airline passengers volume in thousands")
     plt.legend()
     plt.tight_layout()
-    plt.savefig("smc_comp_forecast.pdf")
+    os.makedirs("experiments/data/figures", exist_ok=True)
+    plt.savefig("experiments/data/figures/smc_comp_forecast.pdf")
     plt.show()

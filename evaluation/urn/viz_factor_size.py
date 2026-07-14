@@ -1,5 +1,6 @@
 import pathlib
 import argparse
+import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument("folder")
@@ -56,5 +57,6 @@ ax1.set_zorder(ax2.get_zorder()+1)
 ax1.patch.set_visible(False)  # Make background transparent
 
 fig.tight_layout()
-plt.savefig("factor_size_scaling.pdf")
+os.makedirs("experiments/data/figures", exist_ok=True)
+plt.savefig("experiments/data/figures/factor_size_scaling.pdf")
 plt.show()

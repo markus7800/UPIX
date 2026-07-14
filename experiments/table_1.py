@@ -50,6 +50,6 @@ for (folder, timepath, metricpath) in results:
         print(f"{folder}: {timepath}={np.mean(ts):.6g}±{np.std(ts):.6g} {metricpath}={np.mean(ms):.6g}±{np.std(ms):.6g}")
     except Exception as e:
         # raise e
-        print("error")
+        print("error", e)
     i += 1
     if i % 2 == 0: print()

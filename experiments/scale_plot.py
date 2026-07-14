@@ -10,6 +10,7 @@ from functools import reduce
 import pickle
 from matplotlib.ticker import LogLocator
 from matplotlib.lines import Line2D
+import shutil
 
 parser = argparse.ArgumentParser()
 parser.add_argument("folder")
@@ -18,6 +19,13 @@ args = parser.parse_args()
 
 folder = args.folder
 
+def is_latex_available():
+    required_cmds = ['latex', 'dvipng', 'gs']
+    return all(shutil.which(cmd) is not None for cmd in required_cmds)
+
+plt.rcParams.update({
+    "text.usetex": is_latex_available()
+})
 
 def df_from_json_dir(dir, keep_info_subdicts: list[str], discard_names: list[str]):
     results = []
@@ -120,6 +128,9 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
         
     df = df[["platform", "kind", "num_workers", SCALE_COL, "total_time", "inference_time", "jax_total_jit_time", "n_available_devices"]]
     df = df.set_index(["platform", "kind", "num_workers", SCALE_COL])
+    if not df.index.is_unique:
+        df = df[~df.index.duplicated(keep='first')]
+        print("Warning: index is not unique. Dropping duplicates.")
     assert df.index.is_unique
     df = df.sort_index()
     df = df.reset_index()
@@ -174,6 +185,9 @@ for i, (model_path, SCALE_COL, comp_path, COMP_NAME, comp_time) in enumerate([
         
     comp_df["kind"] = "COMP"
     comp_df = comp_df.set_index(["platform", "kind", "num_workers", SCALE_COL])
+    if not comp_df.index.is_unique:
+        comp_df = comp_df[~comp_df.index.duplicated(keep='first')]
+        print("Warning: comp index is not unique. Dropping duplicates.")
     assert comp_df.index.is_unique
     comp_df = comp_df.sort_index()
     comp_df = comp_df.reset_index()
@@ -286,7 +300,8 @@ fig.legend(handles=[legend_elements[i] for i in reorder], loc="upper center", nc
 # fig.subplots_adjust(top=0.9)
 
 # plt.savefig("scale_figure.png")
-plt.savefig("scale_figure.pdf")
+os.makedirs("experiments/data/figures", exist_ok=True)
+plt.savefig("experiments/data/figures/scale_figure.pdf")
 plt.show()
         
         

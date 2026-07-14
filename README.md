@@ -282,7 +282,9 @@ The script will error if the number of available CPUs exceeds `<ncpu>`. You can 
 The `experiment/data` folder from the paper results is included in the artifact.
 
 Use
-```uv run --with=pandas experiments/table_1.py <experiments/data folder> <ncpu>```
+```
+uv run --with=pandas experiments/table_1.py <experiments/data folder> <ncpu>
+```
 to print statistics as in Table 1.  
 Absolute numbers will vary based on your hardware, but the relative differences and core conclusions should match Table 1 in the paper.
 
@@ -397,7 +399,7 @@ Use
 ```
 uv run --with pandas experiments/scale_plot.py <experiments/data folder>
 ```
-to reproduce Figure 8 at `scale_figure.pdf`.
+to reproduce Figure 8 at `experiments/data/figures/scale_figure.pdf`.
 
 Again, the experiment results from the paper are included in the artifact.
 
@@ -429,13 +431,13 @@ Run
 ```
 uv run evaluation/pedestrian/nonparametric-hmc/check_results.py
 ```
-to generate the left plot of Figure 7 at `result_pedestrian_nonparametric-hmc.pdf`
+to generate the left plot of Figure 7 at `experiments/data/figures/result_pedestrian_nonparametric-hmc.pdf`
 
 Run
 ```
 uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap -n_chains 10 -n_samples_per_chain 25000 --cpu -host_device_count 10 -seed 0 --show_plots --no_save
 ```
-to generate the right plot of Figure 7 at `result_pedestrian_upix.pdf`
+to generate the right plot of Figure 7 at `experiments/data/figures/result_pedestrian_upix.pdf`
 
 
 ### Figure 9a
@@ -444,7 +446,7 @@ Run
 ```
 uv run --frozen -p python3.13 --extra=cpu --with=pandas evaluation/gp/viz_vi_elbo_scale_prelim.py sequential smap_local --cpu -host_device_count 8
 ```
-to reproduce the left plot of Figure 9 at `elbo_scaling_L.pdf`.
+to reproduce the left plot of Figure 9 at `experiments/data/figures/elbo_scaling_L.pdf`.
 
 ### Figure 9b
 
@@ -452,7 +454,7 @@ Run
 ```
 uv run evaluation/urn/viz_factor_size.py <experiments/data folder>
 ```
-*pointed at the provided paper results folder* to reproduce the right plot of Figure 9 at `factor_size_scaling.pdf`
+*pointed at the provided paper results folder* to reproduce the right plot of Figure 9 at `experiments/data/figures/factor_size_scaling.pdf`
 
 The provided results folder contains logs in the `urn` sub-folder generated with
 ```
