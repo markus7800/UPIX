@@ -98,6 +98,7 @@ if __name__ == "__main__":
     parser.add_argument("--disable_bar", action="store_true")
     parser.add_argument("--store_samples", action="store_true")
     parser.add_argument("-seed", default=0, type=int)
+    parser.add_argument("--no_save", action="store_true")
     args = parser.parse_args()
 
     n_iter = args.n_iter
@@ -203,7 +204,8 @@ if __name__ == "__main__":
     fpath = pathlib.Path(
         "experiments", "data", "pedestrian", "nonparametric", folder, f"{platform}_{args.n_processes:02d}",
         f"{prefix}_nchains_{repetitions:07d}_niter_{n_iter}_{platform}_{args.n_processes:02d}_date_{now}_{id_str[:8]}.json")
-    fpath.parent.mkdir(exist_ok=True, parents=True)
-    with open(fpath, "w") as f:
-        json.dump(json_result, f, indent=2)
+    if not args.no_save:
+        fpath.parent.mkdir(exist_ok=True, parents=True)
+        with open(fpath, "w") as f:
+            json.dump(json_result, f, indent=2)
     

@@ -20,6 +20,8 @@ stderr_behavior = None if args.verbose else subprocess.DEVNULL
     
 print(f"{smoketest=} {repetitions=} {ncpu=}")
 
+sync_cmd = "uv sync --frozen -p python3.13 --extra=cpu"
+subprocess.run(sync_cmd, shell=True, check=True)
 checkenv = (os.environ.get("NOCHECKENV") is None) and (args.model != "dice")
 if checkenv:
     check_cmd = f"uv run --frozen -p python3.13 --extra=cpu experiments/runners/check_environ.py cpu {ncpu}"

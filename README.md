@@ -226,7 +226,8 @@ python3 experiments/runners/run_comp.py dice 1 --smoketest
 ```
 If you want to restrict the number of used CPUs, see [Section 4 instructions](#restricting-number-of-cpus).
 
-For reference output see [sanity_check.txt](sanity_check.txt).
+For reference output see [sanity_check.txt](sanity_check.txt).  
+The first runs may be slower due to compile/install times.
 
 Outputs are stored in `experiments/data`.
 
@@ -250,7 +251,7 @@ If you want to restrict the number of used GPUs, adjust the docker settings or s
 
 Delete the data folder after completing the sanity check:
 ```
-rm -rf experiments/data
+rm -rf experiments/data/*
 ```
 
 ### Reproducing Section 4: Evaluation - Table 1
@@ -280,7 +281,9 @@ The script will error if the number of available CPUs exceeds `<ncpu>`. You can 
 #### Summarising the results
 The `experiment/data` folder from the paper results is included in the artifact.
 
-Use `uv run --with=pandas experiments/table_1.py <experiments/data folder> <ncpu>` to print statistics as in Table 1.  
+Use
+```uv run --with=pandas experiments/table_1.py <experiments/data folder> <ncpu>```
+to print statistics as in Table 1.  
 Absolute numbers will vary based on your hardware, but the relative differences and core conclusions should match Table 1 in the paper.
 
 In the following, the individual commands executed with `run_comp.py` are listed.  
@@ -390,7 +393,11 @@ With `<ncpu> = 8` and `<ncuda> = 1`, it takes around 10 hours to complete.
 
 #### Summarising the results
 
-Use `uv run --with pandas experiments/scale_plot.py <experiments/data folder>` to reproduce Figure 8 t `scale_figure.pdf`.
+Use 
+```
+uv run --with pandas experiments/scale_plot.py <experiments/data folder>
+```
+to reproduce Figure 8 at `scale_figure.pdf`.
 
 Again, the experiment results from the paper are included in the artifact.
 
@@ -415,7 +422,7 @@ bash experiments/runners/run_scale_all_accuracy.sh 20 14 15 18
 
 Run to store the output of NP-DHMC
 ```
-uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 10 1000 100 -n_processes 10 -seed 0 --store_samples
+uv run -p python3.10 --no-project --with-requirements=evaluation/pedestrian/nonparametric-hmc/requirements.txt evaluation/pedestrian/nonparametric-hmc/pedestrian.py NP-DHMC 10 1000 100 -n_processes 10 -seed 0 --store_samples --no_save
 ```
 
 Run
@@ -426,7 +433,7 @@ to generate the left plot of Figure 7 at `result_pedestrian_nonparametric-hmc.pd
 
 Run
 ```
-uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap -n_chains 10 -n_samples_per_chain 25000 --cpu -host_device_count 10 -seed 0 --show_plots
+uv run -p python3.13 --frozen --extra=cpu evaluation/pedestrian/run_comp.py sequential pmap -n_chains 10 -n_samples_per_chain 25000 --cpu -host_device_count 10 -seed 0 --show_plots --no_save
 ```
 to generate the right plot of Figure 7 at `result_pedestrian_upix.pdf`
 
@@ -449,7 +456,7 @@ uv run evaluation/urn/viz_factor_size.py <experiments/data folder>
 
 The provided results folder contains logs in the `urn` sub-folder generated with
 ```
-uv run -p python3.13 --frozen --extra=cpu evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf --cpu
-uv run -p python3.13 --frozen --extra=cuda evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf
+uv run -p python3.13 --frozen --extra=cpu evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf --cpu --no_save
+uv run -p python3.13 --frozen --extra=cuda evaluation/urn/run_comp.py sequential vmap_local 25 --jit_inf --no_save
 ```
 for different hardware.

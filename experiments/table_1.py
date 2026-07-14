@@ -28,8 +28,8 @@ results = [
     ("urn/dice/cpu_01", "timings/wall_time", "result_metrics/L_inf"),
     ("urn/ve/cpu_01", "timings/wall_time", "result_metrics/L_inf"),
     
-    (f"gp/sdvi/comp", "timings/wall_time", "result_metrics/lppd_std"),
-    (f"gp/vi/comp/cpu_{ncpu:02d}", "timings/wall_time", "result_metrics/lppd_std"),
+    # (f"gp/sdvi/comp", "timings/wall_time", "result_metrics/lppd_std"),
+    # (f"gp/vi/comp/cpu_{ncpu:02d}", "timings/wall_time", "result_metrics/lppd_std"),
 ]
 
 i = 0
