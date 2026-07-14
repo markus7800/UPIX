@@ -20,7 +20,7 @@ args = parser.parse_args()
 folder = args.folder
 
 def is_latex_available():
-    required_cmds = ['latex', 'dvipng', 'gs']
+    required_cmds = ['latex', 'dvipng']
     return all(shutil.which(cmd) is not None for cmd in required_cmds)
 
 plt.rcParams.update({
@@ -211,11 +211,19 @@ axs[0,1].set_title("b) Gaussian Mixture Model - RJMCMC")
 axs[3,0].set_title("c) Gaussian Process Model - VI")
 axs[3,1].set_title("d) Gaussian Process Model - SMC")
 
+use_latex = is_latex_available()
+
 axs[0,0].set_ylabel("Runtime [s]")
-axs[1,0].set_ylabel("$L_\\infty(\\hat{F},F)$ distance")
+if use_latex:
+    axs[1,0].set_ylabel("$L_\\infty(\\hat{F},F)$ distance")
+else:
+    axs[1,0].set_ylabel("L_inf(Fhat,F) distance")
 axs[0,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
 axs[0,1].yaxis.set_label_position("right")
-axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=16)
+if use_latex:
+    axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=16)
+else:
+    axs[1,1].set_ylabel("L_inf(Fhat,F) distance", rotation=270, labelpad=16)
 axs[1,1].yaxis.set_label_position("right")
 
 axs[3,0].set_ylabel("Runtime [s]")
@@ -262,14 +270,6 @@ for (i, (file,label,xticksformat)) in enumerate([
         
 axs[4,0].set_xlabel("number of VI runs times number of samples per step")
 axs[4,1].set_xlabel("number of SMC particles")
-# axs[4,0].set_ylim(75)
-# axs[4,0].set_ylim(0)
-
-# annot_fontsize = 10
-# axs[1,0].annotate("$L_\\infty(\\hat{F},F)$ distance to\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
-# axs[1,1].annotate("$L_\\infty(\\hat{F},F)$ distance\nground truth posterior", (0.4, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
-# axs[1,2].annotate("local ELBO of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
-# axs[1,3].annotate("local normalisation\nconstant of SLP", (0.5, 0.4), fontsize=annot_fontsize, xycoords="axes fraction")
 
 
 legend_elements = []
