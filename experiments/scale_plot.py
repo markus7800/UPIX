@@ -23,9 +23,7 @@ def is_latex_available():
     required_cmds = ['latex', 'dvipng']
     return all(shutil.which(cmd) is not None for cmd in required_cmds)
 
-plt.rcParams.update({
-    "text.usetex": is_latex_available()
-})
+plt.rcParams['text.usetex'] = is_latex_available()
 
 def df_from_json_dir(dir, keep_info_subdicts: list[str], discard_names: list[str]):
     results = []
@@ -41,7 +39,6 @@ def df_from_json_dir(dir, keep_info_subdicts: list[str], discard_names: list[str
                     results.append(df_dict)
     return pd.DataFrame(results)
 
-plt.rcParams['text.usetex'] = True
 
 gridspec = {
     "top": 0.9,
@@ -211,19 +208,11 @@ axs[0,1].set_title("b) Gaussian Mixture Model - RJMCMC")
 axs[3,0].set_title("c) Gaussian Process Model - VI")
 axs[3,1].set_title("d) Gaussian Process Model - SMC")
 
-use_latex = is_latex_available()
-
 axs[0,0].set_ylabel("Runtime [s]")
-if use_latex:
-    axs[1,0].set_ylabel("$L_\\infty(\\hat{F},F)$ distance")
-else:
-    axs[1,0].set_ylabel("L_inf(Fhat,F) distance")
+axs[1,0].set_ylabel("$L_\\infty(\\hat{F},F)$ distance")
 axs[0,1].set_ylabel("Runtime [s]", rotation=270, labelpad=10)
 axs[0,1].yaxis.set_label_position("right")
-if use_latex:
-    axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=16)
-else:
-    axs[1,1].set_ylabel("L_inf(Fhat,F) distance", rotation=270, labelpad=16)
+axs[1,1].set_ylabel("$L_\\infty(\\hat{F},F)$ distance", rotation=270, labelpad=16)
 axs[1,1].yaxis.set_label_position("right")
 
 axs[3,0].set_ylabel("Runtime [s]")
