@@ -129,7 +129,8 @@ We can see that this approximation is close to the ground truth.
 
 [3] Reichelt, Tim, Luke Ong, and Thomas Rainforth. "Rethinking variational inference for probabilistic programs with stochastic support." Advances in Neural Information Processing Systems 35 (2022): 15160-15175.
 
-### Installation (Kick-the-tires instructions)
+
+## Installation (Kick-the-tires instructions)
 
 #### Hardware Requirements
 
@@ -149,7 +150,7 @@ We can see that this approximation is close to the ground truth.
   - 1 Nvidia GPU
   - ~10 hours runtime
 
-#### Docker (Recommended)
+### Docker (Recommended)
 
 Install [docker](https://www.docker.com).  
 If you want to run experiments on a Nvidia GPU, you need CUDA (used version: 13.2).
@@ -201,7 +202,7 @@ The installation of the `sholtzen/dice` image is also required.
 docker pull sholtzen/dice@sha256:5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65d011ddc1e6969fa2e
 ```
 
-#### Manual
+### Manual
 
 To run the experiments on your machine you need uv, Julia 1.9, and [docker](https://www.docker.com).  
 If you want to run experiments on Nvidia GPU, you need CUDA (used version: 13.2).
@@ -220,7 +221,7 @@ julia --project=evaluation/gp/autogp -e "import Pkg; Pkg.instantiate()"
 docker pull sholtzen/dice@sha256:5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65d011ddc1e6969fa2e
 ```
 
-#### Sanity Check
+### Sanity Check
 
 Make sure `export TMPDIR=$(pwd)/tmp` is set.
 
@@ -262,7 +263,7 @@ Delete the data folder after completing the sanity check:
 rm -rf experiments/data/*
 ```
 
-### Reproducing Section 4: Evaluation - Table 1
+## Reproducing Section 4: Evaluation - Table 1
 
 Run following commands from the *root directory* to reproduce all experiments from Section 4.  
 Make sure `export TMPDIR=$(pwd)/tmp` is set.  
@@ -301,6 +302,8 @@ Absolute numbers will vary based on your hardware, but the relative differences 
 In the following, the individual commands executed with `run_comp.py` are listed.  
 **For artifact evaluation, you may skip these sections and continue to [Section 5](#reproducing-section-5-scaling-experiments---figure-8).**  
 For these commands we use the `NCPU` environment variable set to the number of available CPUs.
+
+### Commands per Sub-section
 
 #### Section 4.1: MCMC - Pedestrian Model
 
@@ -374,7 +377,7 @@ Run UPIX-VE-DCC
 uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/urn/run_comp.py sequential vmap_local 20 --cpu --jit_inf
 ```
 
-### Reproducing Section 5: Scaling Experiments - Figure 8
+## Reproducing Section 5: Scaling Experiments - Figure 8
 
 We have implemented scripts to launch the scaling experiments for each model with varying hardware and workload.
 Set `<platform> = cpu | cuda` arguments depending on your hardware.
