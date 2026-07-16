@@ -12,7 +12,7 @@ At its core the DCC approach splits up a model with stochastic support into a po
 In UPIX this is realised with a custom JAX interpreter which records and compiles the probabilistic program for *each* choice of branching decisions (all instances where an abstract JAX array tracer is made concrete).
 Thus, a program specified in our universal PPL is split up into multiple JIT-compilable **straigt-line-programs (SLPs)**.
 
-UPIX provides constructs to for **programmable inference**: we enable the user to customise 
+UPIX provides constructs for **programmable inference**: we enable the user to customise 
 - how the model is split up in the *divide step*
 - how the inference is run in the *conquer step*
 - how the approximations of the sub-models are *combined*
@@ -57,9 +57,17 @@ class DCCConfig(MCMCDCC[T]):
             MCMCStep(Variables(r"step_\d+"), DHMC(50, 0.05, 0.15)),
         )
     def initialise_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: jax.Array):
+        discovered_slps: List[SLP] = []
+        for _ in range(init_n_samples):
+            rng_key, key = jax.random.split(rng_key)
+            trace = sample_from_prior(model, key)
+            if all(slp.path_indicator(trace) == 0 for slp in discovered_slps):
+                slp = slp_from_decision_representative(model, trace)
+                discovered_slps.append(slp)
         ...
     def update_active_slps(self, active_slps: List[SLP], inactive_slps: List[SLP], rng_key: PRNGKey):
-        ...
+        inactive_slps.extend(active_slps)
+        active_slps.clear()
 
 dcc_obj = DCCConfig(m, verbose=2,
     parallelisation=get_parallelisation_config(args),
@@ -146,7 +154,7 @@ We can see that this approximation is close to the ground truth.
 Install [docker](https://www.docker.com).  
 If you want to run experiments on a Nvidia GPU, you need CUDA (used version: 13.2).
 
-You can download and load the docker image provided at [Zenodo](TODO) with
+You can download and load the docker image provided at [Zenodo](https://doi.org/10.5281/zenodo.21402298) with
 ```
 docker load -i upix-amd64.tar
 ``` 
@@ -184,7 +192,7 @@ mkdir -p experiments/data
 docker run -it --rm -v $(pwd)/experiments/data:/experiments/data --shm-size=2g --name upix --rm upix
 ```
 
-Make sure to make all CPUs and RAM available in the container.  
+Make sure to make multiple CPUs and enough RAM available in the container.  
 To make GPUs in the container available, see https://docs.docker.com/engine/containers/gpu/.  
 Runtimes using the docker container may be different compared to running locally.
 
@@ -220,7 +228,7 @@ Run (inside Docker container, if used) with `<ncpu>` set to the number of availa
 ```
 python3 experiments/runners/run_comp.py all <ncpu> --smoketest
 ```
-Run outside of Docker container, runtime ~20s if dice image installed:
+Run outside of Docker container, runtime ~20s if Dice image is already installed:
 ```
 python3 experiments/runners/run_comp.py dice 1 --smoketest
 ```
@@ -247,7 +255,7 @@ parallelisation=Sequential(pmap,
 ...
 ```
 and exit without error.  
-If you want to restrict the number of used GPUs, adjust the docker settings or set `CUDA_VISIBLE_DEVICES` accordingly.
+If you want to restrict the number of used GPUs, adjust the Docker settings or set `CUDA_VISIBLE_DEVICES` accordingly.
 
 Delete the data folder after completing the sanity check:
 ```
@@ -257,6 +265,7 @@ rm -rf experiments/data/*
 ### Reproducing Section 4: Evaluation - Table 1
 
 Run following commands from the *root directory* to reproduce all experiments from Section 4.  
+Make sure `export TMPDIR=$(pwd)/tmp` is set.  
 Output will be stored in `experiments/data`. **Delete this folder beforehand if it exists already, otherwise the analysis scripts may break.**
 
 Experiments were run on a M2 Pro Macbook with ncpu=10 (without Docker).
@@ -275,6 +284,7 @@ Set `<ncpu>` to the number of available CPU cores in your machine. The script wi
 #### Restricting Number of CPUs.
 If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
 E.g. `taskset -c 0-3 python3 experiments/runners/run_comp.py all 4`.  
+E.g. `docker run -it -v $(pwd)/experiments/data:/experiments/data --shm-size=2g --cpuset-cpus="0-3" --name upix --rm upix`  
 Otherwise, JAX, PyTorch, BLAS, etc, will use all the available CPUs under the hood.  
 The script will error if the number of available CPUs exceeds `<ncpu>`. You can silence this error by setting `export NOCHECKENV=true`, but this is not recommend for the reasons above.
 
@@ -369,8 +379,8 @@ uv run -p python3.13 --frozen --extra=cpu --with=pandas evaluation/urn/run_comp.
 We have implemented scripts to launch the scaling experiments for each model with varying hardware and workload.
 Set `<platform> = cpu | cuda` arguments depending on your hardware.
 `<ndevices>` **has to be a power of 2**.
-If you do not have a CPU with a processor count that is a power of 2, then you may prefix the commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 bash experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings.
-Similarly, for GPUs, you may set `CUDA_VISIBLE_DEVICES` and see https://docs.docker.com/engine/containers/gpu/ for Docker.
+If you do not have a CPU with a processor count that is a power of 2, then you may prefix the commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 bash experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings, see [Section 4 instructions](#restricting-number-of-cpus).
+Similarly, for GPUs, you may set `CUDA_VISIBLE_DEVICES` and see https://docs.docker.com/engine/containers/gpu/ for Docker (e.g. `--gpus='"device=0,1"'`).
 We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA GPUs (without Docker) using following configurations:
 ```
 (<platform>, <ndevices>) =
@@ -403,8 +413,8 @@ to reproduce Figure 8 at `experiments/data/figures/scale_figure.pdf`.
 
 Again, the experiment results from the paper are included in the artifact.
 
-For those results, we ran following commands (as launched in `run_scale_all_experiments.sh`) with `<ncpu> = 8 | 16 | 32 | 64` and `<ncuda> = 1 | 2 | 4 | 8` (the `<logsuffix>` is appended to the generated log files).
-This takes > 100 hours to complete.
+For those results, we ran following commands (as launched in `run_scale_all_experiments.sh`) with `<ncpu> = 8 | 16 | 32 | 64` and `<ncuda> = 1 | 2 | 4 | 8` (the `<logsuffix>` is appended to the names of the generated log files).
+This takes more than 100 hours to complete.
 ```
 bash experiments/runners/run_scale_all_references.sh <ncpu> <logsuffix> 20 14 15 18
 ```
@@ -454,7 +464,7 @@ Run
 ```
 uv run evaluation/urn/viz_factor_size.py <experiments/data folder>
 ```
-*pointed at the provided paper results folder* to reproduce the right plot of Figure 9 at `experiments/data/figures/factor_size_scaling.pdf`
+**pointed at the provided paper results folder** to reproduce the right plot of Figure 9 at `experiments/data/figures/factor_size_scaling.pdf`
 
 The provided results folder contains logs in the `urn` sub-folder generated with
 ```
