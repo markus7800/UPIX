@@ -240,7 +240,10 @@ The first runs may be slower due to compile/install times.
 
 Outputs are stored in `experiments/data`.
 
-To test execution with GPU, first make sure `nvidia-smi` prints the GPUs you want to use and run
+A Nvidia GPU is needed only for reproducing Section 5.  
+CPUs suffice for reproducing Section 4.  
+To test execution with GPU, first make sure `nvidia-smi` prints the GPUs you want to use.
+If you want to restrict the number of used GPUs, adjust the Docker settings or set `CUDA_VISIBLE_DEVICES` accordingly (also see [Section 5](#reproducing-section-5-scaling-experiments---figure-8)) and run
 ```
 uv run -p python3.13 --frozen --extra=cuda evaluation/pedestrian/run_comp.py sequential pmap -n_samples_per_chain 1000
 ```
@@ -256,7 +259,6 @@ parallelisation=Sequential(pmap,
 ...
 ```
 and exit without error in ~1min (excluding package install time).  
-If you want to restrict the number of used GPUs, adjust the Docker settings or set `CUDA_VISIBLE_DEVICES` accordingly.
 
 Delete the data folder after completing the sanity check:
 ```
@@ -267,10 +269,10 @@ rm -rf experiments/data/*
 
 Run following commands from the *root directory* to reproduce all experiments from Section 4.  
 Make sure `export TMPDIR=$(pwd)/tmp` is set.  
-Output will be stored in `experiments/data`. **Delete this folder beforehand if it exists already, otherwise the analysis scripts may break.**
+Output will be stored in `experiments/data`. **Delete this folder beforehand if it exists already, otherwise the analysis scripts may break:** `rm -rf experiments/data/*`.
 
 #### Restricting Number of CPUs
-If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
+If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only available on Linux) or in the Docker settings.  
 E.g. `taskset -c 0-7 python3 experiments/runners/run_comp.py all 8`.  
 E.g. `docker run -it -v $(pwd)/experiments/data:/experiments/data --shm-size=2g --cpuset-cpus="0-7" --name upix --rm upix`  
 Otherwise, JAX, PyTorch, BLAS, etc, will use all the available CPUs under the hood.  
@@ -280,7 +282,7 @@ It is recommended to use 8 or 10 CPU cores.
 
 #### Run Benchmark
 
-Experiments were run on a M2 Pro Macbook with ncpu=10 (without Docker).
+Experiments were run on a M2 Pro Macbook with `<ncpu> = 10` (without Docker).
 
 Run (inside Docker container, if used), runtime ~4h:
 ```
@@ -294,7 +296,7 @@ Set `<ncpu>` to the number of available CPU cores in your machine. The script wi
 
 
 #### Summarising the results
-The `experiment/data` folder from the paper results is included in the artifact (`paper_results/data`).
+The `experiment/data` folder from the paper results is included in the artifact (`paper_results/data`, `<ncpu> = 10`).
 
 Use
 ```
@@ -387,7 +389,7 @@ We have implemented scripts to launch the scaling experiments for each model wit
 Set `<platform> = cpu | cuda` arguments depending on your hardware.
 `<ndevices>` **has to be a power of 2**.
 If you do not have a CPU with a processor count that is a power of 2, then you may prefix the commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 bash experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings, see [Section 4 instructions](#restricting-number-of-cpus).
-Similarly, for GPUs, you may set `CUDA_VISIBLE_DEVICES` and see https://docs.docker.com/engine/containers/gpu/ for Docker (e.g. `--gpus='"device=0,1"'`).
+Similarly, for GPUs, you may set `CUDA_VISIBLE_DEVICES` (e.g. `CUDA_VISIBLE_DEVICES=0,1`) and see https://docs.docker.com/engine/containers/gpu/ for Docker (e.g. `--gpus=all` `--gpus='"device=0,1"'`).
 We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA GPUs (without Docker) using following configurations:
 ```
 (<platform>, <ndevices>) =
