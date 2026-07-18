@@ -4,3 +4,4 @@ evaluation/gp/autogp/Manifest.toml
 tmp/*
 !tmp/.gitkeep
 .venv*
+*.tar

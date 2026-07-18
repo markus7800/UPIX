@@ -193,7 +193,7 @@ mkdir -p experiments/data
 docker run -it --rm -v $(pwd)/experiments/data:/experiments/data --shm-size=2g --name upix --rm upix
 ```
 
-Make sure to make multiple CPUs and enough RAM available in the container.  
+**Important:** Make sure to make multiple CPUs and enough RAM available in the Docker setting.  
 To make GPUs in the container available, see https://docs.docker.com/engine/containers/gpu/.  
 Runtimes using the docker container may be different compared to running locally.
 
@@ -225,7 +225,8 @@ docker pull sholtzen/dice@sha256:5aadf3edfa7aea292492b14971d9ac03adef1ddc7548e65
 
 Make sure `export TMPDIR=$(pwd)/tmp` is set.
 
-Run (inside Docker container, if used) with `<ncpu>` set to the number of available CPU cores, runtime ~10min:
+Run following command (inside Docker container, if used) with `<ncpu>` set to the number of available CPU cores, runtime ~10min.  
+If you want to restrict the number of used CPUs, see [Section 4 instructions](#restricting-number-of-cpus).
 ```
 python3 experiments/runners/run_comp.py all <ncpu> --smoketest
 ```
@@ -233,7 +234,6 @@ Run outside of Docker container, runtime ~20s if Dice image is already installed
 ```
 python3 experiments/runners/run_comp.py dice 1 --smoketest
 ```
-If you want to restrict the number of used CPUs, see [Section 4 instructions](#restricting-number-of-cpus).
 
 For reference output see [sanity_check.txt](sanity_check.txt).  
 The first runs may be slower due to compile/install times.
@@ -255,7 +255,7 @@ parallelisation=Sequential(pmap,
 )
 ...
 ```
-and exit without error.  
+and exit without error in ~1min (excluding package install time).  
 If you want to restrict the number of used GPUs, adjust the Docker settings or set `CUDA_VISIBLE_DEVICES` accordingly.
 
 Delete the data folder after completing the sanity check:
@@ -268,6 +268,17 @@ rm -rf experiments/data/*
 Run following commands from the *root directory* to reproduce all experiments from Section 4.  
 Make sure `export TMPDIR=$(pwd)/tmp` is set.  
 Output will be stored in `experiments/data`. **Delete this folder beforehand if it exists already, otherwise the analysis scripts may break.**
+
+#### Restricting Number of CPUs
+If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
+E.g. `taskset -c 0-7 python3 experiments/runners/run_comp.py all 8`.  
+E.g. `docker run -it -v $(pwd)/experiments/data:/experiments/data --shm-size=2g --cpuset-cpus="0-7" --name upix --rm upix`  
+Otherwise, JAX, PyTorch, BLAS, etc, will use all the available CPUs under the hood.  
+The script will error if the number of available CPUs exceeds `<ncpu>`. You can silence this error by setting `export NOCHECKENV=true`, but this is not recommend for the reasons above.
+
+It is recommended to use 8 or 10 CPU cores.
+
+#### Run Benchmark
 
 Experiments were run on a M2 Pro Macbook with ncpu=10 (without Docker).
 
@@ -282,15 +293,8 @@ python3 experiments/runners/run_comp.py dice 1
 Set `<ncpu>` to the number of available CPU cores in your machine. The script will adjust the workload based on the available cores (see below).
 
 
-#### Restricting Number of CPUs.
-If you do not want use all your available CPU cores, for a fair benchmark, you need to limit them with `taskset` (only avaiable on Linux) or in the Docker settings.  
-E.g. `taskset -c 0-3 python3 experiments/runners/run_comp.py all 4`.  
-E.g. `docker run -it -v $(pwd)/experiments/data:/experiments/data --shm-size=2g --cpuset-cpus="0-3" --name upix --rm upix`  
-Otherwise, JAX, PyTorch, BLAS, etc, will use all the available CPUs under the hood.  
-The script will error if the number of available CPUs exceeds `<ncpu>`. You can silence this error by setting `export NOCHECKENV=true`, but this is not recommend for the reasons above.
-
 #### Summarising the results
-The `experiment/data` folder from the paper results is included in the artifact.
+The `experiment/data` folder from the paper results is included in the artifact (`paper_results/data`).
 
 Use
 ```
@@ -393,7 +397,7 @@ We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA G
 
 The script arguments following `<platform>, <ndevices>` set the workload range for each of the four scaling experiments in log2 base.
 
-For instance
+For instance, the command
 ```
 python3 experiments/runners/run_pedestrian_scale.py cuda 1 0 20 sequential
 ```
@@ -414,7 +418,7 @@ uv run --with pandas experiments/scale_plot.py <experiments/data folder>
 ```
 to reproduce Figure 8 at `experiments/data/figures/scale_figure.pdf`.
 
-Again, the experiment results from the paper are included in the artifact.
+Again, the experiment results from the paper are included in the artifact (`paper_results/data`).
 
 For those results, we ran following commands (as launched in `run_scale_all_experiments.sh`) with `<ncpu> = 8 | 16 | 32 | 64` and `<ncuda> = 1 | 2 | 4 | 8` (the `<logsuffix>` is appended to the names of the generated log files).
 This takes more than 100 hours to complete.
@@ -465,7 +469,7 @@ to reproduce the left plot of Figure 9 at `experiments/data/figures/elbo_scaling
 
 Run
 ```
-uv run evaluation/urn/viz_factor_size.py <experiments/data folder>
+uv run evaluation/urn/viz_factor_size.py <paper_results/data folder>
 ```
 **pointed at the provided paper results folder** to reproduce the right plot of Figure 9 at `experiments/data/figures/factor_size_scaling.pdf`
 
