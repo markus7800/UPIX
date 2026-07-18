@@ -240,7 +240,7 @@ The first runs may be slower due to compile/install times.
 
 Outputs are stored in `experiments/data`.
 
-A Nvidia GPU is needed only for reproducing Section 5.  
+A Nvidia GPU is only needed for reproducing Section 5.  
 CPUs suffice for reproducing Section 4.  
 To test execution with GPU, first make sure `nvidia-smi` prints the GPUs you want to use.
 If you want to restrict the number of used GPUs, adjust the Docker settings or set `CUDA_VISIBLE_DEVICES` accordingly (also see [Section 5](#reproducing-section-5-scaling-experiments---figure-8)) and run
@@ -389,7 +389,7 @@ We have implemented scripts to launch the scaling experiments for each model wit
 Set `<platform> = cpu | cuda` arguments depending on your hardware.
 `<ndevices>` **has to be a power of 2**.
 If you do not have a CPU with a processor count that is a power of 2, then you may prefix the commands with `taskset` to restrict the available CPUs, e.g. `taskset -c 0-7 bash experiments/...` to use 8 CPUs (only works on Linux) or limit them in the Docker settings, see [Section 4 instructions](#restricting-number-of-cpus).
-Similarly, for GPUs, you may set `CUDA_VISIBLE_DEVICES` (e.g. `CUDA_VISIBLE_DEVICES=0,1`) and see https://docs.docker.com/engine/containers/gpu/ for Docker (e.g. `--gpus=all` `--gpus='"device=0,1"'`).
+Similarly, for GPUs, you may set `CUDA_VISIBLE_DEVICES` (e.g. `CUDA_VISIBLE_DEVICES=0,1`) and see https://docs.docker.com/engine/containers/gpu/ for Docker (e.g. `--gpus=all`, or `--gpus='"device=0,1"'`).
 We ran our experiments on a Linux machine with 64 CPU cores and 8 48GB NVIDIDA GPUs (without Docker) using following configurations:
 ```
 (<platform>, <ndevices>) =
